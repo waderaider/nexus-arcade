@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS ARCADE - Quest 3 Mixed Reality Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0ff; line-height: 1.6; }
+  .hero { text-align: center; padding: 80px 20px 60px; background: linear-gradient(135deg, #1a1a3a 0%, #0a0a1a 100%); }
+  .hero h1 { font-size: 3.5em; background: linear-gradient(90deg, #00ffff, #ff00ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
+  .hero p { font-size: 1.2em; color: #a0a0cc; max-width: 600px; margin: 0 auto 30px; }
+  .download-btn { display: inline-block; padding: 16px 48px; font-size: 1.3em; font-weight: bold; color: #000; background: linear-gradient(90deg, #00ffff, #00ff88); border: none; border-radius: 50px; text-decoration: none; transition: transform 0.2s; }
+  .download-btn:hover { transform: scale(1.05); }
+  .version { margin-top: 15px; color: #666688; font-size: 0.9em; }
+  .games { max-width: 1000px; margin: 0 auto; padding: 40px 20px; }
+  .games h2 { text-align: center; font-size: 2em; margin-bottom: 30px; color: #00ffff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .card { background: #151528; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; transition: border-color 0.2s; }
+  .card:hover { border-color: #00ffff; }
+  .card h3 { color: #00ffff; margin-bottom: 8px; }
+  .card p { color: #a0a0cc; font-size: 0.95em; }
+  .card .tag { display: inline-block; margin-top: 10px; padding: 4px 12px; background: #2a2a4a; border-radius: 20px; font-size: 0.8em; color: #00ff88; }
+  .install { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+  .install h2 { text-align: center; font-size: 2em; margin-bottom: 30px; color: #ff00ff; }
+  .step { background: #151528; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
+  .step h4 { color: #00ffff; margin-bottom: 8px; }
+  .step p, .step ol { color: #a0a0cc; }
+  .step ol { margin-left: 20px; }
+  footer { text-align: center; padding: 40px 20px; color: #555577; font-size: 0.9em; }
+  footer a { color: #00ffff; }
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>NEXUS ARCADE</h1>
+  <p>20 cutting-edge mixed reality games and utilities for Meta Quest 3. Your room is the arcade.</p>
+  <a href="https://github.com/waderaider/nexus-arcade/releases/download/v0.1.0/NexusArcade-final.apk" class="download-btn">Download APK</a>
+  <div class="version">v0.1.0 &bull; 83MB &bull; <a href="https://github.com/waderaider/nexus-arcade/releases" style="color:#00ffff;">All releases</a></div>
+</div>
+
+<div class="games">
+  <h2>Games & Utilities</h2>
+  <div class="grid">
+    <div class="card"><h3>Gravity Golf: Home Course</h3><p>Room-scale mini golf with portals, gravity wells, and a hole-in-one celebration.</p><span class="tag">Game</span></div>
+    <div class="card"><h3>Swarm Protocol</h3><p>Wall portals spawn enemies. Mount turrets on your furniture. Defend the core.</p><span class="tag">Game</span></div>
+    <div class="card"><h3>Familiar</h3><p>An adaptive creature that lives in your room. Responds to gestures and voice.</p><span class="tag">Game</span></div>
+    <div class="card"><h3>Starforge Command</h3><p>Tabletop space RTS. Command fleets from your coffee table.</p><span class="tag">Game</span></div>
+    <div class="card"><h3>Neon Duel</h3><p>Hand-tracked energy blade duel with adaptive AI opponent.</p><span class="tag">Game</span></div>
+    <div class="card"><h3 colspan="2" style="text-align:center; padding: 30px;"><em style="color:#666688;">15 more cutting-edge AR experiences coming soon...</em></div>
+  </div>
+</div>
+
+<div class="install">
+  <h2>How to Install</h2>
+  <div class="step"><h4>1. Enable Developer Mode</h4><p>Open the Meta Horizon mobile app &rarr; Menu &rarr; Devices &rarr; select your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
+  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect your Quest 3 via USB</li><li>In SideQuest, click the folder icon (Install APK)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-final.apk</code></p></div>
+  <div class="step"><h4>3. Launch</h4><p>On your Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
+</div>
+
+<footer>
+  Built by Brio for wade &bull; <a href="https://github.com/waderaider/nexus-arcade">GitHub</a>
+</footer>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS ARCADE - Quest 3 Mixed Reality Games</title>
+<title>NEXUS ARCADE - 20 Quest 3 Mixed Reality Games</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0ff; line-height: 1.6; }
@@ -13,14 +13,17 @@
   .download-btn { display: inline-block; padding: 16px 48px; font-size: 1.3em; font-weight: bold; color: #000; background: linear-gradient(90deg, #00ffff, #00ff88); border: none; border-radius: 50px; text-decoration: none; transition: transform 0.2s; }
   .download-btn:hover { transform: scale(1.05); }
   .version { margin-top: 15px; color: #666688; font-size: 0.9em; }
-  .games { max-width: 1000px; margin: 0 auto; padding: 40px 20px; }
-  .games h2 { text-align: center; font-size: 2em; margin-bottom: 30px; color: #00ffff; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-  .card { background: #151528; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; transition: border-color 0.2s; }
-  .card:hover { border-color: #00ffff; }
-  .card h3 { color: #00ffff; margin-bottom: 8px; }
-  .card p { color: #a0a0cc; font-size: 0.95em; }
-  .card .tag { display: inline-block; margin-top: 10px; padding: 4px 12px; background: #2a2a4a; border-radius: 20px; font-size: 0.8em; color: #00ff88; }
+  .games { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+  .games h2 { text-align: center; font-size: 2em; margin-bottom: 10px; color: #00ffff; }
+  .games .subtitle { text-align: center; color: #666688; margin-bottom: 30px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+  .card { background: #151528; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px; transition: border-color 0.2s, transform 0.2s; }
+  .card:hover { border-color: #00ffff; transform: translateY(-2px); }
+  .card h3 { color: #00ffff; margin-bottom: 8px; font-size: 1.1em; }
+  .card p { color: #a0a0cc; font-size: 0.9em; }
+  .card .tag { display: inline-block; margin-top: 10px; padding: 4px 12px; background: #2a2a4a; border-radius: 20px; font-size: 0.75em; }
+  .tag.game { color: #00ff88; }
+  .tag.utility { color: #ffaa00; }
   .install { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
   .install h2 { text-align: center; font-size: 2em; margin-bottom: 30px; color: #ff00ff; }
   .step { background: #151528; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
@@ -40,22 +43,37 @@
 </div>
 
 <div class="games">
-  <h2>Games & Utilities</h2>
+  <h2>20 Games & Utilities</h2>
+  <div class="subtitle">5 available now &bull; 15 coming in v0.2.0</div>
   <div class="grid">
-    <div class="card"><h3>Gravity Golf: Home Course</h3><p>Room-scale mini golf with portals, gravity wells, and a hole-in-one celebration.</p><span class="tag">Game</span></div>
-    <div class="card"><h3>Swarm Protocol</h3><p>Wall portals spawn enemies. Mount turrets on your furniture. Defend the core.</p><span class="tag">Game</span></div>
-    <div class="card"><h3>Familiar</h3><p>An adaptive creature that lives in your room. Responds to gestures and voice.</p><span class="tag">Game</span></div>
-    <div class="card"><h3>Starforge Command</h3><p>Tabletop space RTS. Command fleets from your coffee table.</p><span class="tag">Game</span></div>
-    <div class="card"><h3>Neon Duel</h3><p>Hand-tracked energy blade duel with adaptive AI opponent.</p><span class="tag">Game</span></div>
-    <div class="card"><h3 colspan="2" style="text-align:center; padding: 30px;"><em style="color:#666688;">15 more cutting-edge AR experiences coming soon...</em></div>
+    <div class="card"><h3>Gravity Golf: Home Course</h3><p>Room-scale mini golf with portals, gravity wells, and hole-in-one celebration.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Swarm Protocol</h3><p>Wall portals spawn enemies. Mount turrets on furniture. Defend the core.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Familiar</h3><p>Adaptive creature living in your room. Responds to gestures and voice.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Starforge Command</h3><p>Tabletop space RTS. Command fleets from your coffee table.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Neon Duel</h3><p>Hand-tracked energy blade duel with adaptive AI.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Holo Chess</h3><p>Holographic chess vs AI with full move validation.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Portal Painter</h3><p>Paint in 3D space with hand-tracked brush. Save your art.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Room Racer</h3><p>Hover-car racing on your floor. 3 laps, boost, best times.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>AR Defender</h3><p>Tower defense on your furniture. Build, upgrade, survive waves.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Zero-G Sandbox</h3><p>Physics playground. Grab, fling, toggle zero gravity.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Holo Piano</h3><p>2-octave piano on any table. Hand-tracked keys, synthesized sound.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Star Map</h3><p>AR planetarium on your ceiling. Constellations and planet facts.</p><span class="tag utility">Utility &bull; v0.2.0</span></div>
+    <div class="card"><h3>AR Measure</h3><p>Measure distances and room areas with hand gestures.</p><span class="tag utility">Utility &bull; v0.2.0</span></div>
+    <div class="card"><h3>Holo Notes</h3><p>Spatial sticky notes anchored to your room. Never lose a thought.</p><span class="tag utility">Utility &bull; v0.2.0</span></div>
+    <div class="card"><h3>Beat Blades</h3><p>Rhythm slicer. Cut notes to the beat, build combos.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Portal Ball</h3><p>Pong with teleporting portals. First to 5 wins.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>AR Workout</h3><p>Punch targets in your room. 60-second rounds, calorie tracking.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>Mind Palace</h3><p>Memory palace technique with spatial anchors and quiz mode.</p><span class="tag utility">Utility &bull; v0.2.0</span></div>
+    <div class="card"><h3>Holo Pets</h3><p>Virtual pets living in your room. Feed, play, keep them happy.</p><span class="tag game">Game &bull; v0.2.0</span></div>
+    <div class="card"><h3>AR DJ</h3><p>Dual turntables in your space. Scratch, mix, loop at 128 BPM.</p><span class="tag game">Game &bull; v0.2.0</span></div>
   </div>
 </div>
 
 <div class="install">
   <h2>How to Install</h2>
-  <div class="step"><h4>1. Enable Developer Mode</h4><p>Open the Meta Horizon mobile app &rarr; Menu &rarr; Devices &rarr; select your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
-  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect your Quest 3 via USB</li><li>In SideQuest, click the folder icon (Install APK)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-final.apk</code></p></div>
-  <div class="step"><h4>3. Launch</h4><p>On your Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
+  <div class="step"><h4>1. Enable Developer Mode</h4><p>Meta Horizon app &rarr; Menu &rarr; Devices &rarr; your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
+  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-final.apk</code></p></div>
+  <div class="step"><h4>3. Launch</h4><p>Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
 </div>
 
 <footer>

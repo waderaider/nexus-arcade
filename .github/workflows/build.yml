@@ -51,6 +51,7 @@ jobs:
         run: |
           mkdir -p android/build
           unzip -q -o ~/.local/share/godot/export_templates/4.7.2.stable/android_source.zip -d android/build
+          echo "4.7.2.stable" > android/.build_version
           ls android/build/build.gradle
 
       - name: Build APK

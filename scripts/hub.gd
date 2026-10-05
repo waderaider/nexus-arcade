@@ -1,0 +1,282 @@
+## Hub.gd - NEXUS ARCADE game selection hub.
+## Shows 5 game portals; clicking/tapping one loads that game.
+extends Node3D
+class_name NexusHub
+
+const GAMES := [
+	{"name": "Gravity Golf", "scene": "res://scenes/golf/golf.tscn", "color": Color(0.2, 0.8, 0.3)},
+	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "color": Color(1.0, 0.3, 0.2)},
+	{"name": "Familiar", "scene": "res://scenes/familiar/familiar.tscn", "color": Color(0.4, 0.7, 1.0)},
+	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "color": Color(0.8, 0.4, 1.0)},
+	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "color": Color(1.0, 0.9, 0.2)},
+	{"name": "Holo Chess", "scene": "res://scenes/holo-chess/holo-chess.tscn", "color": Color(0.9, 0.9, 0.9)},
+	{"name": "Portal Painter", "scene": "res://scenes/portal-painter/portal-painter.tscn", "color": Color(1.0, 0.5, 0.0)},
+	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "color": Color(0.0, 0.8, 1.0)},
+	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "color": Color(1.0, 0.2, 0.5)},
+	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "color": Color(0.5, 0.0, 1.0)},
+	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "color": Color(1.0, 1.0, 1.0)},
+	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "color": Color(0.1, 0.1, 0.8)},
+	{"name": "AR Measure", "scene": "res://scenes/ar-measure/ar-measure.tscn", "color": Color(0.0, 1.0, 0.5)},
+	{"name": "Holo Notes", "scene": "res://scenes/holo-notes/holo-notes.tscn", "color": Color(1.0, 1.0, 0.0)},
+	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "color": Color(1.0, 0.0, 1.0)},
+	{"name": "Portal Ball", "scene": "res://scenes/portal-ball/portal-ball.tscn", "color": Color(0.0, 1.0, 1.0)},
+	{"name": "AR Workout", "scene": "res://scenes/ar-workout/ar-workout.tscn", "color": Color(1.0, 0.3, 0.0)},
+	{"name": "Mind Palace", "scene": "res://scenes/mind-palace/mind-palace.tscn", "color": Color(0.6, 0.3, 0.9)},
+	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "color": Color(1.0, 0.6, 0.8)},
+	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "color": Color(0.8, 0.0, 0.8)},
+	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "color": Color(1.0, 0.1, 0.1)},
+	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "color": Color(0.4, 0.2, 0.6)},
+	{"name": "AR Bowling", "scene": "res://scenes/ar-bowling/ar-bowling.tscn", "color": Color(0.2, 0.6, 1.0)},
+	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "color": Color(0.9, 0.5, 0.1)},
+	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "color": Color(0.1, 0.7, 0.9)},
+	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "color": Color(0.7, 0.5, 0.2)},
+	{"name": "Gravity Pong", "scene": "res://scenes/gravity-pong/gravity-pong.tscn", "color": Color(0.3, 1.0, 0.6)},
+	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "color": Color(0.3, 0.9, 0.3)},
+	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "color": Color(1.0, 0.4, 0.7)},
+	{"name": "Time Pilot", "scene": "res://scenes/time-pilot/time-pilot.tscn", "color": Color(0.5, 0.8, 1.0)},
+]
+
+var _current_game: Node = null
+var _buttons: Array[Node3D] = []
+var _updater: UpdateChecker
+var _version_label: Label3D
+var _update_status: Label3D
+
+func _ready() -> void:
+	_build_hub()
+	_setup_updater()
+
+func _build_hub() -> void:
+	# Title.
+	var title := Label3D.new()
+	title.text = "NEXUS ARCADE"
+	title.font_size = 128
+	title.pixel_size = 0.005
+	title.modulate = Color(0, 0.94, 1)
+	title.outline_size = 16
+	title.position = Vector3(0, 2.2, -1.5)
+	title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(title)
+
+	# Game selection buttons in a 6x5 grid.
+	var cols := 6
+	for i in GAMES.size():
+		var game = GAMES[i]
+		var row := i / cols
+		var col := i % cols
+		var pos := Vector3((col - 2.5) * 0.85, 2.0 - row * 0.5, -1.5)
+		var btn := _make_button(game["name"], game["color"], game["scene"])
+		btn.position = pos
+		add_child(btn)
+		_buttons.append(btn)
+
+	# Instructions.
+	var hint := Label3D.new()
+	hint.text = "Point and click / tap to select a game"
+	hint.font_size = 48
+	hint.pixel_size = 0.003
+	hint.modulate = Color(0.8, 0.8, 0.8)
+	hint.position = Vector3(0, 0.6, -1.5)
+	hint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(hint)
+
+	# Version label.
+	_version_label = Label3D.new()
+	_version_label.text = "v" + ProjectSettings.get_setting("application/config/version", "0.1.0")
+	_version_label.font_size = 36
+	_version_label.pixel_size = 0.0025
+	_version_label.modulate = Color(0.6, 0.6, 0.6)
+	_version_label.position = Vector3(0, 0.3, -1.5)
+	_version_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(_version_label)
+
+	# Update status label.
+	_update_status = Label3D.new()
+	_update_status.text = ""
+	_update_status.font_size = 36
+	_update_status.pixel_size = 0.0025
+	_update_status.modulate = Color(1.0, 0.9, 0.3)
+	_update_status.position = Vector3(0, 0.05, -1.5)
+	_update_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(_update_status)
+
+	# Check for Updates button.
+	var update_btn := _make_update_button()
+	update_btn.position = Vector3(0, -0.35, -1.5)
+	add_child(update_btn)
+	_buttons.append(update_btn)
+
+func _make_button(game_name: String, color: Color, scene_path: String) -> Node3D:
+	var root := Node3D.new()
+	root.set_meta("scene_path", scene_path)
+	root.set_meta("game_name", game_name)
+
+	# Portal ring.
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.28
+	torus.outer_radius = 0.36
+	ring.mesh = torus
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = color
+	rmat.emission_enabled = true
+	rmat.emission = color
+	rmat.emission_energy_multiplier = 2.0
+	ring.material_override = rmat
+	root.add_child(ring)
+
+	# Label.
+	var label := Label3D.new()
+	label.text = game_name
+	label.font_size = 48
+	label.pixel_size = 0.0025
+	label.modulate = Color.WHITE
+	label.outline_size = 8
+	label.position = Vector3(0, -0.5, 0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+
+	# Click detection via Area3D.
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.4
+	shape.shape = sphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(_on_button_input.bind(root))
+
+	# Rotate slowly.
+	var tw := create_tween().set_loops()
+	tw.tween_property(ring, "rotation:z", TAU, 4.0)
+
+	return root
+
+func _on_button_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int, button_root: Node3D) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_load_game(button_root.get_meta("scene_path"), button_root.get_meta("game_name"))
+
+func _load_game(scene_path: String, game_name: String) -> void:
+	# Clear current game.
+	if _current_game and is_instance_valid(_current_game):
+		_current_game.queue_free()
+	# Hide hub.
+	for b in _buttons:
+		b.visible = false
+	# Load the game.
+	var scene: PackedScene = load(scene_path)
+	if scene:
+		_current_game = scene.instantiate()
+		_current_game.position = Vector3(0, 0, -0.5)
+		add_child(_current_game)
+		print("[Hub] Loaded: ", game_name)
+	else:
+		push_error("[Hub] Failed to load: " + scene_path)
+
+func _input(event: InputEvent) -> void:
+	# Press H or Back button to return to hub.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
+		_return_to_hub()
+
+func _return_to_hub() -> void:
+	if _current_game and is_instance_valid(_current_game):
+		_current_game.queue_free()
+		_current_game = null
+	for b in _buttons:
+		b.visible = true
+
+# --- Update system ---
+
+func _setup_updater() -> void:
+	_updater = UpdateChecker.new()
+	add_child(_updater)
+	_updater.check_completed.connect(_on_update_check_completed)
+	_updater.download_completed.connect(_on_update_downloaded)
+	_updater.download_failed.connect(_on_update_failed)
+
+func _make_update_button() -> Node3D:
+	var root := Node3D.new()
+	root.set_meta("is_update_button", true)
+
+	# Button box.
+	var box := MeshInstance3D.new()
+	var bmesh := BoxMesh.new()
+	bmesh.size = Vector3(0.9, 0.22, 0.05)
+	box.mesh = bmesh
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.15, 0.35, 0.6)
+	bmat.emission_enabled = true
+	bmat.emission = Color(0.2, 0.5, 0.9)
+	bmat.emission_energy_multiplier = 1.2
+	box.material_override = bmat
+	root.add_child(box)
+
+	var label := Label3D.new()
+	label.text = "Check for Updates"
+	label.font_size = 42
+	label.pixel_size = 0.002
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, 0, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var bsphere := SphereShape3D.new()
+	bsphere.radius = 0.35
+	shape.shape = bsphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(_on_update_button_input.bind(root))
+
+	return root
+
+func _on_update_button_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int, _btn: Node3D) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# If we have a downloaded APK pending install, tapping installs it.
+		var pending: String = _update_status.get_meta("apk_path", "")
+		if pending != "":
+			_update_status.text = "Installing update..."
+			if _updater.install_update(pending):
+				_update_status.text = "Installing... check system prompt."
+			else:
+				_update_status.text = "Install needs Android. APK at: " + pending
+			return
+		_update_status.text = "Checking for updates..."
+		_updater.check_for_updates()
+
+func _on_update_check_completed(has_update: bool, latest_version: String, changelog: String) -> void:
+	if has_update:
+		_update_status.text = "v%s available! Downloading..." % latest_version
+		_show_changelog(latest_version, changelog)
+		_updater.download_update()
+	else:
+		if latest_version == "":
+			_update_status.text = "Check failed. Try again."
+		else:
+			_update_status.text = "You're up to date (v%s)" % _updater.current_version
+
+func _show_changelog(version: String, changelog: String) -> void:
+	var panel := Label3D.new()
+	panel.name = "ChangelogPanel"
+	panel.text = "What's new in v%s:\n%s" % [version, changelog]
+	panel.font_size = 36
+	panel.pixel_size = 0.0022
+	panel.modulate = Color(0.9, 0.95, 1.0)
+	panel.outline_size = 6
+	panel.position = Vector3(0, 1.7, -2.2)
+	panel.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	panel.set_meta("is_changelog", true)
+	add_child(panel)
+	# Auto-hide after 12 seconds.
+	get_tree().create_timer(12.0).timeout.connect(
+		func(): if is_instance_valid(panel): panel.queue_free()
+	)
+
+func _on_update_downloaded(apk_path: String) -> void:
+	_update_status.text = "Download complete! Tap to install."
+	# Change button to install.
+	_update_status.set_meta("apk_path", apk_path)
+
+func _on_update_failed(error: String) -> void:
+	_update_status.text = "Update failed: %s" % error

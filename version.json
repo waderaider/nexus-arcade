@@ -1,1 +1,6 @@
-{"apk_url":"https://github.com/waderaider/nexus-arcade/releases/download/v0.2.0/NexusArcade-v0.2.0.apk","changelog":"- Added Check for Updates button in hub\n- Version numbers and changelog display\n- Download and install updates directly in-app","version":"0.2.0","version_code":2}
+{
+ "version": "0.2.0",
+ "version_code": 2,
+ "apk_url": "https://github.com/waderaider/nexus-arcade/releases/download/v0.2.0/NexusArcade-v0.2.0.apk",
+ "changelog": "- All 30 games included (was 5)\n- Check for Updates built into the hub\n- Graphics upgrade: PBR materials, glow, dynamic lighting, particles\n- Deeper AR: spatial anchors, hand-tracking pinch, room-aware placement"
+}

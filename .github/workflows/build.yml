@@ -58,6 +58,7 @@ jobs:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
+          mkdir -p builds
           ./Godot_v4.7.2-stable_linux.x86_64 --headless --export-debug "NEXUS ARCADE (Quest 3)" builds/NexusArcade.apk
           ls -lh builds/NexusArcade.apk
 

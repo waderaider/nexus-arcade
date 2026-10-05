@@ -49,7 +49,8 @@ jobs:
 
       - name: Install Android build template
         run: |
-          unzip -q -o ~/.local/share/godot/export_templates/4.7.2.stable/android_source.zip
+          mkdir -p android/build
+          unzip -q -o ~/.local/share/godot/export_templates/4.7.2.stable/android_source.zip -d android/build
           ls android/build/build.gradle
 
       - name: Build APK

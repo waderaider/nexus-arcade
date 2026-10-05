@@ -26,11 +26,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # Android SDK is pre-installed on ubuntu-latest runners
       - name: Install Android packages
         run: |
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
           yes | sdkmanager --licenses > /dev/null
 

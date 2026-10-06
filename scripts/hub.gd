@@ -56,6 +56,39 @@ const GAMES := [
 	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
 ]
 
+const HW_GAMES := [
+	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "color": Color(1.0, 0.45, 0.05)},
+	{"name": "Ghost Catch", "scene": "res://scenes/hw_ghost_catch/hw_ghost_catch.tscn", "color": Color(0.7, 1.0, 0.9)},
+	{"name": "Candy Run", "scene": "res://scenes/hw_candy_run/hw_candy_run.tscn", "color": Color(1.0, 0.3, 0.5)},
+	{"name": "Haunted Maze", "scene": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "color": Color(0.3, 0.6, 0.2)},
+	{"name": "Web Slingshot", "scene": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "color": Color(0.8, 0.8, 0.9)},
+	{"name": "Potion Mix", "scene": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "color": Color(0.4, 0.9, 0.3)},
+	{"name": "Zombie Defense", "scene": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "color": Color(0.5, 0.9, 0.2)},
+	{"name": "Bat Catch", "scene": "res://scenes/hw_bat_catch/hw_bat_catch.tscn", "color": Color(0.2, 0.2, 0.4)},
+	{"name": "Door Dash", "scene": "res://scenes/hw_door_dash/hw_door_dash.tscn", "color": Color(0.9, 0.5, 0.1)},
+	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "color": Color(0.9, 0.9, 0.85)},
+	{"name": "Eyeball Pong", "scene": "res://scenes/hw_eyeball_pong/hw_eyeball_pong.tscn", "color": Color(1.0, 0.2, 0.2)},
+	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "color": Color(0.6, 0.3, 1.0)},
+	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "color": Color(0.7, 0.2, 0.9)},
+	{"name": "Candy Stack", "scene": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "color": Color(1.0, 0.7, 0.1)},
+	{"name": "Mummy Wrap", "scene": "res://scenes/hw_mummy_wrap/hw_mummy_wrap.tscn", "color": Color(0.85, 0.8, 0.65)},
+	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "color": Color(0.35, 0.1, 0.5)},
+	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "color": Color(1.0, 0.55, 0.0)},
+	{"name": "Portrait Gallery", "scene": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "color": Color(0.5, 0.2, 0.6)},
+	{"name": "Spider Catch", "scene": "res://scenes/hw_spider_catch/hw_spider_catch.tscn", "color": Color(0.9, 0.1, 0.3)},
+	{"name": "Werewolf Howl", "scene": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "color": Color(0.4, 0.5, 1.0)},
+	{"name": "Grave Digger", "scene": "res://scenes/hw_grave_digger/hw_grave_digger.tscn", "color": Color(0.45, 0.35, 0.2)},
+	{"name": "Hayride Shooter", "scene": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "color": Color(1.0, 0.6, 0.15)},
+	{"name": "Apple Bobbing", "scene": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "color": Color(0.9, 0.15, 0.2)},
+	{"name": "Phantom Piano", "scene": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "color": Color(0.75, 0.6, 1.0)},
+	{"name": "Goblin Archery", "scene": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "color": Color(0.2, 0.8, 0.3)},
+	{"name": "Haunted Mirror Maze", "scene": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "color": Color(0.6, 0.9, 1.0)},
+	{"name": "Pumpkin Bowling", "scene": "res://scenes/hw_pumpkin_bowling/hw_pumpkin_bowling.tscn", "color": Color(1.0, 0.5, 0.0)},
+	{"name": "Witch Hat Toss", "scene": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "color": Color(0.55, 0.25, 0.9)},
+	{"name": "Monster Feed", "scene": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "color": Color(0.3, 1.0, 0.4)},
+	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "color": Color(0.15, 0.1, 0.35)},
+]
+
 const GAMES_PER_PAGE := 25
 const GRID_COLS := 5
 
@@ -64,6 +97,9 @@ var _game_buttons: Array[Node3D] = []
 var _nav_buttons: Array[Node3D] = []
 var _page_label: Label3D = null
 var _page := 0
+var _tab := 0  # 0 = ARCADE (GAMES), 1 = HALLOWEEN (HW_GAMES)
+var _tab_buttons: Array[Node3D] = []
+var _costumes_button: Node3D = null
 var _updater: UpdateChecker
 var _version_label: Label3D
 var _update_status: Label3D
@@ -83,6 +119,16 @@ func _build_hub() -> void:
 	title.position = Vector3(0, 2.2, -1.5)
 	title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(title)
+
+	# ARCADE / HALLOWEEN tabs.
+	var arcade_tab := _make_tab_button("ARCADE", 0)
+	arcade_tab.position = Vector3(-0.75, 2.72, -1.5)
+	add_child(arcade_tab)
+	_tab_buttons.append(arcade_tab)
+	var hw_tab := _make_tab_button("HALLOWEEN", 1)
+	hw_tab.position = Vector3(0.75, 2.72, -1.5)
+	add_child(hw_tab)
+	_tab_buttons.append(hw_tab)
 
 	# Game selection buttons in a 5x5 paged grid (25 per page).
 	_build_page()
@@ -122,8 +168,16 @@ func _build_hub() -> void:
 	update_btn.position = Vector3(0, -1.85, -1.5)
 	add_child(update_btn)
 
+	# Costumes button (Halloween avatar picker).
+	_costumes_button = _make_costumes_button()
+	_costumes_button.position = Vector3(1.4, -1.85, -1.5)
+	add_child(_costumes_button)
+
+func _active_games() -> Array:
+	return HW_GAMES if _tab == 1 else GAMES
+
 func _page_count() -> int:
-	return int(ceil(GAMES.size() / float(GAMES_PER_PAGE)))
+	return int(ceil(_active_games().size() / float(GAMES_PER_PAGE)))
 
 func _build_page() -> void:
 	# Clear the previous page.
@@ -139,9 +193,9 @@ func _build_page() -> void:
 	_nav_buttons.clear()
 
 	var start := _page * GAMES_PER_PAGE
-	var end := mini(start + GAMES_PER_PAGE, GAMES.size())
+	var end := mini(start + GAMES_PER_PAGE, _active_games().size())
 	for i in range(start, end):
-		var game = GAMES[i]
+		var game = _active_games()[i]
 		var local := i - start
 		var row := local / GRID_COLS
 		var col := local % GRID_COLS
@@ -172,6 +226,8 @@ func _build_page() -> void:
 		nxt.position = Vector3(1.6, -0.72, -1.5)
 		add_child(nxt)
 		_nav_buttons.append(nxt)
+
+	_refresh_tabs()
 
 func _make_nav_button(label_text: String, direction: int) -> Node3D:
 	var root := Node3D.new()
@@ -213,6 +269,94 @@ func _on_nav_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vec
 		var dir: int = nav_root.get_meta("nav_direction")
 		_page = clampi(_page + dir, 0, _page_count() - 1)
 		_build_page()
+
+func _make_tab_button(label_text: String, tab_index: int) -> Node3D:
+	var root := Node3D.new()
+	root.set_meta("tab_index", tab_index)
+
+	var box := MeshInstance3D.new()
+	var bmesh := BoxMesh.new()
+	bmesh.size = Vector3(1.15, 0.24, 0.05)
+	box.mesh = bmesh
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.3, 0.12, 0.45)
+	bmat.emission_enabled = true
+	bmat.emission = Color(0.45, 0.18, 0.7)
+	bmat.emission_energy_multiplier = 0.8
+	box.material_override = bmat
+	root.add_child(box)
+	root.set_meta("tab_mat", bmat)
+
+	var label := Label3D.new()
+	label.text = label_text
+	label.font_size = 40
+	label.pixel_size = 0.002
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, 0, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.4
+	shape.shape = sphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(_on_tab_input.bind(root))
+	return root
+
+func _on_tab_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int, tab_root: Node3D) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_tab = int(tab_root.get_meta("tab_index"))
+		_page = 0
+		_build_page()
+
+func _refresh_tabs() -> void:
+	for tb in _tab_buttons:
+		if not is_instance_valid(tb):
+			continue
+		var mat: StandardMaterial3D = tb.get_meta("tab_mat")
+		var active: bool = int(tb.get_meta("tab_index")) == _tab
+		mat.emission_energy_multiplier = 2.2 if active else 0.8
+
+func _make_costumes_button() -> Node3D:
+	var root := Node3D.new()
+
+	var box := MeshInstance3D.new()
+	var bmesh := BoxMesh.new()
+	bmesh.size = Vector3(1.0, 0.22, 0.05)
+	box.mesh = bmesh
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.5, 0.2, 0.6)
+	bmat.emission_enabled = true
+	bmat.emission = Color(1.0, 0.45, 0.1)
+	bmat.emission_energy_multiplier = 1.4
+	box.material_override = bmat
+	root.add_child(box)
+
+	var label := Label3D.new()
+	label.text = "Costumes"
+	label.font_size = 42
+	label.pixel_size = 0.002
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, 0, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var bsphere := SphereShape3D.new()
+	bsphere.radius = 0.4
+	shape.shape = bsphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(_on_costumes_input.bind(root))
+	return root
+
+func _on_costumes_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int, _btn: Node3D) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_load_game("res://scenes/halloween/costume_picker.tscn", "Costume Picker")
 
 func _make_button(game_name: String, color: Color, scene_path: String) -> Node3D:
 	var root := Node3D.new()
@@ -273,6 +417,10 @@ func _load_game(scene_path: String, game_name: String) -> void:
 		b.visible = false
 	for b in _nav_buttons:
 		b.visible = false
+	for b in _tab_buttons:
+		b.visible = false
+	if is_instance_valid(_costumes_button):
+		_costumes_button.visible = false
 	if is_instance_valid(_page_label):
 		_page_label.visible = false
 	# Load the game.
@@ -298,6 +446,10 @@ func _return_to_hub() -> void:
 		b.visible = true
 	for b in _nav_buttons:
 		b.visible = true
+	for b in _tab_buttons:
+		b.visible = true
+	if is_instance_valid(_costumes_button):
+		_costumes_button.visible = true
 	if is_instance_valid(_page_label):
 		_page_label.visible = true
 

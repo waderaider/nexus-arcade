@@ -40,7 +40,7 @@ static func pinch_active(node: Node, hand: int = HAND_RIGHT) -> bool:
 	if InputMap.has_action(action) and Input.is_action_pressed(action):
 		return true
 	# Trigger fallback for controllers.
-	if Input.is_action_pressed("trigger_click"):
+	if InputMap.has_action("trigger_click") and Input.is_action_pressed("trigger_click"):
 		return true
 	return false
 

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/games/hw_midnight_survival/hw_midnight_survival.gd" id="1"]
+
+[node name="HwMidnightSurvival" type="Node3D"]
+script = ExtResource("1")

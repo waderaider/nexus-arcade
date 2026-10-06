@@ -31,6 +31,10 @@ android {
 dependencies {
     // Provided at runtime by the Godot Android app — never bundled.
     compileOnly 'org.godotengine:godot:4.7.2.stable'
+    // ZXing: compile against the vendored jar, but do NOT bundle it here.
+    // tools/merge_zxing_aar.py merges the ZXing classes into classes.jar
+    // AFTER bundleReleaseAar (see tools/build_camera_plugin.sh).
+    compileOnly files('libs/zxing-core.jar')
     // NOTE: ZXing is NOT a Gradle dep here on purpose. Godot's export consumes
     // the AAR as a flat file without transitive deps, so tools/merge_zxing_aar.py
     // merges the ZXing classes into classes.jar AFTER bundleRelease (see

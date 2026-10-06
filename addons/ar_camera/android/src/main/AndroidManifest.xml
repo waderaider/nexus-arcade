@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library manifest: permissions are declared by the APP (Godot export
+     preset), not here. The godotopenxrvendors plugin already injects the
+     HorizonOS camera permissions when android.permission.CAMERA is enabled. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,0 +1,4 @@
+3D models: "Nature Kit" and "Food Kit" by Kenney (kenney.nl), released under CC0 1.0 Universal.
+Free for personal, educational and commercial use. No written permission required.
+The dragon itself is a hand-built low-poly model in the Kenney style (no 3D creature
+pack exists on kenney.nl; the "Animal Pack" is 2D sprites only).

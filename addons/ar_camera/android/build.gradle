@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.brioagent.arcamera'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        // Consumer ProGuard rules are not needed; the plugin ships no obfuscation.
+    }
+
+    buildTypes {
+        release {
+            // Keep the AAR small; no minification (Godot calls via reflection).
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Provided at runtime by the Godot Android app — never bundled.
+    compileOnly 'org.godotengine:godot:4.7.2.stable'
+    // NOTE: ZXing is NOT a Gradle dep here on purpose. Godot's export consumes
+    // the AAR as a flat file without transitive deps, so tools/merge_zxing_aar.py
+    // merges the ZXing classes into classes.jar AFTER bundleRelease (see
+    // tools/build_camera_plugin.sh). This keeps the build hermetic.
+}

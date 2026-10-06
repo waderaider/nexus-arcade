@@ -1,63 +1,83 @@
 ## Hub.gd - NEXUS ARCADE game selection hub.
-## Shows 50 game portals across paged 5x5 grids; clicking/tapping one loads that game.
+## Category screens: GAMES / UTILITIES / CREATE / THEMES, each paged 5x5 (25 per page).
 extends Node3D
 class_name NexusHub
 
-const GAMES := [
+const CAT_GAMES := [
 	{"name": "Gravity Golf", "scene": "res://scenes/golf/golf.tscn", "color": Color(0.2, 0.8, 0.3)},
 	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "color": Color(1.0, 0.3, 0.2)},
-	{"name": "Familiar", "scene": "res://scenes/familiar/familiar.tscn", "color": Color(0.4, 0.7, 1.0)},
-	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "color": Color(0.8, 0.4, 1.0)},
 	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "color": Color(1.0, 0.9, 0.2)},
-	{"name": "Holo Chess", "scene": "res://scenes/holo-chess/holo-chess.tscn", "color": Color(0.9, 0.9, 0.9)},
-	{"name": "Portal Painter", "scene": "res://scenes/portal-painter/portal-painter.tscn", "color": Color(1.0, 0.5, 0.0)},
-	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "color": Color(0.0, 0.8, 1.0)},
-	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "color": Color(1.0, 0.2, 0.5)},
-	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "color": Color(0.5, 0.0, 1.0)},
-	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "color": Color(1.0, 1.0, 1.0)},
-	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "color": Color(0.1, 0.1, 0.8)},
-	{"name": "AR Measure", "scene": "res://scenes/ar-measure/ar-measure.tscn", "color": Color(0.0, 1.0, 0.5)},
-	{"name": "Holo Notes", "scene": "res://scenes/holo-notes/holo-notes.tscn", "color": Color(1.0, 1.0, 0.0)},
 	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "color": Color(1.0, 0.0, 1.0)},
 	{"name": "Portal Ball", "scene": "res://scenes/portal-ball/portal-ball.tscn", "color": Color(0.0, 1.0, 1.0)},
-	{"name": "AR Workout", "scene": "res://scenes/ar-workout/ar-workout.tscn", "color": Color(1.0, 0.3, 0.0)},
-	{"name": "Mind Palace", "scene": "res://scenes/mind-palace/mind-palace.tscn", "color": Color(0.6, 0.3, 0.9)},
-	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "color": Color(1.0, 0.6, 0.8)},
-	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "color": Color(0.8, 0.0, 0.8)},
 	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "color": Color(1.0, 0.1, 0.1)},
-	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "color": Color(0.4, 0.2, 0.6)},
-	{"name": "AR Bowling", "scene": "res://scenes/ar-bowling/ar-bowling.tscn", "color": Color(0.2, 0.6, 1.0)},
-	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "color": Color(0.9, 0.5, 0.1)},
-	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "color": Color(0.1, 0.7, 0.9)},
-	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "color": Color(0.7, 0.5, 0.2)},
 	{"name": "Gravity Pong", "scene": "res://scenes/gravity-pong/gravity-pong.tscn", "color": Color(0.3, 1.0, 0.6)},
-	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "color": Color(0.3, 0.9, 0.3)},
-	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "color": Color(1.0, 0.4, 0.7)},
+	{"name": "AR Bowling", "scene": "res://scenes/ar-bowling/ar-bowling.tscn", "color": Color(0.2, 0.6, 1.0)},
 	{"name": "Time Pilot", "scene": "res://scenes/time-pilot/time-pilot.tscn", "color": Color(0.5, 0.8, 1.0)},
-	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "color": Color(0.8, 0.45, 0.25)},
-	{"name": "Portal Maze", "scene": "res://scenes/portal-maze/portal-maze.tscn", "color": Color(0.2, 1.0, 0.8)},
-	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "color": Color(1.0, 0.35, 0.15)},
+	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "color": Color(0.0, 0.8, 1.0)},
+	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "color": Color(1.0, 0.2, 0.5)},
+	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "color": Color(0.9, 0.5, 0.1)},
 	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "color": Color(0.3, 0.7, 1.0)},
 	{"name": "Tower Topple", "scene": "res://scenes/tower-topple/tower-topple.tscn", "color": Color(0.75, 0.55, 0.3)},
-	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "color": Color(1.0, 0.3, 0.9)},
-	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "color": Color(0.55, 0.3, 1.0)},
-	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "color": Color(0.1, 0.6, 0.25)},
 	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "color": Color(0.7, 0.2, 1.0)},
-	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "color": Color(0.9, 0.75, 0.45)},
 	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "color": Color(1.0, 0.2, 0.2)},
-	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "color": Color(0.5, 1.0, 0.2)},
 	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "color": Color(0.25, 0.5, 1.0)},
 	{"name": "AR Darts", "scene": "res://scenes/ar-darts/ar-darts.tscn", "color": Color(1.0, 0.75, 0.15)},
 	{"name": "Zero-G Hoops", "scene": "res://scenes/zero-g-hoops/zero-g-hoops.tscn", "color": Color(1.0, 0.55, 0.1)},
-	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "color": Color(1.0, 0.65, 0.3)},
 	{"name": "AR Fishing", "scene": "res://scenes/ar-fishing/ar-fishing.tscn", "color": Color(0.15, 0.8, 0.75)},
 	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "color": Color(1.0, 0.15, 0.25)},
 	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "color": Color(0.3, 1.0, 0.9)},
 	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
-	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "color": Color(0.4, 0.8, 1.0)},
+	{"name": "Portal Maze", "scene": "res://scenes/portal-maze/portal-maze.tscn", "color": Color(0.2, 1.0, 0.8)},
+	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "color": Color(1.0, 0.35, 0.15)},
+	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "color": Color(1.0, 0.65, 0.3)},
+	{"name": "Holo Chess", "scene": "res://scenes/holo-chess/holo-chess.tscn", "color": Color(0.9, 0.9, 0.9)},
+	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "color": Color(0.8, 0.4, 1.0)},
+	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "color": Color(0.4, 0.2, 0.6)},
+	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "color": Color(0.7, 0.5, 0.2)},
+	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "color": Color(0.1, 0.6, 0.25)},
+	{"name": "Holo Chef", "scene": "res://scenes/holo_chef/holo_chef.tscn", "color": Color(1.0, 0.55, 0.2)},
+	{"name": "Dragon Ranch", "scene": "res://scenes/dragon_ranch/dragon_ranch.tscn", "color": Color(1.0, 0.3, 0.25)},
+	{"name": "Wizard Academy", "scene": "res://scenes/wizard_academy/wizard_academy.tscn", "color": Color(0.65, 0.35, 1.0)},
+	{"name": "Holo Farm", "scene": "res://scenes/holo_farm/holo_farm.tscn", "color": Color(0.45, 0.9, 0.35)},
+	{"name": "Mech Pilot", "scene": "res://scenes/mech_pilot/mech_pilot.tscn", "color": Color(0.35, 0.75, 0.95)},
+	{"name": "Deep Dive", "scene": "res://scenes/deep_dive/deep_dive.tscn", "color": Color(0.15, 0.5, 1.0)},
+	{"name": "AR Detective", "scene": "res://scenes/ar_detective/ar_detective.tscn", "color": Color(1.0, 0.75, 0.3)},
+	{"name": "Sky Pirates", "scene": "res://scenes/sky_pirates/sky_pirates.tscn", "color": Color(0.3, 0.85, 0.8)},
+	{"name": "Monster Lab", "scene": "res://scenes/monster_lab/monster_lab.tscn", "color": Color(0.6, 1.0, 0.3)},
+	{"name": "Myth Zoo", "scene": "res://scenes/myth_zoo/myth_zoo.tscn", "color": Color(1.0, 0.4, 0.8)},
+	{"name": "QR Treasure Hunt", "scene": "res://scenes/qr_hunt/qr_hunt.tscn", "color": Color(1.0, 0.85, 0.2)},
 ]
 
-const HW_GAMES := [
+const CAT_UTILITIES := [
+	{"name": "AR Measure", "scene": "res://scenes/ar-measure/ar-measure.tscn", "color": Color(0.0, 1.0, 0.5)},
+	{"name": "Holo Notes", "scene": "res://scenes/holo-notes/holo-notes.tscn", "color": Color(1.0, 1.0, 0.0)},
+	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "color": Color(0.1, 0.1, 0.8)},
+	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "color": Color(0.4, 0.8, 1.0)},
+	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "color": Color(0.2, 0.9, 1.0)},
+	{"name": "Plant Doctor", "scene": "res://scenes/plant_doctor/plant_doctor.tscn", "color": Color(0.3, 1.0, 0.5)},
+	{"name": "AR Workout", "scene": "res://scenes/ar-workout/ar-workout.tscn", "color": Color(1.0, 0.3, 0.0)},
+	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "color": Color(1.0, 0.6, 0.8)},
+	{"name": "Mind Palace", "scene": "res://scenes/mind-palace/mind-palace.tscn", "color": Color(0.6, 0.3, 0.9)},
+	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "color": Color(0.8, 0.0, 0.8)},
+	{"name": "Familiar", "scene": "res://scenes/familiar/familiar.tscn", "color": Color(0.4, 0.7, 1.0)},
+]
+
+const CAT_CREATE := [
+	{"name": "Portal Painter", "scene": "res://scenes/portal-painter/portal-painter.tscn", "color": Color(1.0, 0.5, 0.0)},
+	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "color": Color(1.0, 0.3, 0.9)},
+	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "color": Color(1.0, 1.0, 1.0)},
+	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "color": Color(0.55, 0.3, 1.0)},
+	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "color": Color(0.5, 1.0, 0.2)},
+	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "color": Color(1.0, 0.4, 0.7)},
+	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "color": Color(0.9, 0.75, 0.45)},
+	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "color": Color(0.8, 0.45, 0.25)},
+	{"name": "Sketch to 3D", "scene": "res://scenes/sketch_3d/sketch_3d.tscn", "color": Color(1.0, 0.5, 1.0)},
+	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "color": Color(0.3, 0.9, 0.3)},
+	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "color": Color(0.5, 0.0, 1.0)},
+	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "color": Color(0.1, 0.7, 0.9)},
+]
+
+const CAT_THEMES := [
 	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "color": Color(1.0, 0.45, 0.05)},
 	{"name": "Ghost Catch", "scene": "res://scenes/hw_ghost_catch/hw_ghost_catch.tscn", "color": Color(0.7, 1.0, 0.9)},
 	{"name": "Candy Run", "scene": "res://scenes/hw_candy_run/hw_candy_run.tscn", "color": Color(1.0, 0.3, 0.5)},
@@ -90,6 +110,7 @@ const HW_GAMES := [
 	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "color": Color(0.15, 0.1, 0.35)},
 ]
 
+
 const GAMES_PER_PAGE := 25
 const GRID_COLS := 5
 
@@ -98,9 +119,10 @@ var _game_buttons: Array[Node3D] = []
 var _nav_buttons: Array[Node3D] = []
 var _page_label: Label3D = null
 var _page := 0
-var _tab := 0  # 0 = ARCADE (GAMES), 1 = HALLOWEEN (HW_GAMES)
+var _tab := 0  # 0 = GAMES, 1 = UTILITIES, 2 = CREATE, 3 = THEMES
 var _tab_buttons: Array[Node3D] = []
 var _costumes_button: Node3D = null
+var _crash_panel: Node3D = null
 var _updater: UpdateChecker
 var _version_label: Label3D
 var _update_status: Label3D
@@ -108,6 +130,11 @@ var _update_status: Label3D
 func _ready() -> void:
 	_build_hub()
 	_setup_updater()
+	# Crash reporter: offer to send the previous session's log.
+	var crash: Dictionary = BugReporter.prompt_if_crash_pending()
+	if not crash.is_empty():
+		_show_crash_prompt(crash)
+	BugReporter.session_start("hub")
 
 func _build_hub() -> void:
 	# Title.
@@ -121,15 +148,13 @@ func _build_hub() -> void:
 	title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(title)
 
-	# ARCADE / HALLOWEEN tabs.
-	var arcade_tab := _make_tab_button("ARCADE", 0)
-	arcade_tab.position = Vector3(-0.75, 2.72, -1.5)
-	add_child(arcade_tab)
-	_tab_buttons.append(arcade_tab)
-	var hw_tab := _make_tab_button("HALLOWEEN", 1)
-	hw_tab.position = Vector3(0.75, 2.72, -1.5)
-	add_child(hw_tab)
-	_tab_buttons.append(hw_tab)
+	# Category tabs: GAMES / UTILITIES / CREATE / THEMES.
+	var tab_defs := [["GAMES", 0], ["UTILS", 1], ["CREATE", 2], ["THEMES", 3]]
+	for i in range(tab_defs.size()):
+		var tb := _make_tab_button(tab_defs[i][0], tab_defs[i][1])
+		tb.position = Vector3(-1.65 + i * 1.1, 2.72, -1.5)
+		add_child(tb)
+		_tab_buttons.append(tb)
 
 	# Game selection buttons in a 5x5 paged grid (25 per page).
 	_build_page()
@@ -175,7 +200,14 @@ func _build_hub() -> void:
 	add_child(_costumes_button)
 
 func _active_games() -> Array:
-	return HW_GAMES if _tab == 1 else GAMES
+	match _tab:
+		1:
+			return CAT_UTILITIES
+		2:
+			return CAT_CREATE
+		3:
+			return CAT_THEMES
+	return CAT_GAMES
 
 func _page_count() -> int:
 	return int(ceil(_active_games().size() / float(GAMES_PER_PAGE)))
@@ -229,6 +261,9 @@ func _build_page() -> void:
 		_nav_buttons.append(nxt)
 
 	_refresh_tabs()
+	# Costumes button belongs to the THEMES (Halloween) section.
+	if is_instance_valid(_costumes_button):
+		_costumes_button.visible = _tab == 3
 
 func _make_nav_button(label_text: String, direction: int) -> Node3D:
 	var root := Node3D.new()
@@ -410,6 +445,7 @@ func _on_button_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: 
 		_load_game(button_root.get_meta("scene_path"), button_root.get_meta("game_name"))
 
 func _load_game(scene_path: String, game_name: String) -> void:
+	BugReporter.session_start(game_name)
 	# Clear current game.
 	if _current_game and is_instance_valid(_current_game):
 		_current_game.queue_free()
@@ -440,6 +476,7 @@ func _input(event: InputEvent) -> void:
 		_return_to_hub()
 
 func _return_to_hub() -> void:
+	BugReporter.session_end()
 	if _current_game and is_instance_valid(_current_game):
 		_current_game.queue_free()
 		_current_game = null
@@ -453,6 +490,64 @@ func _return_to_hub() -> void:
 		_costumes_button.visible = true
 	if is_instance_valid(_page_label):
 		_page_label.visible = true
+
+# --- Crash report prompt ---
+
+func _show_crash_prompt(crash: Dictionary) -> void:
+	var panel := Node3D.new()
+	panel.position = Vector3(0, 0.4, -1.2)
+	var msg: String = "Looks like %s crashed last time.\nSend the log to Brio?" % str(crash.get("game", "a game"))
+	var label := GraphicsPolish.make_label(msg, 40)
+	label.position = Vector3(0, 0.35, 0)
+	panel.add_child(label)
+	panel.add_child(_make_crash_button("Send log", Vector3(-0.7, -0.15, 0), _on_crash_send_input))
+	panel.add_child(_make_crash_button("Keep local", Vector3(0.7, -0.15, 0), _on_crash_keep_input))
+	add_child(panel)
+	_crash_panel = panel
+
+func _make_crash_button(label_text: String, pos: Vector3, handler: Callable) -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+	var box := MeshInstance3D.new()
+	var bmesh := BoxMesh.new()
+	bmesh.size = Vector3(1.0, 0.22, 0.05)
+	box.mesh = bmesh
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.5, 0.25, 0.1)
+	bmat.emission_enabled = true
+	bmat.emission = Color(1.0, 0.6, 0.2)
+	bmat.emission_energy_multiplier = 1.4
+	box.material_override = bmat
+	root.add_child(box)
+	var label := Label3D.new()
+	label.text = label_text
+	label.font_size = 40
+	label.pixel_size = 0.002
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, 0, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.35
+	shape.shape = sphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(handler)
+	return root
+
+func _on_crash_send_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		BugReporter.send_report()
+		if is_instance_valid(_crash_panel):
+			_crash_panel.queue_free()
+
+func _on_crash_keep_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		BugReporter.acknowledge_crash()
+		if is_instance_valid(_crash_panel):
+			_crash_panel.queue_free()
 
 # --- Update system ---
 

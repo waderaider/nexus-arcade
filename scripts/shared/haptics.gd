@@ -43,7 +43,7 @@ static func pulse(strength: float = 0.7, duration: float = 0.12) -> void:
 	# signature differs on the running plugin version, this is skipped.
 	if action.has_method("trigger_haptic_pulse"):
 		# Preferred signature: (on_hand: String, duration, frequency, amplitude)
-		var err := action.call("trigger_haptic_pulse", "right_hand", d, 80.0, s)
+		var err: Variant = action.call("trigger_haptic_pulse", "right_hand", d, 80.0, s)
 		if err != null:
 			action.call("trigger_haptic_pulse", "left_hand", d, 80.0, s)
 

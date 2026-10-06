@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/games/myth_zoo/myth_zoo.gd" id="1"]
+
+[node name="MythZoo" type="Node3D"]
+script = ExtResource("1")

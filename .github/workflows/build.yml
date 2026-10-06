@@ -54,6 +54,15 @@ jobs:
           echo "4.7.2.stable" > android/.build_version
           ls android/build/build.gradle
 
+      - name: Build ARCamera plugin
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle-8.7-bin.zip -d /tmp
+          export PATH=/tmp/gradle-8.7/bin:$PATH
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          bash tools/build_camera_plugin.sh
+
       - name: Build APK
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk

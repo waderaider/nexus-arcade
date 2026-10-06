@@ -14,7 +14,7 @@ TOOLS="$PROJ_DIR/tools"
 
 echo "==> Building ARCamera plugin AAR..."
 cd "$PLUGIN_SRC"
-gradle bundleRelease --no-daemon -q
+gradle bundleReleaseAar --no-daemon -q
 
 THIN_AAR="$PLUGIN_SRC/build/outputs/aar/ar_camera-release.aar"
 if [ ! -f "$THIN_AAR" ]; then

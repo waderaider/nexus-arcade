@@ -11,6 +11,7 @@ on:
       - 'project.godot'
       - 'export_presets.cfg'
       - 'icon.svg'
+      - 'tools/**'
       - '.github/workflows/**'
   workflow_dispatch:
 

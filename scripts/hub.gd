@@ -54,6 +54,7 @@ const GAMES := [
 	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "color": Color(1.0, 0.15, 0.25)},
 	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "color": Color(0.3, 1.0, 0.9)},
 	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
+	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "color": Color(0.4, 0.8, 1.0)},
 ]
 
 const HW_GAMES := [

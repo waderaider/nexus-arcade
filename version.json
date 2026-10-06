@@ -1,6 +1,1 @@
-{
- "version": "0.2.0",
- "version_code": 2,
- "apk_url": "https://github.com/waderaider/nexus-arcade/releases/download/v0.2.0/NexusArcade-v0.2.0.apk",
- "changelog": "- All 30 games included (was 5)\n- Check for Updates built into the hub\n- Graphics upgrade: PBR materials, glow, dynamic lighting, particles\n- Deeper AR: spatial anchors, hand-tracking pinch, room-aware placement"
-}
+{"apk_url":"https://github.com/waderaider/nexus-arcade/releases/download/v0.3.0/NexusArcade-v0.3.0.apk","changelog":"- 20 NEW games: Clay Shaper, Portal Maze, Air Drums, Drone Racer, Tower Topple, Light Painter, Holo Theremin, AR Billiards, Spell Duel, Sand Shaper, Rhythm Boxer, AR Graffiti, Marble Run, AR Darts, Zero-G Hoops, Shadow Puppets, AR Fishing, Laser Mirrors, Gravity Glove, Time Freeze\n- 50 games total in a new paged launcher (25 per page)\n- Meaningful hand-tracking mechanics in every new game\n- Spatial-anchor persistence, PBR graphics and particle juice throughout","version":"0.3.0","version_code":3}

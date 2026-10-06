@@ -1,5 +1,5 @@
 ## Hub.gd - NEXUS ARCADE game selection hub.
-## Shows 5 game portals; clicking/tapping one loads that game.
+## Shows 50 game portals across paged 5x5 grids; clicking/tapping one loads that game.
 extends Node3D
 class_name NexusHub
 
@@ -34,10 +34,36 @@ const GAMES := [
 	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "color": Color(0.3, 0.9, 0.3)},
 	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "color": Color(1.0, 0.4, 0.7)},
 	{"name": "Time Pilot", "scene": "res://scenes/time-pilot/time-pilot.tscn", "color": Color(0.5, 0.8, 1.0)},
+	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "color": Color(0.8, 0.45, 0.25)},
+	{"name": "Portal Maze", "scene": "res://scenes/portal-maze/portal-maze.tscn", "color": Color(0.2, 1.0, 0.8)},
+	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "color": Color(1.0, 0.35, 0.15)},
+	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "color": Color(0.3, 0.7, 1.0)},
+	{"name": "Tower Topple", "scene": "res://scenes/tower-topple/tower-topple.tscn", "color": Color(0.75, 0.55, 0.3)},
+	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "color": Color(1.0, 0.3, 0.9)},
+	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "color": Color(0.55, 0.3, 1.0)},
+	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "color": Color(0.1, 0.6, 0.25)},
+	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "color": Color(0.7, 0.2, 1.0)},
+	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "color": Color(0.9, 0.75, 0.45)},
+	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "color": Color(1.0, 0.2, 0.2)},
+	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "color": Color(0.5, 1.0, 0.2)},
+	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "color": Color(0.25, 0.5, 1.0)},
+	{"name": "AR Darts", "scene": "res://scenes/ar-darts/ar-darts.tscn", "color": Color(1.0, 0.75, 0.15)},
+	{"name": "Zero-G Hoops", "scene": "res://scenes/zero-g-hoops/zero-g-hoops.tscn", "color": Color(1.0, 0.55, 0.1)},
+	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "color": Color(1.0, 0.65, 0.3)},
+	{"name": "AR Fishing", "scene": "res://scenes/ar-fishing/ar-fishing.tscn", "color": Color(0.15, 0.8, 0.75)},
+	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "color": Color(1.0, 0.15, 0.25)},
+	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "color": Color(0.3, 1.0, 0.9)},
+	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
 ]
 
+const GAMES_PER_PAGE := 25
+const GRID_COLS := 5
+
 var _current_game: Node = null
-var _buttons: Array[Node3D] = []
+var _game_buttons: Array[Node3D] = []
+var _nav_buttons: Array[Node3D] = []
+var _page_label: Label3D = null
+var _page := 0
 var _updater: UpdateChecker
 var _version_label: Label3D
 var _update_status: Label3D
@@ -58,17 +84,8 @@ func _build_hub() -> void:
 	title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(title)
 
-	# Game selection buttons in a 6x5 grid.
-	var cols := 6
-	for i in GAMES.size():
-		var game = GAMES[i]
-		var row := i / cols
-		var col := i % cols
-		var pos := Vector3((col - 2.5) * 0.85, 2.0 - row * 0.5, -1.5)
-		var btn := _make_button(game["name"], game["color"], game["scene"])
-		btn.position = pos
-		add_child(btn)
-		_buttons.append(btn)
+	# Game selection buttons in a 5x5 paged grid (25 per page).
+	_build_page()
 
 	# Instructions.
 	var hint := Label3D.new()
@@ -76,7 +93,7 @@ func _build_hub() -> void:
 	hint.font_size = 48
 	hint.pixel_size = 0.003
 	hint.modulate = Color(0.8, 0.8, 0.8)
-	hint.position = Vector3(0, 0.6, -1.5)
+	hint.position = Vector3(0, -1.0, -1.5)
 	hint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(hint)
 
@@ -86,7 +103,7 @@ func _build_hub() -> void:
 	_version_label.font_size = 36
 	_version_label.pixel_size = 0.0025
 	_version_label.modulate = Color(0.6, 0.6, 0.6)
-	_version_label.position = Vector3(0, 0.3, -1.5)
+	_version_label.position = Vector3(0, -1.25, -1.5)
 	_version_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(_version_label)
 
@@ -96,15 +113,106 @@ func _build_hub() -> void:
 	_update_status.font_size = 36
 	_update_status.pixel_size = 0.0025
 	_update_status.modulate = Color(1.0, 0.9, 0.3)
-	_update_status.position = Vector3(0, 0.05, -1.5)
+	_update_status.position = Vector3(0, -1.5, -1.5)
 	_update_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(_update_status)
 
 	# Check for Updates button.
 	var update_btn := _make_update_button()
-	update_btn.position = Vector3(0, -0.35, -1.5)
+	update_btn.position = Vector3(0, -1.85, -1.5)
 	add_child(update_btn)
-	_buttons.append(update_btn)
+
+func _page_count() -> int:
+	return int(ceil(GAMES.size() / float(GAMES_PER_PAGE)))
+
+func _build_page() -> void:
+	# Clear the previous page.
+	for b in _game_buttons:
+		if is_instance_valid(b):
+			b.queue_free()
+	for b in _nav_buttons:
+		if is_instance_valid(b):
+			b.queue_free()
+	if is_instance_valid(_page_label):
+		_page_label.queue_free()
+	_game_buttons.clear()
+	_nav_buttons.clear()
+
+	var start := _page * GAMES_PER_PAGE
+	var end := mini(start + GAMES_PER_PAGE, GAMES.size())
+	for i in range(start, end):
+		var game = GAMES[i]
+		var local := i - start
+		var row := local / GRID_COLS
+		var col := local % GRID_COLS
+		var pos := Vector3((col - 2) * 0.85, 2.0 - row * 0.5, -1.5)
+		var btn := _make_button(game["name"], game["color"], game["scene"])
+		btn.position = pos
+		add_child(btn)
+		_game_buttons.append(btn)
+
+	# Page indicator.
+	_page_label = Label3D.new()
+	_page_label.text = "Page %d / %d" % [_page + 1, _page_count()]
+	_page_label.font_size = 40
+	_page_label.pixel_size = 0.0028
+	_page_label.modulate = Color(0.7, 0.85, 1.0)
+	_page_label.position = Vector3(0, -0.72, -1.5)
+	_page_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(_page_label)
+
+	# Prev / Next buttons.
+	if _page > 0:
+		var prev := _make_nav_button("< Prev", -1)
+		prev.position = Vector3(-1.6, -0.72, -1.5)
+		add_child(prev)
+		_nav_buttons.append(prev)
+	if _page < _page_count() - 1:
+		var nxt := _make_nav_button("Next >", 1)
+		nxt.position = Vector3(1.6, -0.72, -1.5)
+		add_child(nxt)
+		_nav_buttons.append(nxt)
+
+func _make_nav_button(label_text: String, direction: int) -> Node3D:
+	var root := Node3D.new()
+	root.set_meta("nav_direction", direction)
+
+	var box := MeshInstance3D.new()
+	var bmesh := BoxMesh.new()
+	bmesh.size = Vector3(0.7, 0.2, 0.05)
+	box.mesh = bmesh
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.2, 0.3, 0.5)
+	bmat.emission_enabled = true
+	bmat.emission = Color(0.3, 0.5, 0.9)
+	bmat.emission_energy_multiplier = 1.0
+	box.material_override = bmat
+	root.add_child(box)
+
+	var label := Label3D.new()
+	label.text = label_text
+	label.font_size = 40
+	label.pixel_size = 0.002
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, 0, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(label)
+
+	var area := Area3D.new()
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.3
+	shape.shape = sphere
+	area.add_child(shape)
+	root.add_child(area)
+	area.input_event.connect(_on_nav_input.bind(root))
+	return root
+
+func _on_nav_input(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _idx: int, nav_root: Node3D) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var dir: int = nav_root.get_meta("nav_direction")
+		_page = clampi(_page + dir, 0, _page_count() - 1)
+		_build_page()
 
 func _make_button(game_name: String, color: Color, scene_path: String) -> Node3D:
 	var root := Node3D.new()
@@ -161,8 +269,12 @@ func _load_game(scene_path: String, game_name: String) -> void:
 	if _current_game and is_instance_valid(_current_game):
 		_current_game.queue_free()
 	# Hide hub.
-	for b in _buttons:
+	for b in _game_buttons:
 		b.visible = false
+	for b in _nav_buttons:
+		b.visible = false
+	if is_instance_valid(_page_label):
+		_page_label.visible = false
 	# Load the game.
 	var scene: PackedScene = load(scene_path)
 	if scene:
@@ -182,8 +294,12 @@ func _return_to_hub() -> void:
 	if _current_game and is_instance_valid(_current_game):
 		_current_game.queue_free()
 		_current_game = null
-	for b in _buttons:
+	for b in _game_buttons:
 		b.visible = true
+	for b in _nav_buttons:
+		b.visible = true
+	if is_instance_valid(_page_label):
+		_page_label.visible = true
 
 # --- Update system ---
 

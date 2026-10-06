@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="NEXUS ARCADE"
-config/version="0.2.0"
-config/description="Thirty mixed-reality games and utilities for Meta Quest 3 with Check for Updates built in."
+config/version="0.3.0"
+config/description="Fifty mixed-reality games and utilities for Meta Quest 3 with Check for Updates built in."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"

@@ -54,6 +54,58 @@ var ai_cast_t := 2.5
 var ai_phase := 0.0
 var elapsed := 0.0
 
+# v0.7.0 RoomKit: the AI wizard holds the real far wall; fireballs bounce
+# off real wall planes. Cached; default layout without room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _wizard_base_z := -3.0
+var _ai_x_range := 1.3
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_place_wizard_at_wall()
+	# v0.7.0 MORPH: rug becomes the arcane duel circle.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_rugs := RoomKit.get_anchors("RUG")
+		if not _morph_rugs.is_empty():
+			RoomKit.morph(_morph_rugs[0], "arcane")
+
+
+## The AI wizard duels from the real far wall; its strafe fits the wall width.
+func _place_wizard_at_wall() -> void:
+	var best: Dictionary = _room_walls[0]
+	for w in _room_walls:
+		if float(w["position"].z) < float(best["position"].z):
+			best = w
+	var n: Vector3 = best["normal"]
+	var side := signf((Vector3(0, 1.2, 1.2) - best["position"]).dot(n))
+	if side == 0.0:
+		side = 1.0
+	_wizard_base_z = clampf(float(best["position"].z) + n.z * side * 0.6, -4.5, -1.5)
+	_ai_x_range = clampf(float(best["size"].x) * 0.5 - 0.3, 1.0, 2.5)
+	if wizard != null and is_instance_valid(wizard):
+		wizard.position = to_local(Vector3(0.0, 0.0, _wizard_base_z))
+
+
+## Normal-sign agnostic wall reflection.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "spell-duel_main")
@@ -66,6 +118,7 @@ func _ready() -> void:
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -1.0), 2.2, 40)
 	_reset()
+	_apply_room_layout()
 
 
 func _ensure_camera() -> void:
@@ -489,6 +542,14 @@ func _update_fireballs(delta: float) -> void:
 			fireballs.remove_at(i)
 			continue
 		node.position += f["vel"] * delta
+		# v0.7.0 RoomKit: fireballs ricochet off real wall planes.
+		if not _room_walls.is_empty():
+			var gp: Vector3 = to_global(node.position)
+			var gv: Vector3 = global_transform.basis * (f["vel"] as Vector3)
+			var nv: Vector3 = _bounce_walls(gp, gv, 0.15)
+			if nv != gv:
+				f["vel"] = global_transform.basis.inverse() * nv
+				GraphicsPolish.spawn_sparks(self, gp, Color(1.0, 0.7, 0.3), 6)
 		var p := node.position
 		var from_player: bool = f["from_player"]
 		if from_player:
@@ -527,7 +588,7 @@ func _update_bolts(delta: float) -> void:
 
 func _ai_logic(delta: float) -> void:
 	ai_phase += delta
-	wizard.position.x = 1.3 * sin(ai_phase * 0.7)
+	wizard.position.x = _ai_x_range * sin(ai_phase * 0.7)
 	ai_cast_t -= delta
 	if ai_cast_t <= 0.0:
 		ai_cast_t = randf_range(AI_CAST_MIN, AI_CAST_MAX)

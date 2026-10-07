@@ -48,6 +48,12 @@ var lose_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -64,6 +70,7 @@ func _ready() -> void:
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.3, -1.8), 2.2, 30)
 	_serve(1.0)
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -426,3 +433,77 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table is the haunted pong arena; the TV is the neon scoreboard.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "haunted")
+	var _morph1_tv := RoomKit.get_anchors("TV")
+	if not _morph1_tv.is_empty():
+		RoomKit.morph(_morph1_tv[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_walls.is_empty():
+		return
+	# Mount the field against the real wall behind it; hang the score HUD
+	# on that wall above the field, facing the room.
+	var w := _room_back_wall()
+	if w.is_empty():
+		return
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	var nn := Vector3(n.x, 0.0, n.z)
+	if nn.length() < 0.01:
+		return
+	nn = nn.normalized()
+	var face := Vector3(wp.x, 1.30, wp.z) + nn * 0.45
+	global_position += face - global_transform * Vector3(0.0, 1.30, FIELD_Z)
+	if hud_label != null:
+		hud_label.global_position = face + Vector3(0.0, 0.95, 0.0)
+		hud_label.global_rotation = Vector3(0.0, atan2(-nn.x, -nn.z), 0.0)
+
+
+## RoomKit: the wall most directly behind the field (local -z side), else largest.
+func _room_back_wall() -> Dictionary:
+	var fwd := global_transform.basis * Vector3(0.0, 0.0, 1.0)
+	fwd.y = 0.0
+	if fwd.length() < 0.01:
+		return _room_largest_wall()
+	fwd = fwd.normalized()
+	var best := {}
+	var best_d := -2.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var n: Vector3 = w["normal"]
+		var nh := Vector3(n.x, 0.0, n.z)
+		if nh.length() < 0.01:
+			continue
+		var d := nh.normalized().dot(fwd)
+		if d > best_d:
+			best_d = d
+			best = w
+	return best
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best

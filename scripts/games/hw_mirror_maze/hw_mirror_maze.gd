@@ -39,14 +39,28 @@ var bump_player: AudioStreamPlayer = null
 var turn_player: AudioStreamPlayer = null
 var win_player: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# The whole maze (floor, walls, portal, player) lives under one stage so
+# it can be centered and shrunk to fit the real room.
+var maze_root: Node3D = null
+const MAZE_SPAN := 4.4 # full maze footprint in meters (GRID * CELL + margin)
+
 
 func _ready() -> void:
 	_add_light_rig()
 	_ensure_fallback_camera()
+	maze_root = Node3D.new()
+	maze_root.name = "MazeRoot"
+	add_child(maze_root)
 	_build_floor()
 	walls_root = Node3D.new()
 	walls_root.name = "Walls"
-	add_child(walls_root)
+	maze_root.add_child(walls_root)
 	_generate_maze()
 	_build_walls()
 	_build_portal()
@@ -58,6 +72,37 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(880.0, 0.45, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_mirror_maze_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 2.5)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Center the maze in the real room and shrink it to fit, so the
+	# mirror walls never poke through the player's actual walls.
+	# v0.7.0 furniture morphs: the rug becomes an arcane arena floor the
+	# maze is centered on, and the real door becomes the haunted
+	# dungeon gate the exit portal leads to.
+	var c := _room_bounds.get_center()
+	var rug_anchors := RoomKit.get_anchors("RUG")
+	if not rug_anchors.is_empty():
+		RoomKit.morph(rug_anchors[0], "arcane")
+		var rp: Vector3 = rug_anchors[0]["position"]
+		c = Vector2(rp.x, rp.z)
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+	maze_root.position = Vector3(c.x, 0.0, c.y)
+	var s := minf(1.0, minf(_room_bounds.size.x, _room_bounds.size.y) / MAZE_SPAN)
+	maze_root.scale = Vector3(maxf(s, 0.45), 1.0, maxf(s, 0.45))
 
 
 func _add_light_rig() -> void:
@@ -187,7 +232,7 @@ func _build_floor() -> void:
 	floor_inst.mesh = plane
 	floor_inst.position = Vector3(0.0, -0.01, 0.0)
 	floor_inst.material_override = GraphicsPolish.pbr(Color(0.08, 0.09, 0.13), 0.0, 0.9)
-	add_child(floor_inst)
+	maze_root.add_child(floor_inst)
 
 
 func _build_walls() -> void:
@@ -256,7 +301,7 @@ func _build_portal() -> void:
 func _build_player() -> void:
 	player_node = Node3D.new()
 	player_node.name = "Player"
-	add_child(player_node)
+	maze_root.add_child(player_node)
 	var body := MeshInstance3D.new()
 	var cap := CapsuleMesh.new()
 	cap.radius = 0.12
@@ -331,7 +376,7 @@ func _win() -> void:
 	state = ST_OVER
 	won = false
 	win_player.play()
-	GraphicsPolish.spawn_confetti(self, player_node.position + Vector3(0, 0.8, 0), 70)
+	GraphicsPolish.spawn_confetti(self, player_node.global_position + Vector3(0, 0.8, 0), 70)
 	_show_msg("ESCAPED!\nTime: %ds   Steps: %d\nHold pinch 1s or press R for a new maze" % [int(elapsed), steps], 600.0)
 	ARUpgradeKit.save_anchor("hw_mirror_maze_main", global_transform)
 

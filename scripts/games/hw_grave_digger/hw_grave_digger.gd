@@ -30,10 +30,23 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# The graveyard sits on a stage so it can be centered in the real room;
+# dig-spot math stays in stage-local coordinates.
+var yard_stage: Node3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
 	_ensure_fallback_camera()
+	yard_stage = Node3D.new()
+	yard_stage.name = "YardStage"
+	add_child(yard_stage)
 	_build_graveyard()
 	_build_hud()
 	for i in range(MAX_SPOTS):
@@ -42,6 +55,29 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, -1.2), 2.5, 44)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Center the graveyard patch in the real room — on the rug when one
+	# is known: the rug becomes an arcane magic-circle arena boundary.
+	var c := _room_bounds.get_center()
+	var rug_anchors := RoomKit.get_anchors("RUG")
+	if not rug_anchors.is_empty():
+		RoomKit.morph(rug_anchors[0], "arcane")
+		var rp: Vector3 = rug_anchors[0]["position"]
+		c = Vector2(rp.x, rp.z)
+	yard_stage.position = Vector3(c.x, 0.0, c.y + 1.2)
 
 
 func _add_light_rig() -> void:
@@ -76,7 +112,7 @@ func _build_graveyard() -> void:
 	ground.mesh = plane
 	ground.position = Vector3(0.0, -0.01, -1.2)
 	ground.material_override = _mat(Color(0.08, 0.10, 0.07))
-	add_child(ground)
+	yard_stage.add_child(ground)
 	var patch := MeshInstance3D.new()
 	var pcyl := CylinderMesh.new()
 	pcyl.top_radius = PATCH_RADIUS
@@ -85,7 +121,7 @@ func _build_graveyard() -> void:
 	patch.mesh = pcyl
 	patch.position = Vector3(0.0, 0.03, -1.2)
 	patch.material_override = _mat(Color(0.20, 0.13, 0.08))
-	add_child(patch)
+	yard_stage.add_child(patch)
 	# Tombstones ringing the patch.
 	for i in range(7):
 		var ang := TAU * float(i) / 7.0 + 0.2
@@ -102,7 +138,7 @@ func _build_graveyard() -> void:
 		post.mesh = pm
 		post.position = pos + Vector3(0.0, 0.35, 0.0)
 		post.material_override = post_mat
-		add_child(post)
+		yard_stage.add_child(post)
 		var nang := TAU * float(i + 1) / 10.0
 		var npos := Vector3(cos(nang) * (PATCH_RADIUS + 1.1), 0.0, -1.2 + sin(nang) * (PATCH_RADIUS + 1.1))
 		var mid := (pos + npos) * 0.5
@@ -113,9 +149,9 @@ func _build_graveyard() -> void:
 		rail.position = mid + Vector3(0.0, 0.5, 0.0)
 		rail.rotation.y = atan2(-(npos.z - pos.z), npos.x - pos.x)
 		rail.material_override = post_mat
-		add_child(rail)
+		yard_stage.add_child(rail)
 	# Sickly green accent light over the patch.
-	GraphicsPolish.make_point_light(self, Vector3(0.0, 1.6, -1.2), Color(0.45, 1.0, 0.4), 0.7, 6.0)
+	GraphicsPolish.make_point_light(yard_stage, Vector3(0.0, 1.6, -1.2), Color(0.45, 1.0, 0.4), 0.7, 6.0)
 
 
 func _make_tombstone(pos: Vector3, ang: float) -> void:
@@ -127,7 +163,7 @@ func _make_tombstone(pos: Vector3, ang: float) -> void:
 	stone.rotation.y = -ang + PI * 0.5
 	stone.rotation.z = randf_range(-0.12, 0.12)
 	stone.material_override = _mat(Color(0.42, 0.42, 0.46))
-	add_child(stone)
+	yard_stage.add_child(stone)
 	var cap := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.0
@@ -137,7 +173,7 @@ func _make_tombstone(pos: Vector3, ang: float) -> void:
 	cap.position = pos + Vector3(0.0, 0.68, 0.0)
 	cap.rotation.y = -ang + PI * 0.5
 	cap.material_override = _mat(Color(0.38, 0.38, 0.42))
-	add_child(cap)
+	yard_stage.add_child(cap)
 
 
 func _build_hud() -> void:
@@ -235,15 +271,37 @@ func _poll_restart_pinch(delta: float) -> void:
 
 
 func _spot_pos() -> Vector3:
-	var ang := randf() * TAU
-	var r := randf_range(0.3, PATCH_RADIUS - 0.35)
-	return Vector3(cos(ang) * r, 0.07, -1.2 + sin(ang) * r)
+	# Dig spots stay inside the real room and out from under furniture.
+	for attempt in range(6):
+		var ang := randf() * TAU
+		var r := randf_range(0.3, PATCH_RADIUS - 0.35)
+		var p := Vector3(cos(ang) * r, 0.07, -1.2 + sin(ang) * r)
+		if _room_known and yard_stage != null:
+			var wp: Vector3 = yard_stage.to_global(p)
+			if wp.x < _room_bounds.position.x + 0.4 or wp.x > _room_bounds.end.x - 0.4:
+				continue
+			if wp.z < _room_bounds.position.y + 0.4 or wp.z > _room_bounds.end.y - 0.4:
+				continue
+			if _spot_blocked(wp):
+				continue
+		return p
+	return Vector3(0.0, 0.07, -1.2)
+
+
+func _spot_blocked(wp: Vector3) -> bool:
+	for f_v in _room_tables + _room_furniture:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if absf(wp.x - fp.x) < fs.x * 0.5 + 0.25 and absf(wp.z - fp.z) < fs.z * 0.5 + 0.25:
+			return true
+	return false
 
 
 func _spawn_spot() -> void:
 	var root := Node3D.new()
 	root.position = _spot_pos()
-	add_child(root)
+	yard_stage.add_child(root)
 	# Dirt mound.
 	var mound := MeshInstance3D.new()
 	var mm := SphereMesh.new()
@@ -278,7 +336,7 @@ func _try_dig(world_pos: Vector3) -> void:
 		var node: Node3D = s["node"]
 		if not is_instance_valid(node):
 			continue
-		var d := Vector2(world_pos.x - node.position.x, world_pos.z - node.position.z).length()
+		var d := Vector2(world_pos.x - node.global_position.x, world_pos.z - node.global_position.z).length()
 		if d < best_d:
 			best_d = d
 			best = i

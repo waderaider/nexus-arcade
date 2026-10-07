@@ -31,6 +31,12 @@ var hud_label: Label3D = null
 var help_label: Label3D = null
 var end_label: Label3D = null
 var _anchor_timer := 0.0
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _has_room := false
 
 
 func _ready() -> void:
@@ -43,6 +49,42 @@ func _ready() -> void:
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.4, 0.5), 2.5, 35)
 	for i in range(MAX_TARGETS):
 		_spawn_target()
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): rug -> glowing workout mat (exercise zone)
+	_morph_anchors("RUG", "neon", 1)
+	_has_room = true
+	_update_hud()
+
+
+## Exercise zone: real room floor bounds (0.25 m safety margin) minus the
+## footprints of tables and furniture, so targets never spawn inside a couch.
+func _point_in_exercise_zone(p: Vector3) -> bool:
+	var safe := _room_bounds.grow(-0.25)
+	if not safe.has_point(Vector2(p.x, p.z)):
+		return false
+	for f_v in _room_tables + _room_furniture:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if fp.y + fs.y * 0.5 < 0.5:
+			continue # low clutter (rugs etc.): targets float above it
+		if absf(p.x - fp.x) <= fs.x * 0.5 + 0.15 and absf(p.z - fp.z) <= fs.z * 0.5 + 0.15:
+			return false
+	return true
 
 
 func _process(delta: float) -> void:
@@ -168,6 +210,8 @@ func _update_hud() -> void:
 		return
 	var kcal := float(hits) * 0.5
 	hud_label.text = "Score: %d   Time: %ds   Combo: x%d   kcal: %.1f" % [score, int(ceil(time_left)), combo, kcal]
+	if _has_room:
+		hud_label.text += "\nZone: %.1f x %.1f m (room-aware)" % [_room_bounds.size.x, _room_bounds.size.y]
 
 
 func _spawn_target() -> void:
@@ -176,8 +220,10 @@ func _spawn_target() -> void:
 	var pos := Vector3.ZERO
 	for attempt in range(12):
 		pos = Vector3(randf_range(-2.4, 2.4), randf_range(0.7, 1.9), randf_range(-0.4, 2.2))
-		if pos.distance_to(camera.global_position) <= 3.0:
-			break
+		# ROOMKIT: keep targets inside the exercise zone (room minus furniture).
+		if not _has_room or _point_in_exercise_zone(pos):
+			if pos.distance_to(camera.global_position) <= 3.0:
+				break
 	# AR: keep spawned targets inside the known room bounds.
 	pos = ARUpgradeKit.clamp_to_room(pos)
 	var node := MeshInstance3D.new()
@@ -291,3 +337,11 @@ func _restart() -> void:
 	ARUpgradeKit.save_anchor("ar-workout_main", global_transform)
 	for i in range(MAX_TARGETS):
 		_spawn_target()
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

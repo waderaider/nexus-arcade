@@ -15,6 +15,14 @@ const PH_UP := 1
 const PH_SHOW := 2
 const PH_DOWN := 3
 
+# v0.7.0 KayKit: real jack-o'-lantern models (CC0, KayKit Halloween Bits).
+const MODEL_DIR := "res://assets/models/hw_pumpkin_smash/"
+const PUMPKIN_MODELS := [
+	"res://assets/models/hw_pumpkin_smash/pumpkin_orange_jackolantern.gltf",
+	"res://assets/models/hw_pumpkin_smash/pumpkin_yellow_jackolantern.gltf",
+]
+const PUMPKIN_MODEL_SCALE := 0.32
+
 var camera: Camera3D = null
 var state := ST_PLAY
 var time_left := ROUND_TIME
@@ -40,6 +48,12 @@ var miss_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 var rng := RandomNumberGenerator.new()
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -55,6 +69,7 @@ func _ready() -> void:
 	pop_player = _make_player(_make_tone(520.0, 0.10, 0.5))
 	miss_player = _make_player(_make_tone(240.0, 0.08, 0.35))
 	end_player = _make_player(_make_tone(660.0, 0.5, 0.5))
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -101,7 +116,9 @@ func _build_spots_and_pumpkins() -> void:
 		mound.position = spot + Vector3(0.0, 0.03, 0.0)
 		mound.material_override = GraphicsPolish.pbr(Color(0.16, 0.10, 0.06), 0.0, 0.95)
 		add_child(mound)
-		pumpkins.append(_build_pumpkin(spot))
+		var pd := _build_pumpkin(spot)
+		pd["mound"] = mound
+		pumpkins.append(pd)
 
 
 func _build_pumpkin(spot: Vector3) -> Dictionary:
@@ -109,6 +126,7 @@ func _build_pumpkin(spot: Vector3) -> Dictionary:
 	root.position = spot + Vector3(0.0, -0.45, 0.0)
 	root.visible = false
 	add_child(root)
+	var proc_parts: Array = [] # hidden when the real model loads
 	var body := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.22
@@ -118,6 +136,7 @@ func _build_pumpkin(spot: Vector3) -> Dictionary:
 	body.position = Vector3(0.0, 0.20, 0.0)
 	body.material_override = GraphicsPolish.pbr(Color(1.0, 0.45, 0.05), 0.1, 0.55)
 	root.add_child(body)
+	proc_parts.append(body)
 	var stem := MeshInstance3D.new()
 	var stem_mesh := CylinderMesh.new()
 	stem_mesh.top_radius = 0.03
@@ -127,6 +146,7 @@ func _build_pumpkin(spot: Vector3) -> Dictionary:
 	stem.position = Vector3(0.0, 0.40, 0.0)
 	stem.material_override = GraphicsPolish.pbr(Color(0.25, 0.35, 0.12), 0.0, 0.9)
 	root.add_child(stem)
+	proc_parts.append(stem)
 	# Glowing jack-o'-lantern face.
 	var face_mat := GraphicsPolish.glow(Color(1.0, 0.85, 0.25), 1.8)
 	for ex in [-0.08, 0.08]:
@@ -138,6 +158,7 @@ func _build_pumpkin(spot: Vector3) -> Dictionary:
 		eye.position = Vector3(ex, 0.26, 0.175)
 		eye.material_override = face_mat
 		root.add_child(eye)
+		proc_parts.append(eye)
 	var mouth := MeshInstance3D.new()
 	var mouth_mesh := BoxMesh.new()
 	mouth_mesh.size = Vector3(0.16, 0.03, 0.02)
@@ -145,7 +166,16 @@ func _build_pumpkin(spot: Vector3) -> Dictionary:
 	mouth.position = Vector3(0.0, 0.14, 0.20)
 	mouth.material_override = face_mat
 	root.add_child(mouth)
-	return {"root": root, "glow_mat": face_mat, "phase": PH_HIDE, "phase_t": 0.0, "show_time": 1.5}
+	proc_parts.append(mouth)
+	# v0.7.0 KayKit: real jack-o'-lantern (orange or yellow); the procedural
+	# pumpkin stays as fallback.
+	var pmodel := ModelLib.spawn(PUMPKIN_MODELS[rng.randi() % PUMPKIN_MODELS.size()], root, Vector3.ZERO)
+	if pmodel != null:
+		pmodel.scale = Vector3.ONE * PUMPKIN_MODEL_SCALE
+		pmodel.rotation.y = randf() * TAU
+		for pp in proc_parts:
+			(pp as Node3D).visible = false
+	return {"root": root, "glow_mat": face_mat, "phase": PH_HIDE, "phase_t": 0.0, "show_time": 1.5, "spot": spot}
 
 
 func _build_mallet() -> void:
@@ -411,3 +441,76 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: chairs become haunted pumpkin nests (targets spawn at nests); the door is the haunted dungeon gate.
+	var _morph0_chair := RoomKit.get_anchors("CHAIR")
+	if not _morph0_chair.is_empty():
+		RoomKit.morph(_morph0_chair[0], "haunted")
+	var _morph1_door := RoomKit.get_anchors("DOOR")
+	if not _morph1_door.is_empty():
+		RoomKit.morph(_morph1_door[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Two pumpkins relocate: one pops up at a real wall base, one lurks
+	# behind real furniture. The rest keep the default arc.
+	if not _room_walls.is_empty() and pumpkins.size() > 3:
+		var ws := _room_wall_face(0.0, 0.55)
+		if ws != Vector3.INF:
+			_room_move_spot(3, ws)
+	if (not _room_tables.is_empty() or not _room_furniture.is_empty()) and pumpkins.size() > 4:
+		var fs := _room_furniture_lurk(0.0)
+		if fs != Vector3.INF:
+			_room_move_spot(4, fs)
+
+
+## RoomKit: move one pumpkin's spot (root + dirt mound); only while hidden.
+func _room_move_spot(i: int, spot: Vector3) -> void:
+	var p: Dictionary = pumpkins[i]
+	if int(p["phase"]) != PH_HIDE:
+		return
+	(p["root"] as Node3D).position = spot + Vector3(0.0, -0.45, 0.0)
+	(p["mound"] as MeshInstance3D).position = spot + Vector3(0.0, 0.03, 0.0)
+
+
+## RoomKit: random wall-face point (game-local), or Vector3.INF when none.
+func _room_wall_face(y: float, inset: float) -> Vector3:
+	if _room_walls.is_empty():
+		return Vector3.INF
+	var w: Dictionary = _room_walls[rng.randi_range(0, _room_walls.size() - 1)]
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3.INF
+	n = n.normalized()
+	var tangent := Vector3(-n.z, 0.0, n.x)
+	var span: Vector2 = w["size"]
+	var off := rng.randf_range(-1.0, 1.0) * maxf(span.x * 0.5 - 0.5, 0.0)
+	return to_local(Vector3(wp.x, y, wp.z) + n * inset + tangent * off)
+
+
+## RoomKit: spot behind a random table/furniture cuboid, away from room center.
+func _room_furniture_lurk(y: float) -> Vector3:
+	var items: Array = _room_tables + _room_furniture
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[rng.randi_range(0, items.size() - 1)]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := _room_bounds.get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.45
+	return to_local(Vector3(wp.x + away.x * clearance, y, wp.z + away.y * clearance))

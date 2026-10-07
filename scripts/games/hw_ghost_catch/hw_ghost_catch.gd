@@ -9,6 +9,10 @@ const CATCH_RADIUS := 0.48
 const ST_PLAY := 0
 const ST_OVER := 1
 
+# v0.7.0 KayKit: spectral skull model (CC0, KayKit Halloween Bits).
+const MODEL_DIR := "res://assets/models/hw_ghost_catch/"
+const SKULL_MODEL_SCALE := 0.55
+
 var camera: Camera3D = null
 var state := ST_PLAY
 var time_left := ROUND_TIME
@@ -30,6 +34,12 @@ var spawn_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 var rng := RandomNumberGenerator.new()
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -46,6 +56,7 @@ func _ready() -> void:
 	catch_player = _make_player(_make_tone(740.0, 0.14, 0.55))
 	spawn_player = _make_player(_make_tone(980.0, 0.10, 0.35))
 	end_player = _make_player(_make_tone(660.0, 0.5, 0.5))
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -81,6 +92,7 @@ func _build_ghost() -> Dictionary:
 	var root := Node3D.new()
 	add_child(root)
 	var glow_mat := GraphicsPolish.glow(Color(0.85, 0.95, 1.0), 1.2)
+	var proc_parts: Array = [] # hidden when the real model loads
 	var body := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.22
@@ -88,6 +100,7 @@ func _build_ghost() -> Dictionary:
 	body.mesh = sphere
 	body.material_override = glow_mat
 	root.add_child(body)
+	proc_parts.append(body)
 	# Wavy tail: a dark-trimmed cone below the body.
 	var tail := MeshInstance3D.new()
 	var cone := CylinderMesh.new()
@@ -98,6 +111,7 @@ func _build_ghost() -> Dictionary:
 	tail.position = Vector3(0.0, -0.28, 0.0)
 	tail.material_override = glow_mat
 	root.add_child(tail)
+	proc_parts.append(tail)
 	# Spooky eyes + mouth.
 	var dark := GraphicsPolish.pbr(Color(0.05, 0.05, 0.10), 0.0, 0.9)
 	for ex in [-0.08, 0.08]:
@@ -109,6 +123,7 @@ func _build_ghost() -> Dictionary:
 		eye.position = Vector3(ex, 0.05, 0.185)
 		eye.material_override = dark
 		root.add_child(eye)
+		proc_parts.append(eye)
 	var mouth := MeshInstance3D.new()
 	var mouth_mesh := SphereMesh.new()
 	mouth_mesh.radius = 0.05
@@ -118,6 +133,15 @@ func _build_ghost() -> Dictionary:
 	mouth.position = Vector3(0.0, -0.08, 0.19)
 	mouth.material_override = dark
 	root.add_child(mouth)
+	proc_parts.append(mouth)
+	# v0.7.0 KayKit: spectral skull takes over the ghost's look; the
+	# procedural sheet-ghost stays as fallback.
+	var skull := ModelLib.spawn(MODEL_DIR + "skull.gltf", root, Vector3(0.0, 0.05, 0.0))
+	if skull != null:
+		skull.scale = Vector3.ONE * SKULL_MODEL_SCALE
+		_apply_glow(skull, glow_mat)
+		for pp in proc_parts:
+			(pp as Node3D).visible = false
 	root.visible = false
 	return {
 		"root": root, "glow_mat": glow_mat, "base": Vector3.ZERO,
@@ -126,9 +150,26 @@ func _build_ghost() -> Dictionary:
 	}
 
 
+## v0.7.0 KayKit: override every mesh material so the model pulses with glow_mat.
+func _apply_glow(n: Node, mat: Material) -> void:
+	if n is MeshInstance3D:
+		(n as MeshInstance3D).material_override = mat
+	for c in n.get_children():
+		_apply_glow(c, mat)
+
+
 func _respawn_ghost(gv: Variant, instant: bool = false) -> void:
 	var g: Dictionary = gv
 	var base := Vector3(rng.randf_range(-1.4, 1.4), rng.randf_range(1.0, 1.9), rng.randf_range(-2.2, 0.6))
+	# RoomKit v0.7.0: ghosts emerge from real wall faces or lurk behind furniture.
+	if not _room_walls.is_empty() and rng.randf() < 0.6:
+		var ws := _room_wall_face(rng.randf_range(1.0, 1.9), 0.6)
+		if ws != Vector3.INF:
+			base = ws
+	elif (not _room_tables.is_empty() or not _room_furniture.is_empty()) and rng.randf() < 0.35:
+		var fs := _room_furniture_lurk(rng.randf_range(1.0, 1.7))
+		if fs != Vector3.INF:
+			base = fs
 	g["base"] = base
 	g["speed"] = rng.randf_range(0.6, 1.4)
 	g["phase"] = rng.randf_range(0.0, TAU)
@@ -340,3 +381,57 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the TV is the haunted ghost portal ghosts emerge from; the door is the dungeon gate they drift through.
+	var _morph0_tv := RoomKit.get_anchors("TV")
+	if not _morph0_tv.is_empty():
+		RoomKit.morph(_morph0_tv[0], "haunted")
+	var _morph1_door := RoomKit.get_anchors("DOOR")
+	if not _morph1_door.is_empty():
+		RoomKit.morph(_morph1_door[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+
+
+## RoomKit: random wall-face point (game-local), or Vector3.INF when none.
+func _room_wall_face(y: float, inset: float) -> Vector3:
+	if _room_walls.is_empty():
+		return Vector3.INF
+	var w: Dictionary = _room_walls[rng.randi_range(0, _room_walls.size() - 1)]
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3.INF
+	n = n.normalized()
+	var tangent := Vector3(-n.z, 0.0, n.x)
+	var span: Vector2 = w["size"]
+	var off := rng.randf_range(-1.0, 1.0) * maxf(span.x * 0.5 - 0.5, 0.0)
+	return to_local(Vector3(wp.x, y, wp.z) + n * inset + tangent * off)
+
+
+## RoomKit: spot behind a random table/furniture cuboid, away from room center.
+func _room_furniture_lurk(y: float) -> Vector3:
+	var items: Array = _room_tables + _room_furniture
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[rng.randi_range(0, items.size() - 1)]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := _room_bounds.get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.45
+	return to_local(Vector3(wp.x + away.x * clearance, y, wp.z + away.y * clearance))

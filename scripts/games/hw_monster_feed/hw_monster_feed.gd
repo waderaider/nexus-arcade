@@ -40,6 +40,19 @@ var chomp_player: AudioStreamPlayer = null
 var grumble_player: AudioStreamPlayer = null
 var pop_player: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: the monster's candy vault (morphed storage cuboid); fed treats
+# pop out of it before floating back to the tray (game-local coords).
+var _room_vault_pos := Vector3.ZERO
+var _room_vault_known := false
+var _tray_node: MeshInstance3D = null
+var _tray_legs: Array = []
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -54,6 +67,61 @@ func _ready() -> void:
 	pop_player = _make_player(_make_tone(760.0, 0.10, 0.4))
 	ARUpgradeKit.apply_anchor(self, "hw_monster_feed_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -1.2), 2.2)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# v0.7.0 furniture morph: the storage cuboid becomes the monster's
+	# candy vault — correctly-fed treats pop out of it before floating
+	# back to the tray (see _try_feed).
+	var storage_anchors := RoomKit.get_anchors("STORAGE")
+	if not storage_anchors.is_empty():
+		RoomKit.morph(storage_anchors[0], "candy")
+		_room_vault_pos = storage_anchors[0]["position"]
+		_room_vault_known = true
+	if _room_tables.is_empty():
+		return
+	# Serve the treats on the player's real table: the virtual tray
+	# table is hidden and the monster sidles up to the real one.
+	var t: Dictionary = _room_tables[0]
+	var tp: Vector3 = t["position"]
+	var ts: Vector3 = t["size"]
+	var top_y: float = tp.y + ts.y * 0.5
+	if _tray_node != null:
+		_tray_node.visible = false
+	for leg_v in _tray_legs:
+		(leg_v as Node3D).visible = false
+	var spread := minf(0.6, maxf(0.2, ts.x * 0.5 - 0.15))
+	var fz := tp.z
+	if _room_bounds.size.y > 1.2:
+		fz = clampf(fz, _room_bounds.position.y + 0.3, _room_bounds.end.y - 0.3)
+	for i in range(foods.size()):
+		var f: Dictionary = foods[i]
+		var fx: float = tp.x + lerpf(-spread, spread, float(i) / 3.0)
+		var base := to_local(Vector3(fx, top_y + 0.12, fz))
+		f["base"] = base
+		if not bool(f["held"]):
+			(f["node"] as MeshInstance3D).position = base
+	if monster != null:
+		var mx := tp.x
+		var mz := tp.z - 1.0
+		if _room_bounds.size.x > 1.8:
+			mx = clampf(mx, _room_bounds.position.x + 0.8, _room_bounds.end.x - 0.8)
+		if _room_bounds.size.y > 1.8:
+			mz = clampf(mz, _room_bounds.position.y + 0.8, _room_bounds.end.y - 0.8)
+		monster.position = Vector3(mx, 0.0, mz)
+		if is_instance_valid(want_icon):
+			want_icon.position = monster.position + Vector3(0.0, 2.0, 0.0)
 
 
 func _add_light_rig() -> void:
@@ -106,7 +174,10 @@ func _process(delta: float) -> void:
 	_update_foods(delta)
 	_update_monster(delta)
 	if want_icon != null:
-		want_icon.position.y = 2.0 + sin(elapsed * 2.5) * 0.06
+		var wbase := Vector3(0.0, 0.0, -1.7)
+		if monster != null:
+			wbase = monster.position
+		want_icon.position = wbase + Vector3(0.0, 2.0 + sin(elapsed * 2.5) * 0.06, 0.0)
 		want_icon.rotation.y += 1.5 * delta
 	if msg_timer > 0.0:
 		msg_timer -= delta
@@ -227,6 +298,7 @@ func _build_tray() -> void:
 	tray.position = Vector3(0.0, 0.72, -0.55)
 	tray.material_override = GraphicsPolish.pbr(Color(0.40, 0.24, 0.13), 0.1, 0.6)
 	add_child(tray)
+	_tray_node = tray
 	var leg_mat := GraphicsPolish.pbr(Color(0.25, 0.15, 0.08), 0.0, 0.8)
 	for sx in [-0.75, 0.75]:
 		for sz in [-0.20, 0.20]:
@@ -237,6 +309,7 @@ func _build_tray() -> void:
 			leg.position = Vector3(sx, 0.36, -0.55 + sz)
 			leg.material_override = leg_mat
 			add_child(leg)
+			_tray_legs.append(leg)
 	_make_food("APPLE", Vector3(-0.60, 0.88, -0.55), Color(0.90, 0.15, 0.15))
 	_make_food("CANDY", Vector3(-0.20, 0.88, -0.55), Color(1.0, 0.55, 0.10))
 	_make_food("COOKIE", Vector3(0.20, 0.88, -0.55), Color(0.55, 0.32, 0.15))
@@ -355,7 +428,11 @@ func _new_want() -> void:
 	s.radius = 0.10
 	s.height = 0.20
 	want_icon.mesh = s
-	want_icon.position = Vector3(0.0, 2.0, -1.7)
+	# Float the want icon over the monster wherever it stands.
+	var mpos := Vector3(0.0, 0.0, -1.7)
+	if monster != null:
+		mpos = monster.position
+	want_icon.position = mpos + Vector3(0.0, 2.0, 0.0)
 	want_icon.material_override = GraphicsPolish.glow(foods[want_idx]["icon_col"] as Color, 1.5)
 	add_child(want_icon)
 	if pop_player != null:
@@ -406,6 +483,10 @@ func _try_feed() -> void:
 			GraphicsPolish.spawn_sparks(self, to_local(_mouth_world()), Color(1.0, 0.6, 0.9), 22)
 			_show_msg("YUM! +10", 1.2)
 			f["returning"] = true
+			# The swallowed treat pops out of the candy vault before
+			# floating back to the tray.
+			if _room_vault_known:
+				fn.global_position = _room_vault_pos + Vector3(0.0, 0.35, 0.0)
 			_new_want()
 		else:
 			score = maxi(0, score - 5)

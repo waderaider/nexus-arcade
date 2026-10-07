@@ -39,6 +39,13 @@ var anchor_t := 0.0
 var hud_label: Label3D = null
 var msg_label: Label3D = null
 var help_label: Label3D = null
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+# _room_walls_local holds wall planes in level-local space (level_root is
+# translated, never rotated, so this is a pure offset of the world planes).
+var _room_walls: Array = []
+var _room_walls_local: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -57,6 +64,7 @@ func _ready() -> void:
 	_build_hud()
 	_build_level(0)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, 0.0), 2.2, 40)
+	_apply_room_layout() # v0.7.0: center the puzzle, beam bounces off real walls
 
 
 func _process(delta: float) -> void:
@@ -361,9 +369,10 @@ func _trace_beam() -> Dictionary:
 		var best_t := 8.0
 		var hit_kind := 0
 		var hit_mirror := -1
+		var hit_n := Vector3.ZERO
 		for m in mirrors.size():
 			var mn: Node3D = mirrors[m]["node"]
-			var mp: Vector3 = mn.global_position
+			var mp: Vector3 = mn.position # level-local (level_root is only translated)
 			var n: Vector3 = mn.global_transform.basis.z.normalized()
 			var denom := dir.dot(n)
 			if absf(denom) < 0.0001:
@@ -377,6 +386,31 @@ func _trace_beam() -> Dictionary:
 				best_t = t
 				hit_kind = 1
 				hit_mirror = m
+				hit_n = n
+		# v0.7.0: the beam also bounces off real room wall planes.
+		for w_v in _room_walls_local:
+			var w: Dictionary = w_v
+			var wp: Vector3 = w["position"]
+			var wn: Vector3 = w["normal"]
+			var wdenom := dir.dot(wn)
+			if absf(wdenom) < 0.0001:
+				continue
+			var wt := (wp - pos).dot(wn) / wdenom
+			if wt < 0.02 or wt >= best_t:
+				continue
+			var whp: Vector3 = pos + dir * wt
+			var off: Vector3 = whp - wp
+			var wu: Vector3 = wn.cross(Vector3.UP)
+			if wu.length() < 0.01:
+				continue
+			wu = wu.normalized()
+			var wv2: Vector3 = wu.cross(wn).normalized()
+			var wsize: Vector2 = w["size"]
+			if absf(off.dot(wu)) <= wsize.x * 0.5 and absf(off.dot(wv2)) <= wsize.y * 0.5:
+				best_t = wt
+				hit_kind = 4
+				hit_mirror = -1
+				hit_n = wn
 		for o in obstacles:
 			var od: Dictionary = o
 			var oc: Vector3 = od["pos"]
@@ -403,10 +437,9 @@ func _trace_beam() -> Dictionary:
 				hit_kind = 3
 		var endp: Vector3 = pos + dir * best_t
 		pts.append(endp)
-		if hit_kind == 1:
-			var mn2: Node3D = mirrors[hit_mirror]["node"]
-			var n2: Vector3 = mn2.global_transform.basis.z.normalized()
-			dir = (dir - 2.0 * dir.dot(n2) * n2).normalized()
+		if hit_kind == 1 or hit_kind == 4:
+			# Mirror panels and real walls both reflect (normal-sign agnostic).
+			dir = (dir - 2.0 * dir.dot(hit_n) * hit_n).normalized()
 			pos = endp + dir * 0.02
 			bounces += 1
 		elif hit_kind == 3:
@@ -451,7 +484,8 @@ func _spark_bounces(res: Dictionary) -> void:
 	var pts: PackedVector3Array = res["points"]
 	var n := mini(pts.size() - 2, 3)
 	for i in n:
-		GraphicsPolish.spawn_sparks(self, pts[i + 1], Color(1.0, 0.8, 0.3), 6)
+		# pts are level-local; level_root/beam_root share the same offset.
+		GraphicsPolish.spawn_sparks(self, level_root.position + pts[i + 1], Color(1.0, 0.8, 0.3), 6)
 
 
 func _aim_ray() -> Array:
@@ -523,7 +557,7 @@ func _on_solved() -> void:
 	levels_solved += 1
 	total_moves += moves
 	msg_label.text = "Level %d solved in %d moves!" % [level + 1, moves]
-	GraphicsPolish.spawn_confetti(self, receiver_pos + Vector3(0, 0.4, 0), 60)
+	GraphicsPolish.spawn_confetti(self, level_root.position + receiver_pos + Vector3(0, 0.4, 0), 60)
 	ARUpgradeKit.save_anchor("mirror-maze_main", global_transform)
 
 
@@ -553,3 +587,35 @@ func _restart_all() -> void:
 	msg_label.text = ""
 	_build_level(0)
 	ARUpgradeKit.save_anchor("mirror-maze_main", global_transform)
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# Center the puzzle on the room's open floor. level_root and beam_root
+	# share the same pure translation, so _trace_beam stays level-local.
+	var c := _room_bounds.get_center()
+	var p := Vector3(c.x, 0.0, c.y)
+	level_root.position = p
+	beam_root.position = p
+	_room_walls_local.clear()
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		_room_walls_local.append({
+			"position": (w["position"] as Vector3) - p,
+			"size": w["size"],
+			"normal": (w["normal"] as Vector3).normalized(),
+		})
+	# v0.7.0 MORPH: lamps become arcane lanterns (light sources feeding the laser puzzle).
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_lamps := RoomKit.get_anchors("LAMP")
+		if not _morph_lamps.is_empty():
+			RoomKit.morph(_morph_lamps[0], "arcane")

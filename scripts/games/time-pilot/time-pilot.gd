@@ -81,6 +81,71 @@ var _flash: ColorRect = null
 var _flash_t := 0.0
 var _anchor_t := 0.0
 
+# v0.7.0 RoomKit: waves emerge from real wall faces; bullets interact with
+# real wall planes. Cached; empty without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# v0.7.0 MORPH: TV becomes the retro CRT mission-briefing screen.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tvs := RoomKit.get_anchors("TV")
+		if not _morph_tvs.is_empty():
+			RoomKit.morph(_morph_tvs[0], "neon")
+
+
+## Normal-sign agnostic wall reflection.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
+
+## Enemy spawn point on a real wall face (the wall furthest "up-field",
+## i.e. smallest z, so waves still stream in from deep field).
+func _room_wall_spawn() -> Vector3:
+	var best: Dictionary = _room_walls[0]
+	for w in _room_walls:
+		if float(w["position"].z) < float(best["position"].z):
+			best = w
+	var n: Vector3 = best["normal"]
+	var sz: Vector2 = best["size"]
+	var c: Vector3 = best["position"]
+	var right := n.cross(Vector3.UP).normalized()
+	if right.length() < 0.01:
+		right = Vector3.RIGHT
+	var p := c + right * randf_range(-sz.x * 0.4, sz.x * 0.4)
+	p.y = clampf(c.y + randf_range(-sz.y * 0.3, sz.y * 0.3), 0.8, 3.6)
+	var side := signf((Vector3(0, 1.8, PLAYER_Z) - c).dot(n))
+	if side == 0.0:
+		side = 1.0
+	p += n * side * 0.6
+	return to_local(p)
+
+
+## Impact FX where a bullet strikes a real wall plane; "" when none near.
+func _room_bullet_wall_hit(pos: Vector3) -> bool:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		if absf((pos - w["position"]).dot(n)) < 0.18:
+			GraphicsPolish.spawn_sparks(self, pos, Color(0.5, 0.8, 1.0), 10)
+			return true
+	return false
+
 
 func _ready() -> void:
 	# Restore the persisted playfield placement (no-op when no anchor was saved).
@@ -98,6 +163,7 @@ func _ready() -> void:
 			_has_dir = true
 	if not _has_dir:
 		GraphicsPolish.make_light_rig(self, 1.1)
+	_apply_room_layout()
 
 
 # ------------------------------------------------------------------ environment
@@ -294,8 +360,12 @@ func _spawn_enemy() -> void:
 	node.material_override = _mat(Color(0.9, 0.15, 0.15), Color(1.0, 0.2, 0.15), 1.3)
 	# Keep spawns inside the room's x-bounds; z stays deep-field.
 	var sp := Vector3(randf_range(-4.2, 4.2), randf_range(0.8, 3.6), -13.0)
-	sp = ARUpgradeKit.clamp_to_room(sp)
-	sp.z = -13.0
+	if not _room_walls.is_empty():
+		# v0.7.0: enemies emerge from the real far wall face instead.
+		sp = _room_wall_spawn()
+	else:
+		sp = ARUpgradeKit.clamp_to_room(sp)
+		sp.z = -13.0
 	node.position = sp
 	node.rotation = Vector3(0.5, 0.7, PI * 0.25)  # rotated box reads as a diamond
 	add_child(node)
@@ -601,6 +671,22 @@ func _update_bullets(delta: float, ud: float) -> void:
 		if bl.life <= 0.0 or n.position.z < -16.0 or n.position.z > 8.0 or absf(n.position.x) > 9.0:
 			_despawn_bullet(bl, false)
 			continue
+		# v0.7.0 RoomKit: bullets interact with real wall planes.
+		if not _room_walls.is_empty():
+			var gp: Vector3 = to_global(n.position)
+			if bl.from_player:
+				# Player shots burst against the far wall instead of flying on.
+				if _room_bullet_wall_hit(gp):
+					n.queue_free()
+					_bullets.erase(bl)
+					continue
+			else:
+				# Enemy shots ricochet off real walls (normal-sign agnostic).
+				var gv: Vector3 = global_transform.basis * bl.vel
+				var nv: Vector3 = _bounce_walls(gp, gv, 0.15)
+				if nv != gv:
+					bl.vel = global_transform.basis.inverse() * nv
+					GraphicsPolish.spawn_sparks(self, gp, Color(1.0, 0.6, 0.2), 8)
 		if bl.from_player:
 			for e in _enemies.duplicate():
 				var en := e as Enemy

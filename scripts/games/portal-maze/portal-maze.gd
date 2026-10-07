@@ -27,6 +27,11 @@ var msg_label: Label3D = null
 var help_label: Label3D = null
 var _pulse_t := 0.0
 var _anchor_t := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var portal_tags: Array = []
 
 
 func _ready() -> void:
@@ -38,6 +43,7 @@ func _ready() -> void:
 	_build_portals()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, 0.0), 3.0, 40)
+	_apply_room_layout() # v0.7.0: portals anchor along real wall faces
 
 
 func _process(delta: float) -> void:
@@ -132,12 +138,13 @@ func _build_portals() -> void:
 		var mat := GraphicsPolish.glow(colors[i], 1.6)
 		inst.material_override = mat
 		inst.position = Vector3(cos(ang) * RING_RADIUS, RING_Y, sin(ang) * RING_RADIUS)
-		inst.look_at(Vector3(0.0, RING_Y, 0.0), Vector3.UP)
 		add_child(inst)
+		inst.look_at(Vector3(0.0, RING_Y, 0.0), Vector3.UP) # after add_child: in tree
 		# Number tag above each ring.
 		var tag := GraphicsPolish.make_label(str(i + 1), 96, Color.WHITE)
 		tag.position = inst.position + Vector3(0.0, 0.85, 0.0)
 		add_child(tag)
+		portal_tags.append(tag)
 		# Faint disc showing the trigger plane.
 		var disc := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
@@ -336,3 +343,51 @@ func _save_best() -> void:
 	if f != null:
 		f.store_float(best_time)
 		f.close()
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): doors -> portal gates echoing the maze portals
+	_morph_anchors("DOOR", "scifi", 2)
+	if _room_walls.is_empty():
+		return
+	# Anchor the portals along the real wall faces: spread them across the
+	# walls, offset into the room, facing the play area.
+	var nw := _room_walls.size()
+	var per: int = int(ceil(float(PORTAL_COUNT) / float(nw)))
+	var center := Vector3(_room_bounds.get_center().x, RING_Y, _room_bounds.get_center().y)
+	for i in range(PORTAL_COUNT):
+		var w: Dictionary = _room_walls[i % nw]
+		var wp: Vector3 = w["position"]
+		var wn: Vector3 = (w["normal"] as Vector3).normalized()
+		var wsize: Vector2 = w["size"]
+		var flat_n := Vector3(wn.x, 0.0, wn.z)
+		flat_n = flat_n.normalized() if flat_n.length() > 0.01 else Vector3(0, 0, 1)
+		var tangent: Vector3 = flat_n.cross(Vector3.UP)
+		tangent = tangent.normalized() if tangent.length() > 0.01 else Vector3.RIGHT
+		var slot := i / nw
+		var along := 0.0
+		if per > 1:
+			along = lerpf(-wsize.x * 0.5 + 0.6, wsize.x * 0.5 - 0.6, float(slot) / float(maxi(per - 1, 1)))
+		var gp: Vector3 = wp + tangent * along + flat_n * 0.6
+		gp.y = clampf(RING_Y, 0.8, 2.2)
+		portals[i].global_position = gp
+		portals[i].look_at(center, Vector3.UP)
+		if i < portal_tags.size():
+			(portal_tags[i] as Label3D).global_position = gp + Vector3(0.0, 0.85, 0.0)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

@@ -33,6 +33,16 @@ var msg_timer := 0.0
 var anchor_timer := 0.0
 var restart_hold := 0.0
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# pumpkin_center stays the STAGE-LOCAL pumpkin center; the stage node
+# carries the room offset so the trace math never changes frames.
+var pumpkin_stage: Node3D = null
+
 
 func _ready() -> void:
 	GraphicsPolish.make_light_rig(self)
@@ -41,6 +51,9 @@ func _ready() -> void:
 	dot_pending_mat = GraphicsPolish.glow(Color(1.0, 0.55, 0.1), 2.2)
 	dot_done_mat = GraphicsPolish.glow(Color(0.3, 0.9, 0.4), 0.4)
 	carve_mat = GraphicsPolish.glow(Color(1.0, 0.62, 0.12), 2.5)
+	pumpkin_stage = Node3D.new()
+	pumpkin_stage.name = "PumpkinStage"
+	add_child(pumpkin_stage)
 	_build_pumpkin()
 	_build_faces()
 	_build_hud()
@@ -49,6 +62,58 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(880.0, 0.6, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_pumpkin_carve_main")
 	GraphicsPolish.spawn_ambient_motes(self, pumpkin_center, 2.5, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Float the pumpkin at a clear spot inside the real room.
+	var c := _room_bounds.get_center()
+	var m := 1.0
+	var nx := c.x
+	var nz := c.y
+	if _room_bounds.size.x > m * 2.0:
+		nx = clampf(c.x, _room_bounds.position.x + m, _room_bounds.end.x - m)
+	if _room_bounds.size.y > m * 2.0:
+		nz = clampf(c.y, _room_bounds.position.y + m, _room_bounds.end.y - m)
+	var target := _clear_of_furniture(Vector3(nx, 0.0, nz), 0.9)
+	pumpkin_stage.position = Vector3(target.x - pumpkin_center.x, 0.0, target.z - pumpkin_center.z)
+	# v0.7.0 furniture morph: the real table becomes a haunted carving
+	# altar, and the pumpkin is served on its top face so players carve
+	# at real table height.
+	var table_anchors := RoomKit.get_anchors("TABLE")
+	if not table_anchors.is_empty():
+		var tanchor: Dictionary = table_anchors[0]
+		RoomKit.morph(tanchor, "haunted")
+		var top: Vector3 = RoomKit.cuboid_top(tanchor)
+		pumpkin_stage.position = Vector3(
+			top.x - pumpkin_center.x, top.y - pumpkin_center.y, top.z - pumpkin_center.z)
+
+
+func _clear_of_furniture(p: Vector3, clearance: float) -> Vector3:
+	for f_v in _room_tables + _room_furniture:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if absf(p.x - fp.x) < fs.x * 0.5 + clearance and absf(p.z - fp.z) < fs.z * 0.5 + clearance:
+			var dx := p.x - fp.x
+			var dz := p.z - fp.z
+			if absf(dx) > absf(dz):
+				var s := signf(dx)
+				p.x = fp.x + (s if s != 0.0 else 1.0) * (fs.x * 0.5 + clearance)
+			else:
+				var s2 := signf(dz)
+				p.z = fp.z + (s2 if s2 != 0.0 else 1.0) * (fs.z * 0.5 + clearance)
+	return p
 
 
 func _ensure_fallback_camera() -> void:
@@ -71,7 +136,7 @@ func _build_pumpkin() -> void:
 	p.scale = Vector3(1.0, 0.85, 1.0)
 	p.position = pumpkin_center
 	p.material_override = GraphicsPolish.pbr(Color(0.92, 0.45, 0.08), 0.0, 0.55)
-	add_child(p)
+	pumpkin_stage.add_child(p)
 	# Ribs: a few darker vertical tori for pumpkin shape.
 	for i in range(6):
 		var rib := MeshInstance3D.new()
@@ -83,7 +148,7 @@ func _build_pumpkin() -> void:
 		rib.position = pumpkin_center
 		rib.scale = Vector3(1.0, 0.85, 1.0)
 		rib.rotation.y = float(i) * PI / 6.0
-		add_child(rib)
+		pumpkin_stage.add_child(rib)
 	# Stem.
 	var stem := MeshInstance3D.new()
 	var sc := CylinderMesh.new()
@@ -93,9 +158,9 @@ func _build_pumpkin() -> void:
 	stem.mesh = sc
 	stem.position = pumpkin_center + Vector3(0.0, PUMPKIN_RADIUS * 0.85 + 0.10, 0.0)
 	stem.material_override = GraphicsPolish.pbr(Color(0.25, 0.45, 0.15), 0.0, 0.7)
-	add_child(stem)
+	pumpkin_stage.add_child(stem)
 	# Inner jack-o-lantern light (ramps up per carved face).
-	inner_light = GraphicsPolish.make_point_light(self, pumpkin_center, Color(1.0, 0.55, 0.15), 0.0, 3.0)
+	inner_light = GraphicsPolish.make_point_light(pumpkin_stage, pumpkin_center, Color(1.0, 0.55, 0.15), 0.0, 3.0)
 
 
 func _face_point(yaw: float, ha: float, va: float) -> Vector3:
@@ -128,7 +193,7 @@ func _build_faces() -> void:
 			dot.mesh = ds
 			dot.material_override = dot_pending_mat
 			dot.position = wp
-			add_child(dot)
+			pumpkin_stage.add_child(dot)
 			dots.append(dot)
 		faces.append({"yaw": yaw, "waypoints": waypoints, "idx": 0, "done": false, "dots": dots})
 
@@ -218,10 +283,12 @@ func _trace_pointer() -> void:
 	var ray := _aim_ray()
 	var o: Vector3 = ray[0]
 	var d: Vector3 = ray[1]
-	var t := _ray_sphere(o, d, pumpkin_center, PUMPKIN_RADIUS * 1.15)
+	# Trace in the pumpkin stage's frame (identical to world when unmoved).
+	var lo: Vector3 = pumpkin_stage.to_local(o) if pumpkin_stage != null else o
+	var t := _ray_sphere(lo, d, pumpkin_center, PUMPKIN_RADIUS * 1.15)
 	if t < 0.0:
 		return
-	var hit := o + d * t
+	var hit := lo + d * t
 	var wps: Array = f["waypoints"]
 	var idx := int(f["idx"])
 	if idx >= wps.size():
@@ -231,7 +298,7 @@ func _trace_pointer() -> void:
 		f["idx"] = idx + 1
 		var dots: Array = f["dots"]
 		(dots[idx] as MeshInstance3D).material_override = dot_done_mat
-		GraphicsPolish.spawn_sparks(self, wp, Color(1.0, 0.7, 0.2), 8)
+		GraphicsPolish.spawn_sparks(self, pumpkin_stage.to_global(wp), Color(1.0, 0.7, 0.2), 8)
 		if trace_player != null:
 			trace_player.pitch_scale = 0.9 + float(idx) * 0.04
 			trace_player.play()
@@ -252,7 +319,7 @@ func _complete_face(f: Dictionary) -> void:
 	if inner_light != null:
 		inner_light.light_energy = 0.9 * float(faces_done)
 	_show_msg("FACE %d/3 CARVED!" % faces_done, 1.2)
-	GraphicsPolish.spawn_sparks(self, pumpkin_center + Vector3(0, 0.2, 0), Color(1.0, 0.6, 0.15), 24)
+	GraphicsPolish.spawn_sparks(self, pumpkin_stage.to_global(pumpkin_center + Vector3(0, 0.2, 0)), Color(1.0, 0.6, 0.15), 24)
 	if face_player != null:
 		face_player.play()
 	if faces_done >= 3:
@@ -268,9 +335,10 @@ func _add_carve_glow(pos: Vector3, r: float) -> void:
 	g.scale = Vector3(1.0, 1.0, 0.45)
 	g.material_override = carve_mat
 	g.position = pos
-	# Face outward from the pumpkin.
-	g.look_at(pos + (pos - pumpkin_center).normalized(), Vector3.UP)
-	add_child(g)
+	pumpkin_stage.add_child(g)
+	# Face outward from the pumpkin (stage only translates, so the local
+	# outward direction is valid in global space too).
+	g.look_at(g.global_position + (pos - pumpkin_center).normalized(), Vector3.UP)
 
 
 func _show_msg(text: String, duration: float) -> void:
@@ -294,7 +362,7 @@ func _game_over(did_win: bool) -> void:
 	if did_win:
 		var final := maxi(500, int(3000.0 - round_time * 10.0))
 		_show_msg("JACK-O-LANTERN LIT!\nScore: %d\nR: carve again" % final, 600.0)
-		GraphicsPolish.spawn_confetti(self, pumpkin_center + Vector3(0, 1.0, 0), 90)
+		GraphicsPolish.spawn_confetti(self, pumpkin_stage.to_global(pumpkin_center + Vector3(0, 1.0, 0)), 90)
 		if win_player != null:
 			win_player.play()
 	else:
@@ -311,8 +379,8 @@ func _reset_game() -> void:
 			if is_instance_valid(d):
 				d.queue_free()
 	faces.clear()
-	# Remove carve glows (children using carve_mat).
-	for child in get_children():
+	# Remove carve glows (children of the pumpkin stage using carve_mat).
+	for child in pumpkin_stage.get_children():
 		if child is MeshInstance3D and child.material_override == carve_mat:
 			child.queue_free()
 	if inner_light != null:

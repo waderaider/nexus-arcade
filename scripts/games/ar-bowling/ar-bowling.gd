@@ -74,6 +74,14 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -6.0), 3.0)
+	RoomKit.refresh() # v0.7.0: cache room walls for wall bounces (safe no-op w/o XR).
+	# v0.7.0 MORPH: rug becomes the neon approach carpet (glow runway).
+	if RoomKit.is_available() and RoomKit.has_room_data():
+		if not has_meta("_morphs_applied"):
+			set_meta("_morphs_applied", true)
+			var _morph_rugs := RoomKit.get_anchors("RUG")
+			if not _morph_rugs.is_empty():
+				RoomKit.morph(_morph_rugs[0], "neon")
 
 
 func _add_light_rig() -> void:
@@ -454,6 +462,7 @@ func _step_ball(delta: float) -> void:
 			if gutter_player != null:
 				gutter_player.play()
 			_show_msg("GUTTER!")
+		_room_wall_bounce() # v0.7.0: bounce off real room walls (no-op w/o room data).
 		# Friction.
 		ball_vel *= maxf(0.0, 1.0 - FRICTION * delta)
 		ball.position += ball_vel * delta
@@ -463,6 +472,31 @@ func _step_ball(delta: float) -> void:
 		if planar > 0.01:
 			var axis := Vector3.UP.cross(ball_vel).normalized()
 			ball.rotate(axis, planar / BALL_RADIUS * delta)
+
+
+## RoomKit (v0.7.0): reflect the ball off real room wall planes, in world
+## space. The plane test is normal-sign agnostic (bounce(n) == bounce(-n)),
+## so it works regardless of the anchor's facing convention. No-op on
+## desktop / without room data; lane and gutter logic are unchanged.
+func _room_wall_bounce() -> void:
+	if not (RoomKit.is_available() and RoomKit.has_room_data()):
+		return
+	var gp: Vector3 = ball.global_position
+	var wvel: Vector3 = global_transform.basis * ball_vel
+	for w_v in RoomKit.get_walls():
+		var w: Dictionary = w_v
+		var n: Vector3 = (w["normal"] as Vector3).normalized()
+		if absf(n.y) > 0.5:
+			continue # not a vertical wall
+		var dist: float = (gp - (w["position"] as Vector3)).dot(n)
+		if absf(dist) >= BALL_RADIUS:
+			continue
+		var vn := wvel.dot(n)
+		if (dist > 0.0 and vn < 0.0) or (dist < 0.0 and vn > 0.0):
+			wvel = wvel.bounce(n)
+			gp += n * (-signf(dist) * (BALL_RADIUS - absf(dist) + 0.005))
+	ball.global_position = gp
+	ball_vel = global_transform.basis.inverse() * wvel
 
 
 func _check_throw_end() -> void:

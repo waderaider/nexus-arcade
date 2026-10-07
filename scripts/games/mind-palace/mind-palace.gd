@@ -57,6 +57,12 @@ var anchors: Array = []  # Array[PalaceAnchor]
 var _time := 0.0
 var _prev_keys := {}
 var _anchor_timer := 0.0
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_pegs_placed := false
 
 var quiz_active := false
 var quiz_round := 0
@@ -89,6 +95,57 @@ func _ready() -> void:
 	_build_ui()
 	_build_quiz_panel()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.2, 0), 3.0, 40)
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> memory console for the memory pegs
+	_morph_anchors("TABLE", "scifi", 1)
+	_place_room_pegs()
+
+
+## ROOMKIT: seed memory pegs across the real room - wall faces, table and
+## furniture tops - so the palace anchors onto the player's space. Runs once,
+## and never overrides pegs the player placed themselves.
+func _place_room_pegs() -> void:
+	if _room_pegs_placed or not anchors.is_empty():
+		return
+	_room_pegs_placed = true
+	var spots: Array = [] # [pos: Vector3, height: float]
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var wp: Vector3 = w["position"]
+		var n: Vector3 = w["normal"]
+		var size: Vector2 = w["size"]
+		var tangent := Vector3(-n.z, 0.0, n.x)
+		var off: float = minf(size.x, size.y) * 0.25
+		spots.append([wp + n * 0.12 + tangent * off, clampf(wp.y, 1.0, 1.6)])
+		if spots.size() >= 2:
+			break
+	for f_v in _room_tables + _room_furniture:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		spots.append([Vector3(fp.x, fp.y + fs.y * 0.5, fp.z), 0.26])
+		if spots.size() >= 5:
+			break
+	var c := _room_bounds.get_center()
+	while spots.size() < 5:
+		spots.append([Vector3(c.x, 0.0, c.y), 0.22])
+	for i in mini(spots.size(), 5):
+		var entry: Array = spots[i]
+		_place_anchor(entry[0], float(entry[1]))
 
 
 func _build_environment() -> void:
@@ -137,6 +194,19 @@ func _build_environment() -> void:
 	marker.material_override = GraphicsPolish.glow(Color(0.3, 0.7, 1.0), 0.8)
 	marker.position = Vector3(0.0, 0.02, 0.0)
 	add_child(marker)
+	_build_model_pegs() # v0.7.0 KayKit set dressing (null-safe)
+
+
+## v0.7.0 KayKit set dressing: real furniture placed around the palace floor
+## as memory pegs. Guarded - null spawns are skipped, never crash.
+func _build_model_pegs() -> void:
+	var dir := "res://assets/models/mind-palace/"
+	ModelLib.spawn(dir + "shelf_small.glb", self, Vector3(-2.80, 0.0, -2.20))
+	ModelLib.spawn(dir + "table_small.glb", self, Vector3(2.80, 0.0, -1.60))
+	var chair := ModelLib.spawn(dir + "chair.glb", self, Vector3(2.35, 0.0, 2.40))
+	if chair != null:
+		chair.rotation.y = -0.7
+	ModelLib.spawn(dir + "coin_stack_medium.glb", self, Vector3(-2.60, 0.0, 2.60))
 
 
 func _make_label(text: String, pos: Vector3, size: float, color: Color) -> Label3D:
@@ -339,14 +409,14 @@ func _make_anchor_visual(kind: String, color: Color) -> MeshInstance3D:
 	return mi
 
 
-func _place_anchor(p: Vector3) -> void:
+func _place_anchor(p: Vector3, height := 0.22) -> void:
 	var def: Dictionary = ANCHOR_DEFS[type_idx]
 	var word: String = WORDS[next_word_idx % WORDS.size()]
 	next_word_idx += 1
 
 	var anchor := PalaceAnchor.new()
 	anchor.word = word
-	anchor.position = Vector3(p.x, 0.22, p.z)
+	anchor.position = Vector3(p.x, height, p.z)
 	anchor.visual = _make_anchor_visual(def["kind"], def["color"])
 	anchor.add_child(anchor.visual)
 
@@ -464,3 +534,11 @@ func _update_hud() -> void:
 func _pinch_active() -> bool:
 	# Hand-tracking hook: wire to XR hand pinch in a future pass.
 	return ARUpgradeKit.pinch_active(self, ARUpgradeKit.HAND_RIGHT)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

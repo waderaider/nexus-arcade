@@ -42,6 +42,90 @@ var flash_label: Label3D = null
 var help_label: Label3D = null
 var msg_label: Label3D = null
 var _anchor_timer := 0.0
+var portal_top_node: MeshInstance3D = null
+var portal_bot_node: MeshInstance3D = null
+var _portal_out_top := Vector3(0.0, -1.0, 0.0)
+var _portal_out_bot := Vector3(0.0, 1.0, 0.0)
+
+# v0.7.0 RoomKit: portals mount on two real walls; the ball bounces off
+# real wall planes.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_mount_portals_on_walls()
+	# v0.7.0 MORPH: doors become sci-fi portal gate frames; windows become space vistas.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_doors := RoomKit.get_anchors("DOOR")
+		if not _morph_doors.is_empty():
+			RoomKit.morph(_morph_doors[0], "scifi")
+		var _morph_wins := RoomKit.get_anchors("WINDOW")
+		if not _morph_wins.is_empty():
+			RoomKit.morph(_morph_wins[0], "scifi")
+
+
+## Mount the two portals on the two most separated walls, facing the room.
+func _mount_portals_on_walls() -> void:
+	if _room_walls.size() < 2:
+		return
+	var a: Dictionary = _room_walls[0]
+	var b: Dictionary = _room_walls[1]
+	var best := 0.0
+	for i in _room_walls.size():
+		for j in range(i + 1, _room_walls.size()):
+			var d: float = (_room_walls[i]["position"] - _room_walls[j]["position"]).length()
+			if d > best:
+				best = d
+				a = _room_walls[i]
+				b = _room_walls[j]
+	_mount_portal(a, true)
+	_mount_portal(b, false)
+
+
+func _mount_portal(w: Dictionary, is_top: bool) -> void:
+	var n: Vector3 = w["normal"]
+	var interior: Vector3 = to_global(Vector3(0, 1.2, PLAY_Z))
+	var side := signf((interior - w["position"]).dot(n))
+	if side == 0.0:
+		side = 1.0
+	var pos: Vector3 = w["position"] + n * side * 0.25
+	pos.y = clampf(pos.y, 0.7, 2.2)
+	var lp: Vector3 = to_local(pos)  # walls are world-space; the game is local
+	var lout: Vector3 = (global_transform.basis.inverse() * (n * side)).normalized()
+	var node := portal_top_node if is_top else portal_bot_node
+	if is_top:
+		portal_top = lp
+		_portal_out_top = lout
+	else:
+		portal_bot = lp
+		_portal_out_bot = lout
+	if node != null and is_instance_valid(node):
+		node.position = lp
+		node.rotation = Vector3.ZERO
+		node.look_at(pos + n * side, Vector3.UP)  # look_at wants a global target
+	# Keep portal teleport radius inside the wall face.
+	portal_cooldown = 0.0
+
+
+## Normal-sign agnostic wall reflection for the ball.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
 
 
 func _ready() -> void:
@@ -54,6 +138,7 @@ func _ready() -> void:
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.2, PLAY_Z), 3.0, 35)
 	_reset_ball()
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -159,11 +244,11 @@ func _build_arena() -> void:
 	# Portals: glowing tori lying flat on the top/bottom walls.
 	portal_top = Vector3(0.0, TOP_Y, PLAY_Z)
 	portal_bot = Vector3(0.0, BOT_Y, PLAY_Z)
-	_build_portal(portal_top)
-	_build_portal(portal_bot)
+	portal_top_node = _build_portal(portal_top)
+	portal_bot_node = _build_portal(portal_bot)
 
 
-func _build_portal(pos: Vector3) -> void:
+func _build_portal(pos: Vector3) -> MeshInstance3D:
 	var inst := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.16
@@ -173,6 +258,7 @@ func _build_portal(pos: Vector3) -> void:
 	inst.position = pos
 	inst.rotation_degrees.x = 90.0
 	add_child(inst)
+	return inst
 
 
 func _build_hud() -> void:
@@ -294,13 +380,23 @@ func _move_ball(delta: float) -> void:
 	# Portals.
 	if portal_cooldown <= 0.0:
 		if pos.distance_to(portal_top) < 0.24:
-			pos = portal_bot + Vector3(0.0, -0.22, 0.0)
-			ball_vel.y = -absf(ball_vel.y)
+			pos = portal_top + _portal_out_top * 0.22
+			ball_vel = _portal_out_top * ball_vel.length()
 			_on_portal()
 		elif pos.distance_to(portal_bot) < 0.24:
-			pos = portal_top + Vector3(0.0, 0.22, 0.0)
-			ball_vel.y = absf(ball_vel.y)
+			pos = portal_bot + _portal_out_bot * 0.22
+			ball_vel = _portal_out_bot * ball_vel.length()
 			_on_portal()
+
+	# Real room walls: reflect the ball instead of letting it fly through.
+	if not _room_walls.is_empty() and ball != null:
+		var bx: Transform3D = ball.get_parent().global_transform
+		var gp: Vector3 = bx * pos
+		var gv: Vector3 = bx.basis * ball_vel
+		var nv: Vector3 = _bounce_walls(gp, gv, BALL_R)
+		if nv != gv:
+			ball_vel = bx.basis.inverse() * nv
+			GraphicsPolish.spawn_sparks(self, gp, Color(0.4, 0.8, 1.0), 8)
 
 	ball.position = pos
 

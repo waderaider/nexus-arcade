@@ -18,6 +18,13 @@ const WALL_COUNT := 6
 const ENEMY_WANDER_TIME := 1.2
 const ENEMY_ATTACK_TIME := 1.5
 
+# v0.7.0 KayKit: real dungeon models (CC0, KayKit Dungeon Remastered).
+const MODEL_DIR := "res://assets/models/holo-dungeon/"
+const WALL_MODEL_SCALE := 0.25 # KayKit wall is 4x4x1m; tile is ~1m
+const FLOOR_MODEL_SCALE := 0.25 # KayKit floor tile is 4x4m
+const TORCH_MODEL_SCALE := 0.7
+const CHEST_MODEL_SCALE := 0.35
+
 var camera: Camera3D = null
 var dungeon_root: Node3D = null
 var player_node: MeshInstance3D = null
@@ -48,6 +55,16 @@ var death_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _click_consumed := false
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_fitted := false
+var _room_dungeon_scale := 1.0
+var _room_dungeon_yaw := 0.0
+var _room_dungeon_center := Vector2.ZERO
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -62,6 +79,49 @@ func _ready() -> void:
 	death_player = _make_player(_make_tone(98.0, 0.6, 0.6))
 	_new_run()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 3.0)
+	_apply_room_layout()
+
+
+## v0.7.0: map the dungeon onto the real room - centered in the room
+## bounds, scaled to fit, with the stairs (door) rotated toward the nearest
+## real wall. Guarded; fallback keeps the default floor dungeon.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): doors -> dungeon gates to the depths below
+	_morph_anchors("DOOR", "haunted", 2)
+	_room_dungeon_center = _room_bounds.get_center()
+	_room_dungeon_scale = clampf(minf(_room_bounds.size.x, _room_bounds.size.y) / 5.4, 0.5, 1.0)
+	var bw := {}
+	var bd := 1e9
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var dd: float = Vector2((w["position"] as Vector3).x - _room_dungeon_center.x, (w["position"] as Vector3).z - _room_dungeon_center.y).length()
+		if dd < bd:
+			bd = dd
+			bw = w
+	if not bw.is_empty():
+		var d := Vector2((bw["position"] as Vector3).x - _room_dungeon_center.x, (bw["position"] as Vector3).z - _room_dungeon_center.y)
+		if d.length() > 0.05:
+			# Stairs sit at local +x+z; rotate so that corner faces the wall.
+			_room_dungeon_yaw = atan2(d.x, d.y) - PI * 0.25
+	_room_fitted = true
+	_fit_dungeon_root()
+
+
+func _fit_dungeon_root() -> void:
+	if not _room_fitted or dungeon_root == null or not is_instance_valid(dungeon_root):
+		return
+	dungeon_root.position = to_local(Vector3(_room_dungeon_center.x, 0.0, _room_dungeon_center.y))
+	dungeon_root.rotation.y = _room_dungeon_yaw
+	dungeon_root.scale = Vector3.ONE * _room_dungeon_scale
 
 
 func _add_light_rig() -> void:
@@ -228,8 +288,10 @@ func _screen_to_tile(screen_pos: Vector2) -> Vector2i:
 		return Vector2i(-1, -1)
 	var t := -origin.y / dir.y
 	var p: Vector3 = origin + dir * t
-	var gx := int(round(p.x / TILE + float(GRID - 1) / 2.0))
-	var gz := int(round(p.z / TILE + float(GRID - 1) / 2.0))
+	# v0.7.0: convert to dungeon-local space so room fit (move/scale/rotate) stays clickable.
+	var lp: Vector3 = dungeon_root.to_local(p) if dungeon_root != null else p
+	var gx := int(round(lp.x / TILE + float(GRID - 1) / 2.0))
+	var gz := int(round(lp.z / TILE + float(GRID - 1) / 2.0))
 	return Vector2i(gx, gz)
 
 
@@ -293,11 +355,12 @@ func _update_enemy_bar(e: Dictionary) -> void:
 func _loot_chest(c: Dictionary) -> void:
 	c["opened"] = true
 	var mat: StandardMaterial3D = c["mat"]
-	mat.albedo_color = Color(0.35, 0.30, 0.20)
-	mat.emission_enabled = false
+	if mat != null:
+		mat.albedo_color = Color(0.35, 0.30, 0.20)
+		mat.emission_enabled = false
 	var reward := 25 + 10 * (depth - 1) + randi() % 20
 	gold += reward
-	var cnode: MeshInstance3D = c["node"]
+	var cnode: Node3D = c["node"]
 	if is_instance_valid(cnode):
 		GraphicsPolish.spawn_sparks(dungeon_root, cnode.position, Color(1.0, 0.85, 0.3), 20)
 	if pickup_player != null:
@@ -377,6 +440,7 @@ func _generate_dungeon() -> void:
 	ARUpgradeKit.apply_anchor(dungeon_root, "holo-dungeon_main")
 	ARUpgradeKit.snap_to_floor(dungeon_root)
 	dungeon_root.position = ARUpgradeKit.clamp_to_room(dungeon_root.position)
+	_fit_dungeon_root() # v0.7.0: re-apply the room fit after every regen
 	_update_hud()
 
 
@@ -410,31 +474,58 @@ func _bfs_reachable() -> bool:
 	return false
 
 
+## v0.7.0 KayKit: try a real model first; null falls back to the
+## procedural mesh so the game never breaks when assets are missing.
 func _build_tiles() -> void:
 	for x in range(GRID):
 		for z in range(GRID):
-			var tile := MeshInstance3D.new()
-			var box := BoxMesh.new()
-			box.size = Vector3(TILE * 0.96, 0.08, TILE * 0.96)
-			tile.mesh = box
-			var shade := 0.13 + randf() * 0.05
-			var mat: StandardMaterial3D
-			if x == 0 and z == 0:
-				mat = GraphicsPolish.glow(Color(0.1, 0.3, 0.4), 0.4)
+			var tile_pos := _tile_to_world(Vector2i(x, z))
+			# Floor: KayKit stone tile (start tile keeps its procedural glow).
+			var floor_model: Node3D = null
+			if not (x == 0 and z == 0):
+				floor_model = ModelLib.spawn(MODEL_DIR + "floor_tile_large.glb", dungeon_root, tile_pos + Vector3(0.0, -0.0125, 0.0))
+			if floor_model != null:
+				floor_model.scale = Vector3.ONE * FLOOR_MODEL_SCALE
+				floor_model.rotation.y = randf() * PI * 0.5
 			else:
-				mat = GraphicsPolish.pbr_preset(Color(shade, shade, shade + 0.02), "matte")
-			tile.material_override = mat
-			tile.position = _tile_to_world(Vector2i(x, z)) + Vector3(0.0, -0.04, 0.0)
-			dungeon_root.add_child(tile)
+				var tile := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = Vector3(TILE * 0.96, 0.08, TILE * 0.96)
+				tile.mesh = box
+				var shade := 0.13 + randf() * 0.05
+				var mat: StandardMaterial3D
+				if x == 0 and z == 0:
+					mat = GraphicsPolish.glow(Color(0.1, 0.3, 0.4), 0.4)
+				else:
+					mat = GraphicsPolish.pbr_preset(Color(shade, shade, shade + 0.02), "matte")
+				tile.material_override = mat
+				tile.position = tile_pos + Vector3(0.0, -0.04, 0.0)
+				dungeon_root.add_child(tile)
 			if not bool(walkable[x][z]):
-				var wall := MeshInstance3D.new()
-				var wbox := BoxMesh.new()
-				wbox.size = Vector3(TILE * 0.96, 0.9, TILE * 0.96)
-				wall.mesh = wbox
-				var wmat := GraphicsPolish.pbr_preset(Color(0.22, 0.21, 0.24), "matte")
-				wall.material_override = wmat
-				wall.position = _tile_to_world(Vector2i(x, z)) + Vector3(0.0, 0.45, 0.0)
-				dungeon_root.add_child(wall)
+				var wall_model := ModelLib.spawn(MODEL_DIR + "wall.glb", dungeon_root, tile_pos)
+				if wall_model != null:
+					wall_model.scale = Vector3.ONE * WALL_MODEL_SCALE
+					wall_model.rotation.y = float(randi() % 4) * PI * 0.5
+					_maybe_add_torch(tile_pos)
+				else:
+					var wall := MeshInstance3D.new()
+					var wbox := BoxMesh.new()
+					wbox.size = Vector3(TILE * 0.96, 0.9, TILE * 0.96)
+					wall.mesh = wbox
+					var wmat := GraphicsPolish.pbr_preset(Color(0.22, 0.21, 0.24), "matte")
+					wall.material_override = wmat
+					wall.position = tile_pos + Vector3(0.0, 0.45, 0.0)
+					dungeon_root.add_child(wall)
+
+
+## v0.7.0 KayKit: a lit torch on top of some wall blocks (model only).
+func _maybe_add_torch(tile_pos: Vector3) -> void:
+	if randf() > 0.35:
+		return
+	var torch := ModelLib.spawn(MODEL_DIR + "torch_lit.glb", dungeon_root, tile_pos + Vector3(0.0, 1.28, 0.0))
+	if torch != null:
+		torch.scale = Vector3.ONE * TORCH_MODEL_SCALE
+		torch.rotation.y = randf() * TAU
 
 
 func _build_stairs() -> void:
@@ -446,6 +537,11 @@ func _build_stairs() -> void:
 	tile.material_override = stairs_mat
 	tile.position = _tile_to_world(stairs_tile) + Vector3(0.0, 0.06, 0.0)
 	dungeon_root.add_child(tile)
+	# v0.7.0 KayKit: lit torches flanking the stairs (model only, no fallback needed).
+	for sx in [-0.7, 0.7]:
+		var torch := ModelLib.spawn(MODEL_DIR + "torch_lit.glb", dungeon_root, _tile_to_world(stairs_tile) + Vector3(sx, 0.28, 0.0))
+		if torch != null:
+			torch.scale = Vector3.ONE * TORCH_MODEL_SCALE
 
 
 func _build_player() -> void:
@@ -523,14 +619,24 @@ func _spawn_chests() -> void:
 		if free.is_empty():
 			break
 		var t: Vector2i = free.pop_at(randi() % free.size())
-		var node := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(0.5, 0.35, 0.5)
-		node.mesh = box
-		var mat := GraphicsPolish.glow(Color(0.9, 0.65, 0.15), 1.0)
-		node.material_override = mat
-		node.position = _tile_to_world(t) + Vector3(0.0, 0.2, 0.0)
-		dungeon_root.add_child(node)
+		# v0.7.0 KayKit: real chest model; falls back to the glowing box.
+		var node: Node3D = null
+		var mat: StandardMaterial3D = null
+		var chest_model := ModelLib.spawn(MODEL_DIR + "chest.glb", dungeon_root, _tile_to_world(t) + Vector3(0.0, 0.02, 0.0))
+		if chest_model != null:
+			chest_model.scale = Vector3.ONE * CHEST_MODEL_SCALE
+			chest_model.rotation.y = randf() * TAU
+			node = chest_model
+		else:
+			var mi := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3(0.5, 0.35, 0.5)
+			mi.mesh = box
+			mat = GraphicsPolish.glow(Color(0.9, 0.65, 0.15), 1.0)
+			mi.material_override = mat
+			mi.position = _tile_to_world(t) + Vector3(0.0, 0.2, 0.0)
+			dungeon_root.add_child(mi)
+			node = mi
 		chests.append({"node": node, "mat": mat, "tile": t, "opened": false})
 
 
@@ -598,3 +704,11 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

@@ -32,6 +32,15 @@ var win_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout + fake wall refs (retired on real walls).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _fake_wall: MeshInstance3D = null
+var _door_title: Label3D = null
+var _flank_pumpkins: Array = []
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -46,6 +55,7 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -1.8), 2.2, 30)
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -75,10 +85,12 @@ func _build_wall() -> void:
 	wall.position = Vector3(0.0, 1.4, WALL_Z - 0.15)
 	wall.material_override = GraphicsPolish.pbr(Color(0.13, 0.10, 0.16), 0.0, 0.9)
 	add_child(wall)
+	_fake_wall = wall
 	# Title.
 	var title := GraphicsPolish.make_label("TRICK OR TREAT!", 56, Color(1.0, 0.6, 0.15))
 	title.position = Vector3(0.0, 2.65, WALL_Z + 0.1)
 	add_child(title)
+	_door_title = title
 	# Floor strip.
 	var floor_inst := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -101,6 +113,7 @@ func _build_wall() -> void:
 		p.position = Vector3(px, 0.20, WALL_Z + 0.5)
 		p.material_override = GraphicsPolish.glow(Color(1.0, 0.55, 0.10), 1.2)
 		add_child(p)
+		_flank_pumpkins.append(p)
 	GraphicsPolish.make_point_light(self, Vector3(0.0, 2.0, WALL_Z + 1.0), Color(1.0, 0.6, 0.2), 0.8, 5.0)
 
 
@@ -344,3 +357,71 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the doors ARE the game — up to two become haunted dungeon gates to dash through; the rug is the arcane start circle.
+	var _morph0_door := RoomKit.get_anchors("DOOR")
+	for _mi in range(mini(_morph0_door.size(), 2)):
+		RoomKit.morph(_morph0_door[_mi], "haunted")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "arcane")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_walls.is_empty() or doors.size() < 3:
+		return
+	# Mount the three doors on the largest real wall, facing the room.
+	var w := _room_largest_wall()
+	if w.is_empty():
+		return
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return
+	n = n.normalized()
+	var yaw := atan2(-n.x, -n.z)
+	var tangent := Vector3(-n.z, 0.0, n.x)
+	var span: float = maxf(minf((w["size"] as Vector2).x - 1.6, 2.8), 1.2)
+	for i in doors.size():
+		var d: Dictionary = doors[i]
+		var root: Node3D = d["root"]
+		var face: Vector3 = wp + n * 0.14 + tangent * ((float(i) - 1.0) * span * 0.5)
+		face.y = DOOR_Y
+		root.global_position = face
+		root.global_rotation = Vector3(0.0, yaw, 0.0)
+	# The fake wall retires; the title and flanking pumpkins move along.
+	if _fake_wall != null:
+		_fake_wall.visible = false
+	if _door_title != null:
+		_door_title.global_position = wp + n * 0.18 + Vector3(0.0, 2.62, 0.0)
+		_door_title.global_rotation = Vector3(0.0, yaw, 0.0)
+	for pi in _flank_pumpkins.size():
+		var pk: MeshInstance3D = _flank_pumpkins[pi]
+		var side := -1.0 if pi == 0 else 1.0
+		var pp: Vector3 = wp + n * 0.55 + tangent * side * (span * 0.5 + 0.45)
+		pp.y = 0.20
+		pk.global_position = pp
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best

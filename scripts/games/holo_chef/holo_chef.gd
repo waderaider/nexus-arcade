@@ -96,6 +96,13 @@ var prev_pinch := false
 var pulse_t := 0.0
 var save_t := 0.0
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_card_wall: Dictionary = {}
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "holo_chef_main")
@@ -107,12 +114,67 @@ func _ready() -> void:
 	add_child(counter)
 	ARUpgradeKit.place_on_table(counter, 1.0, TABLE_H)
 	_build_kitchen()
+	_build_restaurant_dressing()
 	_build_stations()
 	_build_tools()
 	_build_hud()
 	_load_save()
 	_show_order_card()
 	GraphicsPolish.spawn_ambient_motes(self, counter.position + Vector3(0, 0.8, 0), 1.6, 26)
+	_apply_room_layout()
+
+
+## v0.7.0: rest the counter on the largest real table and tape the recipe
+## card to the nearest real wall. All guarded; fallback keeps the default.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): plants -> living herb garden; storage -> pantry vault
+	_morph_anchors("PLANT", "nature", 2)
+	_morph_anchors("STORAGE", "candy", 1)
+	var best := {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best = t
+	if not best.is_empty():
+		var tp: Vector3 = to_local(best["position"])
+		counter.position.x = tp.x
+		counter.position.z = tp.z
+	var bw := {}
+	var bd := 1e9
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var dd: float = (to_local(w["position"]) - counter.position).length()
+		if dd < bd:
+			bd = dd
+			bw = w
+	_room_card_wall = bw
+	_mount_card()
+
+
+func _mount_card() -> void:
+	if _room_card_wall.is_empty() or card_panel == null or not is_instance_valid(card_panel):
+		return
+	var n: Vector3 = _room_card_wall["normal"]
+	n.y = 0.0
+	n = n.normalized() if n.length() > 0.01 else Vector3(0, 0, 1)
+	var fw: Vector3 = (_room_card_wall["position"] as Vector3) + n * 0.06
+	fw.y = 1.5
+	card_panel.position = to_local(fw)
+	var c := _room_bounds.get_center()
+	var d := Vector2(c.x - fw.x, c.y - fw.z)
+	card_panel.rotation.y = atan2(d.x, d.y) if d.length() > 0.05 else 0.0
 
 
 func _ensure_camera() -> void:
@@ -197,6 +259,29 @@ func _build_kitchen() -> void:
 		GraphicsPolish.make_point_light(counter, Vector3(lx, 1.05, 0.1), Color(1.0, 0.75, 0.45), 0.9, 2.5)
 		_box(counter, Vector3(lx, 1.15, 0.1), Vector3(0.16, 0.1, 0.16),
 			GraphicsPolish.glow(Color(1.0, 0.8, 0.5), 1.6))
+
+
+## v0.7.0 KayKit: restaurant dressing around the cooking counter — side
+## counter, stove and a dining set, all CC0. Pure ambiance at floor level;
+## the gameplay counter and station positions are untouched.
+func _build_restaurant_dressing() -> void:
+	var dir := "res://assets/models/holo_chef/"
+	var side := ModelLib.spawn(dir + "kitchencounter_straight_A.gltf", self, Vector3(-2.6, 0, -1.8))
+	if side != null:
+		side.scale = Vector3.ONE * 0.7
+		side.rotation.y = 0.3
+	var stove := ModelLib.spawn(dir + "stove_single.gltf", self, Vector3(2.6, 0, -1.8))
+	if stove != null:
+		stove.scale = Vector3.ONE * 0.6
+		stove.rotation.y = -0.3
+	var table := ModelLib.spawn(dir + "table_round_A.gltf", self, Vector3(2.7, 0, 1.3))
+	if table != null:
+		table.scale = Vector3.ONE * 0.55
+	for i in 2:
+		var chair := ModelLib.spawn(dir + "chair_A.gltf", self,
+			Vector3(2.7, 0, 2.45) if i == 0 else Vector3(1.7, 0, 1.3))
+		if chair != null:
+			chair.rotation.y = PI if i == 0 else PI * 0.5
 
 
 func _build_stations() -> void:
@@ -342,6 +427,7 @@ func _show_order_card() -> void:
 	card_panel = Node3D.new()
 	card_panel.position = counter.position + Vector3(0, 0.95, 0.15)
 	add_child(card_panel)
+	_mount_card() # v0.7.0: re-tape the card to the real wall when room data is cached
 	var panel := _box(card_panel, Vector3.ZERO, Vector3(1.05, 0.72, 0.03),
 		GraphicsPolish.pbr_preset(Color(0.09, 0.10, 0.13), "matte"))
 	panel.name = "Panel"
@@ -853,3 +939,11 @@ func _pulse_rings() -> void:
 		if ring.visible:
 			var sc := 1.0 + 0.08 * sin(pulse_t * 5.0)
 			ring.scale = Vector3(sc, sc, 1.0)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

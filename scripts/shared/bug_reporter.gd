@@ -236,6 +236,9 @@ func _on_config_completed(result: int, response_code: int, _headers: PackedStrin
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if data is Dictionary:
 		set_report_url(str((data as Dictionary).get("report_url", "")))
+		# Config just arrived: flush any reports saved while offline/local-only.
+		if _report_url != "":
+			retry_pending()
 
 
 func _on_report_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:

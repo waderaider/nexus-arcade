@@ -41,6 +41,15 @@ var gold_player: AudioStreamPlayer = null
 var weak_player: AudioStreamPlayer = null
 var pop_player: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed table the goblins spring out of.
+var _room_table_anchor: Dictionary = {}
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -57,6 +66,40 @@ func _ready() -> void:
 	pop_player = _make_player(_make_tone(900.0, 0.08, 0.35))
 	ARUpgradeKit.apply_anchor(self, "hw_goblin_archery_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.0), 2.5)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# v0.7.0 furniture morph: the real table becomes a haunted pop-up
+	# stand — goblins spring out of its top face (see _goblin_spawn_pos).
+	var table_anchors := RoomKit.get_anchors("TABLE")
+	if not table_anchors.is_empty():
+		RoomKit.morph(table_anchors[0], "haunted")
+		_room_table_anchor = table_anchors[0]
+
+
+## Wall normal flipped to point into the room (normals are sign-agnostic).
+func _wall_inward(w: Dictionary) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3(0.0, 0.0, 1.0)
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	var wp: Vector3 = w["position"]
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n
+	return n
 
 
 func _add_light_rig() -> void:
@@ -368,11 +411,9 @@ func _update_arrows(delta: float) -> void:
 
 func _spawn_goblin() -> void:
 	var golden := randf() < 0.12
-	var angle := randf() * TAU
-	var radius := randf_range(2.0, 3.4)
 	var base_y := 0.42
 	var root := Node3D.new()
-	root.position = Vector3(cos(angle) * radius, base_y, sin(angle) * radius - 0.6)
+	root.position = _goblin_spawn_pos()
 	root.scale = Vector3.ONE * 0.01
 	add_child(root)
 	var skin := GraphicsPolish.pbr(Color(0.95, 0.75, 0.15), 0.35, 0.35) if golden else GraphicsPolish.pbr(Color(0.25, 0.70, 0.22), 0.05, 0.6)
@@ -422,7 +463,44 @@ func _spawn_goblin() -> void:
 		"life": randf_range(4.0, 7.0), "golden": golden,
 		"base_y": base_y, "phase": randf() * TAU,
 	})
-	pop_player.play()
+	if pop_player != null:
+		pop_player.play()
+
+
+func _goblin_spawn_pos() -> Vector3:
+	# Goblins pop out from behind the player's real furniture or wall
+	# edges when the room is known, otherwise from a ring as before.
+	# The morphed table is a pop-up stand: goblins spring out of its top.
+	if not _room_table_anchor.is_empty() and randf() < 0.3:
+		var top: Vector3 = RoomKit.cuboid_top(_room_table_anchor)
+		return top + Vector3(randf_range(-0.2, 0.2), 0.05, randf_range(-0.2, 0.2))
+	if _room_known:
+		if randf() < 0.55:
+			var all := _room_furniture + _room_tables
+			if not all.is_empty():
+				var f: Dictionary = all[randi() % all.size()]
+				var fp: Vector3 = f["position"]
+				var fs: Vector3 = f["size"]
+				var c := _room_bounds.get_center()
+				var away := Vector2(fp.x - c.x, fp.z - c.y)
+				if away.length() < 0.05:
+					away = Vector2(0.0, 1.0)
+				away = away.normalized()
+				var edge := maxf(fs.x, fs.z) * 0.5 + 0.4
+				var px := clampf(fp.x + away.x * edge, _room_bounds.position.x + 0.4, _room_bounds.end.x - 0.4)
+				var pz := clampf(fp.z + away.y * edge, _room_bounds.position.y + 0.4, _room_bounds.end.y - 0.4)
+				return Vector3(px, 0.42, pz)
+		if not _room_walls.is_empty():
+			var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+			var bp: Vector3 = (w["position"] as Vector3) + _wall_inward(w) * 0.5
+			return Vector3(bp.x, 0.42, bp.z)
+		var rmax := minf(3.4, maxf(1.4, minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.3))
+		var ang2 := randf() * TAU
+		var rr := randf_range(1.6, rmax)
+		return Vector3(cos(ang2) * rr, 0.42, sin(ang2) * rr - 0.6)
+	var angle := randf() * TAU
+	var radius := randf_range(2.0, 3.4)
+	return Vector3(cos(angle) * radius, 0.42, sin(angle) * radius - 0.6)
 
 
 func _update_goblins(delta: float) -> void:

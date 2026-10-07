@@ -36,6 +36,11 @@ var tool_label: Label3D = null
 var msg_label: Label3D = null
 var mouse_pos := Vector2.ZERO
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "clay-shaper_main")
@@ -46,6 +51,42 @@ func _ready() -> void:
 	_build_clay()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.3, 0.0), 2.5, 40)
+	_apply_room_layout()
+
+
+func _largest_table(tables: Array) -> Dictionary:
+	var best: Dictionary = tables[0]
+	var best_area := 0.0
+	for t in tables:
+		var s: Vector3 = t["size"]
+		var area := s.x * s.z
+		if area > best_area:
+			best_area = area
+			best = t
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the sculpting table becomes an arcane potter's altar.
+	var _morph_table := RoomKit.get_anchors("TABLE")
+	if not _morph_table.is_empty():
+		RoomKit.morph(_morph_table[0], "arcane")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_tables.is_empty():
+		return
+	# Rest the sculpting pedestal on the largest detected table, centered,
+	# base on the tabletop (fallback: the floating pedestal stays).
+	var t := _largest_table(_room_tables)
+	var tpos: Vector3 = t["position"]
+	var tsize: Vector3 = t["size"]
+	global_position = Vector3(tpos.x, tpos.y + tsize.y * 0.5, tpos.z)
 
 
 func _process(delta: float) -> void:

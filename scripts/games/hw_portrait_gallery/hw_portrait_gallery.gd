@@ -35,11 +35,27 @@ var msg_timer := 0.0
 var anchor_timer := 0.0
 var restart_hold := 0.0
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed door gate that caught ghosts flee through (game-local coords).
+var _room_door_pos := Vector3.ZERO
+var _room_door_known := false
+# The gallery hangs on a stage node so it can be mounted on a real wall;
+# all portrait math stays in stage-local coordinates.
+var gallery_stage: Node3D = null
+
 
 func _ready() -> void:
 	GraphicsPolish.make_light_rig(self)
 	_ensure_fallback_camera()
 	mouse_pos = get_viewport().get_visible_rect().size * 0.5
+	gallery_stage = Node3D.new()
+	gallery_stage.name = "GalleryStage"
+	add_child(gallery_stage)
 	_build_gallery()
 	_build_hud()
 	good_player = _make_player(_make_tone(740.0, 0.14, 0.5))
@@ -48,6 +64,55 @@ func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "hw_portrait_gallery_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.5), 3.0, 50)
 	_start_round()
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	if _room_walls.is_empty():
+		return
+	# Hang the gallery on the widest real wall, facing into the room.
+	var best: Dictionary = {}
+	var best_w := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var ww: float = (w["size"] as Vector2).x
+		if ww > best_w:
+			best_w = ww
+			best = w
+	if best.is_empty():
+		return
+	var wp: Vector3 = best["position"]
+	var n: Vector3 = best["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n # normals are sign-agnostic; face into the room
+	gallery_stage.position = Vector3(wp.x, 0.0, wp.z) + n * 0.15
+	gallery_stage.rotation.y = atan2(n.x, n.z)
+	# v0.7.0 furniture morphs: the real door becomes a haunted dungeon
+	# gate (caught ghosts flee through it — see _resolve_tap) and the
+	# windows become eerie moonlit vistas.
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+		_room_door_pos = door_anchors[0]["position"]
+		_room_door_known = true
+	var window_anchors := RoomKit.get_anchors("WINDOW")
+	if not window_anchors.is_empty():
+		RoomKit.morph(window_anchors[0], "haunted")
 
 
 func _ensure_fallback_camera() -> void:
@@ -69,16 +134,37 @@ func _build_gallery() -> void:
 	wall.mesh = wb
 	wall.position = Vector3(0.0, 1.5, wall_z - 0.08)
 	wall.material_override = GraphicsPolish.pbr(Color(0.16, 0.12, 0.18), 0.0, 0.85)
-	add_child(wall)
+	gallery_stage.add_child(wall)
 	# Candle sconces.
 	for sx in [-2.3, 2.3]:
-		GraphicsPolish.make_point_light(self, Vector3(sx, 2.2, wall_z + 0.4), Color(1.0, 0.6, 0.25), 0.7, 4.0)
+		GraphicsPolish.make_point_light(gallery_stage, Vector3(sx, 2.2, wall_z + 0.4), Color(1.0, 0.6, 0.25), 0.7, 4.0)
 	# Six portraits in 2 rows x 3 cols.
 	var xs := [-1.6, 0.0, 1.6]
 	var ys := [2.05, 1.05]
 	for row in range(2):
 		for col in range(3):
 			_build_portrait(Vector3(xs[col], ys[row], wall_z + 0.02))
+	_dress_gallery() # v0.7.0 KayKit set dressing (null-safe)
+
+
+## v0.7.0 KayKit set dressing: haunted-hall props parented to the gallery
+## stage so they ride along when RoomKit wall-mounts it. Guarded - null
+## spawns are skipped, never crash.
+func _dress_gallery() -> void:
+	if gallery_stage == null:
+		return
+	var dir := "res://assets/models/hw_portrait_gallery/"
+	# Wall-mounted torches beside the portraits.
+	for tx in [-2.30, 2.30]:
+		ModelLib.spawn(dir + "torch_mounted.glb", gallery_stage, Vector3(tx, 1.50, wall_z + 0.12))
+	# Blood-red banners at the far ends of the wall.
+	for bx in [-2.62, 2.62]:
+		ModelLib.spawn(dir + "banner_red.glb", gallery_stage, Vector3(bx, 1.85, wall_z + 0.02))
+	# Lit candles on the floor in front of the wall.
+	for cx in [-1.90, 1.90]:
+		ModelLib.spawn(dir + "candle_lit.glb", gallery_stage, Vector3(cx, 0.0, wall_z + 0.75))
+	# Treasure chest in the corner.
+	ModelLib.spawn(dir + "chest_gold.glb", gallery_stage, Vector3(2.35, 0.0, wall_z + 0.85))
 
 
 func _build_portrait(center: Vector3) -> void:
@@ -89,7 +175,7 @@ func _build_portrait(center: Vector3) -> void:
 	frame.mesh = fb
 	frame.position = center
 	frame.material_override = GraphicsPolish.pbr(Color(0.55, 0.38, 0.12), 0.7, 0.35)
-	add_child(frame)
+	gallery_stage.add_child(frame)
 	# Dark canvas.
 	var canvas := MeshInstance3D.new()
 	var cb := BoxMesh.new()
@@ -97,7 +183,7 @@ func _build_portrait(center: Vector3) -> void:
 	canvas.mesh = cb
 	canvas.position = center + Vector3(0, 0, 0.04)
 	canvas.material_override = GraphicsPolish.pbr(Color(0.07, 0.07, 0.10), 0.0, 0.9)
-	add_child(canvas)
+	gallery_stage.add_child(canvas)
 	# Pale portrait face.
 	var head := MeshInstance3D.new()
 	var hs := SphereMesh.new()
@@ -107,7 +193,7 @@ func _build_portrait(center: Vector3) -> void:
 	head.position = center + Vector3(0, 0.08, 0.10)
 	var skin := Color(0.75, 0.68, 0.60).lerp(Color(0.55, 0.60, 0.70), randf())
 	head.material_override = GraphicsPolish.pbr(skin, 0.0, 0.7)
-	add_child(head)
+	gallery_stage.add_child(head)
 	for side in [-1.0, 1.0]:
 		var eye := MeshInstance3D.new()
 		var es := SphereMesh.new()
@@ -116,7 +202,7 @@ func _build_portrait(center: Vector3) -> void:
 		eye.mesh = es
 		eye.material_override = GraphicsPolish.pbr(Color(0.03, 0.03, 0.04), 0.0, 0.5)
 		eye.position = center + Vector3(side * 0.07, 0.12, 0.24)
-		add_child(eye)
+		gallery_stage.add_child(eye)
 	# The ghost: hidden unless this portrait is haunted.
 	var ghost := Node3D.new()
 	ghost.position = center + Vector3(0, 0.1, 0.16)
@@ -129,7 +215,7 @@ func _build_portrait(center: Vector3) -> void:
 	ghost.add_child(orb)
 	ghost.add_child(GraphicsPolish.make_trail(Color(0.6, 0.85, 1.0), 0.05))
 	ghost.visible = false
-	add_child(ghost)
+	gallery_stage.add_child(ghost)
 	portraits.append({"center": center, "ghost": ghost, "frame": frame})
 
 
@@ -229,12 +315,17 @@ func _resolve_tap() -> void:
 	var ray := _aim_ray()
 	var o: Vector3 = ray[0]
 	var d: Vector3 = ray[1]
-	if absf(d.z) < 0.001:
+	# Work in the gallery stage's frame (identical to world when unmoved).
+	var lo: Vector3 = gallery_stage.to_local(o) if gallery_stage != null else o
+	var ld: Vector3 = d
+	if gallery_stage != null:
+		ld = (gallery_stage.global_transform.basis.inverse() * d).normalized()
+	if absf(ld.z) < 0.001:
 		return
-	var t := ((wall_z + 0.06) - o.z) / d.z
+	var t := ((wall_z + 0.06) - lo.z) / ld.z
 	if t < 0.0:
 		return
-	var hit := o + d * t
+	var hit := lo + ld * t
 	var picked := -1
 	for i in range(portraits.size()):
 		var p: Dictionary = portraits[i]
@@ -252,7 +343,10 @@ func _resolve_tap() -> void:
 		correct += 1
 		_show_msg("HAUNTED! +%d" % gained, 1.0)
 		var p: Dictionary = portraits[picked]
-		GraphicsPolish.spawn_sparks(self, (p["center"] as Vector3) + Vector3(0, 0, 0.3), Color(0.7, 0.9, 1.0), 20)
+		GraphicsPolish.spawn_sparks(self, gallery_stage.to_global((p["center"] as Vector3) + Vector3(0, 0, 0.3)), Color(0.7, 0.9, 1.0), 20)
+		# The caught ghost flees through the morphed dungeon gate.
+		if _room_door_known:
+			GraphicsPolish.spawn_sparks(self, _room_door_pos + Vector3(0.0, 1.2, 0.0), Color(0.75, 0.9, 1.0), 16)
 		if good_player != null:
 			good_player.play()
 		if round_num >= TOTAL_ROUNDS:
@@ -288,7 +382,7 @@ func _game_over() -> void:
 	if win_player != null:
 		win_player.play()
 	if correct >= 8:
-		GraphicsPolish.spawn_confetti(self, Vector3(0.0, 2.2, -1.5), 90)
+		GraphicsPolish.spawn_confetti(self, gallery_stage.to_global(Vector3(0.0, 2.2, -1.5)), 90)
 
 
 func _reset_game() -> void:

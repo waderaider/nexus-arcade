@@ -38,6 +38,13 @@ var hit_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 var rng := RandomNumberGenerator.new()
 
+## RoomKit v0.7.0: cached room layout + fake range pieces (retired on real walls).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _range_set: Array = []
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -53,6 +60,7 @@ func _ready() -> void:
 	fire_player = _make_player(_make_tone(300.0, 0.12, 0.5))
 	hit_player = _make_player(_make_tone(700.0, 0.14, 0.55))
 	end_player = _make_player(_make_tone(660.0, 0.5, 0.5))
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -82,6 +90,7 @@ func _build_range() -> void:
 	wall.position = Vector3(0.0, 1.4, TARGET_Z - 0.15)
 	wall.material_override = GraphicsPolish.pbr(Color(0.14, 0.08, 0.12), 0.0, 0.95)
 	add_child(wall)
+	_range_set.append(wall)
 	# Glowing orange frame around the wall.
 	var frame_mat := GraphicsPolish.glow(Color(1.0, 0.45, 0.1), 1.4)
 	for fx in [-2.2, 2.2]:
@@ -92,6 +101,7 @@ func _build_range() -> void:
 		post.position = Vector3(fx, 1.4, TARGET_Z - 0.05)
 		post.material_override = frame_mat
 		add_child(post)
+		_range_set.append(post)
 	for fy in [0.0, 2.8]:
 		var beam := MeshInstance3D.new()
 		var beam_box := BoxMesh.new()
@@ -100,6 +110,7 @@ func _build_range() -> void:
 		beam.position = Vector3(0.0, fy, TARGET_Z - 0.05)
 		beam.material_override = frame_mat
 		add_child(beam)
+		_range_set.append(beam)
 	# Cobweb strands across the top corners.
 	var web_mat := GraphicsPolish.pbr(Color(0.85, 0.85, 0.9), 0.0, 0.8)
 	for sx in [-1.6, 1.6]:
@@ -111,6 +122,7 @@ func _build_range() -> void:
 		strand.rotation.z = sx * 0.35
 		strand.material_override = web_mat
 		add_child(strand)
+		_range_set.append(strand)
 
 
 func _build_slingshot() -> void:
@@ -492,3 +504,59 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: chairs become haunted spider nests (slingshot targets guard them); windows show haunted vistas.
+	var _morph0_chair := RoomKit.get_anchors("CHAIR")
+	if not _morph0_chair.is_empty():
+		RoomKit.morph(_morph0_chair[0], "haunted")
+	var _morph1_window := RoomKit.get_anchors("WINDOW")
+	if not _morph1_window.is_empty():
+		RoomKit.morph(_morph1_window[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_walls.is_empty():
+		return
+	# Mount bonus spider targets on the largest real wall; the fake
+	# backboard range retires since the spiders cling to the real wall.
+	var w := _room_largest_wall()
+	if w.is_empty():
+		return
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return
+	n = n.normalized()
+	var tangent := Vector3(-n.z, 0.0, n.x)
+	var span: Vector2 = w["size"]
+	for k in 2:
+		var off := (float(k) - 0.5) * maxf(span.x * 0.5 - 0.6, 0.6)
+		var h := 1.25 + 0.35 * float(k)
+		var spot := to_local(Vector3(wp.x, h, wp.z) + n * 0.5 + tangent * off)
+		targets.append(_build_spider(spot))
+	for piece in _range_set:
+		(piece as Node3D).visible = false
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best

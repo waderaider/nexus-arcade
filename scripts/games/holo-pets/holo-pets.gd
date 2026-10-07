@@ -51,6 +51,9 @@ var chasing := false
 var wiggle_t := 0.0
 var ear_droop := 0.0
 var feed_flash_t := 0.0
+# RoomKit (v0.7.0): couch-nap state.
+var _napping := false
+var _nap_y := 0.0
 
 # Props.
 var bowl: MeshInstance3D = null
@@ -76,6 +79,8 @@ func _ready() -> void:
 	_build_ui()
 	ARUpgradeKit.apply_anchor(pet_root, "holo-pets_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, 0.0), 2.5)
+	RoomKit.refresh() # v0.7.0: cache room layout for hiding spots (safe no-op w/o XR).
+	_apply_room_layout() # v0.7.0 MORPH-B: morph the pet's couch den.
 	_pick_wander_target()
 
 
@@ -275,7 +280,43 @@ func _pick_wander_target() -> void:
 	var a := randf() * TAU
 	var r := randf_range(0.6, WANDER_RADIUS)
 	wander_target = ARUpgradeKit.clamp_to_room(Vector3(cos(a) * r, 0.0, sin(a) * r))
+	# RoomKit (v0.7.0): sometimes the pet hides behind real furniture instead.
+	if RoomKit.is_available() and RoomKit.has_room_data() and randf() < 0.35:
+		var spot := _furniture_hiding_spot()
+		if spot != Vector3.INF:
+			wander_target = ARUpgradeKit.clamp_to_room(spot)
+	# RoomKit (v0.7.0): sometimes the pet naps on the real couch.
+	_napping = false
+	if RoomKit.is_available() and RoomKit.has_room_data() and randf() < 0.15:
+		var couch := RoomKit.get_couch()
+		if not couch.is_empty():
+			var top := to_local(RoomKit.cuboid_top(couch))
+			wander_target = Vector3(top.x, 0.0, top.z)
+			_nap_y = top.y
+			_napping = true
+			wander_idle = randf_range(4.0, 7.0)
+			return
 	wander_idle = randf_range(1.0, 3.5)
+
+
+## RoomKit (v0.7.0): a floor spot just outside a random table/furniture
+## cuboid (world -> game-local), or Vector3.INF when none is usable.
+func _furniture_hiding_spot() -> Vector3:
+	var items: Array = RoomKit.get_furniture() + RoomKit.get_tables()
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[randi() % items.size()]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := RoomKit.room_bounds().get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.35
+	var spot := to_local(Vector3(wp.x + away.x * clearance, 0.0, wp.z + away.y * clearance))
+	spot.y = 0.0
+	return spot
 
 
 func _update_behaviour(delta: float) -> void:
@@ -299,10 +340,17 @@ func _update_behaviour(delta: float) -> void:
 		pet_root.position.y = absf(sin(hop_phase)) * 0.16
 	else:
 		moving = false
-		pet_root.position.y = lerpf(pet_root.position.y, 0.0, minf(1.0, 8.0 * delta))
+		# RoomKit (v0.7.0): rest on the couch top while napping, floor otherwise.
+		var rest_y := _nap_y if _napping else 0.0
+		pet_root.position.y = lerpf(pet_root.position.y, rest_y, minf(1.0, 8.0 * delta))
+		# Curl up while napping.
+		var target_squash := 0.72 if _napping else 1.0
+		pet_root.scale.y = lerpf(pet_root.scale.y, target_squash, minf(1.0, 6.0 * delta))
 		if not chasing:
 			wander_idle -= delta
 			if wander_idle <= 0.0:
+				_napping = false
+				pet_root.scale.y = 1.0
 				_pick_wander_target()
 
 	# Happy wiggle after being petted.
@@ -420,6 +468,9 @@ func _throw_ball() -> void:
 	energy = minf(100.0, energy + 10.0)
 	ball_active = true
 	chasing = true
+	# Woken up by playtime: no more couch nap.
+	_napping = false
+	pet_root.scale.y = 1.0
 	ball_vel = Vector3(randf_range(-1.6, 1.6), randf_range(2.8, 3.6), randf_range(-1.6, 1.6))
 
 
@@ -456,3 +507,14 @@ func _poll_pinch() -> void:
 func _save_anchor() -> void:
 	if pet_root != null:
 		ARUpgradeKit.save_anchor("holo-pets_main", pet_root.global_transform)
+
+
+## MORPH-B (v0.7.0): the real couch is the pet's home den (it already naps
+## there in _pick_wander_target) - morph it with a nature skin so the nap
+## spot glows as a cozy nest. Silent no-op without a couch anchor.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available() or not RoomKit.has_room_data():
+		return
+	var couch := RoomKit.get_couch()
+	if not couch.is_empty():
+		RoomKit.morph(couch, "nature")

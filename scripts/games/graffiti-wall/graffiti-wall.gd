@@ -45,6 +45,13 @@ var shake_hist: Array = []
 var shake_cd := 0.0
 var elapsed := 0.0
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _wall_root: Node3D = null
+var _wall_scale := 1.0
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "graffiti-wall_main")
@@ -58,6 +65,7 @@ func _ready() -> void:
 	painted.resize(CELLS_X * CELLS_Y)
 	painted.fill(0)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.5), 2.0, 30)
+	_apply_room_layout()
 
 
 func _ensure_camera() -> void:
@@ -105,15 +113,18 @@ func _build_shapes() -> void:
 
 
 func _build_wall() -> void:
+	# Wall + frame live under one root so roomscale can snap them to a wall.
+	_wall_root = Node3D.new()
+	_wall_root.position = Vector3(0.0, 1.5, WALL_Z)
+	add_child(_wall_root)
 	wall = MeshInstance3D.new()
 	wall.name = "Wall"
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(WALL_W, WALL_H)
 	wall.mesh = pm
 	wall.material_override = GraphicsPolish.pbr_preset(Color(0.82, 0.82, 0.86), "matte")
-	wall.position = Vector3(0.0, 1.5, WALL_Z)
-	add_child(wall)
-	# Frame.
+	_wall_root.add_child(wall)
+	# Frame (positions relative to the wall center).
 	var frame_mat := GraphicsPolish.pbr_preset(Color(0.15, 0.15, 0.2), "metal")
 	for sx in [-1.0, 1.0]:
 		var edge := MeshInstance3D.new()
@@ -121,16 +132,16 @@ func _build_wall() -> void:
 		bm.size = Vector3(0.1, WALL_H + 0.2, 0.08)
 		edge.mesh = bm
 		edge.material_override = frame_mat
-		edge.position = Vector3(sx * (WALL_W / 2 + 0.05), 1.5, WALL_Z)
-		add_child(edge)
+		edge.position = Vector3(sx * (WALL_W / 2 + 0.05), 0.0, 0.0)
+		_wall_root.add_child(edge)
 	for sy in [-1.0, 1.0]:
 		var edge2 := MeshInstance3D.new()
 		var bm2 := BoxMesh.new()
 		bm2.size = Vector3(WALL_W + 0.2, 0.1, 0.08)
 		edge2.mesh = bm2
 		edge2.material_override = frame_mat
-		edge2.position = Vector3(0.0, 1.5 + sy * (WALL_H / 2 + 0.05), WALL_Z)
-		add_child(edge2)
+		edge2.position = Vector3(0.0, sy * (WALL_H / 2 + 0.05), 0.0)
+		_wall_root.add_child(edge2)
 
 
 func _build_spray_fx() -> void:
@@ -181,6 +192,61 @@ func _build_hud() -> void:
 	add_child(swatch)
 
 
+# ---------------------------------------------------------------- roomscale ---
+
+func _largest_wall(walls: Array) -> Dictionary:
+	var best: Dictionary = walls[0]
+	var best_area := 0.0
+	for w in walls:
+		var s: Vector2 = w["size"]
+		var area := s.x * s.y
+		if area > best_area:
+			best_area = area
+			best = w
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the work table becomes a neon spray bench for the cans and tools.
+	var _morph_table := RoomKit.get_anchors("TABLE")
+	if not _morph_table.is_empty():
+		RoomKit.morph(_morph_table[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	if _wall_root == null or _room_walls.is_empty():
+		return
+	# Snap the spray canvas to the face of the largest real wall, scaled to fit.
+	var w := _largest_wall(_room_walls)
+	var wpos: Vector3 = w["position"]
+	var wsize: Vector2 = w["size"]
+	var n: Vector3 = (w["normal"] as Vector3).normalized()
+	if absf(n.y) > 0.5:
+		return
+	var face: Vector3 = wpos + n * 0.05
+	_wall_scale = minf(1.0, minf(wsize.x / (WALL_W + 0.3), wsize.y / (WALL_H + 0.3)))
+	_wall_scale = maxf(_wall_scale, 0.35)
+	_wall_root.global_transform = Transform3D(
+		(Basis.looking_at(-n, Vector3.UP) * Basis.from_scale(Vector3.ONE * _wall_scale)),
+		face)
+	# Move the HUD score / mode / color swatch onto the wall face with it.
+	if hud_score != null:
+		hud_score.global_position = wall.to_global(Vector3(0, WALL_H / 2 + 0.45, 0.1))
+	if hud_mode != null:
+		hud_mode.global_position = wall.to_global(Vector3(0, WALL_H / 2 + 0.18, 0.1))
+	if hud_msg != null:
+		hud_msg.global_position = wall.to_global(Vector3(0, 0.35, 0.1))
+	if swatch != null:
+		swatch.global_position = wall.to_global(Vector3(WALL_W / 2 - 0.25, WALL_H / 2 - 0.2, 0.15))
+
+
+# ---------------------------------------------------------------- HUD ---
+
 func _process(delta: float) -> void:
 	elapsed += delta
 	shake_cd = maxf(0.0, shake_cd - delta)
@@ -215,9 +281,14 @@ func _wall_hit() -> Variant:
 		dir = camera.project_ray_normal(mp)
 	else:
 		return null
-	if absf(dir.z) < 0.0001:
+	# Intersect the pointer ray with the wall's real world plane (it may
+	# have been snapped to a room wall by roomscale).
+	var wp: Vector3 = wall.global_position
+	var wn: Vector3 = (wall.global_transform.basis * Vector3(0, 0, 1)).normalized()
+	var denom := dir.dot(wn)
+	if absf(denom) < 0.0001:
 		return null
-	var t := (WALL_Z - origin.z) / dir.z
+	var t := (wp - origin).dot(wn) / denom
 	if t <= 0.0:
 		return null
 	var world: Vector3 = origin + dir * t
@@ -233,7 +304,7 @@ func _spray(delta: float) -> void:
 		spray_fx.emitting = false
 		return
 	var local: Vector3 = hit
-	spray_fx.position = wall.to_global(local) + Vector3(0, 0, 0.25)
+	spray_fx.position = wall.to_global(local + Vector3(0, 0, 0.25))
 	spray_fx.emitting = true
 	spray_tick += delta
 	while spray_tick >= 0.03:
@@ -278,7 +349,7 @@ func _check_milestones(cov: float) -> void:
 	for i in range(4):
 		if not milestones[i] and cov >= marks[i]:
 			milestones[i] = true
-			GraphicsPolish.spawn_confetti(self, Vector3(0.0, 1.8, WALL_Z + 0.5), 60)
+			GraphicsPolish.spawn_confetti(self, wall.to_global(Vector3(0.0, 0.3, 0.5)), 60)
 			hud_msg.text = "%d%% covered!" % int(marks[i])
 			var tw := create_tween()
 			tw.tween_interval(1.5)

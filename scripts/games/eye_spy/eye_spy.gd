@@ -52,6 +52,11 @@ var _message_label: Label3D = null
 var _cross_mats: Array = [] ## pulsing crosshair materials
 var _orbs: Array = [] ## manual-mode orb roots for bob animation
 var _orb_bases: Array = []
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -66,6 +71,75 @@ func _ready() -> void:
 	_build_hud()
 	_restart()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.5, 0), 3.0, 40)
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): storage -> prize vault where found targets accumulate
+	_morph_anchors("STORAGE", "candy", 1)
+	_hide_orbs_in_room()
+
+
+## Move manual-mode props into room-derived hiding spots: behind real
+## furniture cuboids and on real wall faces.
+func _hide_orbs_in_room() -> void:
+	if _orbs.is_empty():
+		return
+	var spots := _room_hideouts()
+	if spots.is_empty():
+		return
+	for i in _orbs.size():
+		var spot: Vector3 = spots[i % spots.size()]
+		(_orbs[i] as Node3D).position = spot
+		_orb_bases[i] = spot
+
+
+func _room_hideouts() -> Array:
+	var spots: Array = []
+	var center := Vector2(_room_bounds.get_center().x, _room_bounds.get_center().y)
+	# RoomKit (v0.7.0): the couch gets priority — one orb tucked right
+	# against the cushions, at crouch height.
+	var couch := RoomKit.get_couch()
+	if not couch.is_empty():
+		var cp: Vector3 = couch["position"]
+		var cs: Vector3 = couch["size"]
+		var away := Vector2(cp.x - center.x, cp.z - center.y)
+		if away.length() < 0.05:
+			away = Vector2(0, 1)
+		away = away.normalized()
+		var dist: float = maxf(cs.x, cs.z) * 0.5 + 0.25
+		spots.append(Vector3(cp.x + away.x * dist, 0.55, cp.z + away.y * dist))
+	for f_v in _room_furniture + _room_tables:
+		var f: Dictionary = f_v
+		var p: Vector3 = f["position"]
+		var s: Vector3 = f["size"]
+		# Hide just behind the cuboid, away from the room center.
+		var away := Vector2(p.x - center.x, p.z - center.y)
+		if away.length() < 0.05:
+			away = Vector2(0, 1)
+		away = away.normalized()
+		var dist: float = maxf(s.x, s.z) * 0.5 + 0.55
+		spots.append(Vector3(p.x + away.x * dist, clampf(p.y, 0.9, 1.5), p.z + away.y * dist))
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var wp: Vector3 = w["position"]
+		var n: Vector3 = w["normal"]
+		var size: Vector2 = w["size"]
+		var reach: float = maxf(size.x, size.y) * 0.3
+		spots.append(Vector3(wp.x + n.x * 0.35, clampf(wp.y, 0.9, 1.6), wp.z + n.z * 0.35) \
+			+ Vector3(-n.z, 0, n.x) * reach)
+	return spots
 
 
 func _process(delta: float) -> void:
@@ -613,3 +687,11 @@ func _fanfare() -> void:
 	for i in notes.size():
 		_play_tone(notes[i], 0.22, 0.6, float(i) * 0.14)
 	_play_tone(1318.5, 0.5, 0.6, 0.6)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

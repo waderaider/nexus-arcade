@@ -36,6 +36,11 @@ var hud_msg: Label3D = null
 var brush_ring: MeshInstance3D = null
 var elapsed := 0.0
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	if not ARUpgradeKit.apply_anchor(self, "sand-shaper_main"):
@@ -53,6 +58,42 @@ func _ready() -> void:
 	_load_saved_heights()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.2, 0.0), 1.6, 30)
 	_rebuild_mesh()
+	_apply_room_layout()
+
+
+func _largest_table(tables: Array) -> Dictionary:
+	var best: Dictionary = tables[0]
+	var best_area := 0.0
+	for t in tables:
+		var s: Vector3 = t["size"]
+		var area := s.x * s.z
+		if area > best_area:
+			best_area = area
+			best = t
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the shaping table becomes a nature sandbox altar — a miniature enchanted landscape.
+	var _morph_table := RoomKit.get_anchors("TABLE")
+	if not _morph_table.is_empty():
+		RoomKit.morph(_morph_table[0], "nature")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_tables.is_empty():
+		return
+	# Set the sandbox tray on the largest detected table, centered, base on
+	# the tabletop (fallback when no table: keep the floating placement).
+	var t := _largest_table(_room_tables)
+	var tpos: Vector3 = t["position"]
+	var tsize: Vector3 = t["size"]
+	global_position = Vector3(tpos.x, tpos.y + tsize.y * 0.5, tpos.z)
 
 
 func _ensure_camera() -> void:

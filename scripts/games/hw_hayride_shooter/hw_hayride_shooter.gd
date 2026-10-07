@@ -32,6 +32,16 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: cart nodes, re-anchored to the player's couch (the hay-bale seat).
+var _cart_crate: MeshInstance3D = null
+var _cart_hay: MeshInstance3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -45,6 +55,30 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.8, -6.0), 4.0, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# v0.7.0 furniture morph: the player's couch becomes the hay-bale
+	# seat — the hayride cart rides from it.
+	var couch_anchors := RoomKit.get_anchors("COUCH")
+	if not couch_anchors.is_empty():
+		RoomKit.morph(couch_anchors[0], "nature")
+		var cp: Vector3 = couch_anchors[0]["position"]
+		if _cart_crate != null:
+			_cart_crate.position = Vector3(cp.x, 0.35, cp.z)
+		if _cart_hay != null:
+			_cart_hay.position = Vector3(cp.x, 0.68, cp.z)
 
 
 func _add_light_rig() -> void:
@@ -80,6 +114,7 @@ func _build_cart() -> void:
 	crate.position = Vector3(0.0, 0.35, 2.6)
 	crate.material_override = _mat(Color(0.32, 0.20, 0.11))
 	add_child(crate)
+	_cart_crate = crate
 	var hay := MeshInstance3D.new()
 	var hm := BoxMesh.new()
 	hm.size = Vector3(1.4, 0.28, 1.0)
@@ -87,6 +122,7 @@ func _build_cart() -> void:
 	hay.position = Vector3(0.0, 0.68, 2.6)
 	hay.material_override = _mat(Color(0.72, 0.58, 0.25))
 	add_child(hay)
+	_cart_hay = hay
 	# Aim crosshair follows the hand pointer.
 	crosshair = MeshInstance3D.new()
 	var xm := SphereMesh.new()
@@ -173,7 +209,7 @@ func _process(delta: float) -> void:
 		node.position.z += RIDE_SPEED * delta
 		if node.position.z > 5.0:
 			node.position.z -= TRACK_LEN
-			node.position.x = randf_range(-6.0, 6.0)
+			node.position.x = _scenery_x()
 	# Ghosts drift toward the cart and bob.
 	ghost_timer -= delta
 	if ghost_timer <= 0.0:
@@ -247,7 +283,7 @@ func _shoot(origin: Vector3, dir: Vector3) -> void:
 func _spawn_scenery(z: float) -> void:
 	var kind := randi() % 4
 	var root := Node3D.new()
-	root.position = Vector3(randf_range(-6.0, 6.0), 0.0, z)
+	root.position = Vector3(_scenery_x(), 0.0, z)
 	add_child(root)
 	match kind:
 		0:
@@ -339,7 +375,7 @@ func _make_tombstone(root: Node3D) -> void:
 func _spawn_ghost() -> void:
 	var golden := randi() % 8 == 0
 	var root := Node3D.new()
-	root.position = Vector3(randf_range(-3.0, 3.0), randf_range(0.9, 2.1), -16.0)
+	root.position = _ghost_spawn_pos()
 	add_child(root)
 	var gmat := GraphicsPolish.glow(Color(1.0, 0.8, 0.2), 1.5) if golden else GraphicsPolish.glow(Color(0.92, 0.95, 1.0), 1.1)
 	var body := MeshInstance3D.new()
@@ -362,6 +398,34 @@ func _spawn_ghost() -> void:
 		eye.material_override = eye_mat
 		root.add_child(eye)
 	ghosts.append({"node": root, "mat": gmat, "golden": golden, "bob_phase": randf() * TAU, "die_t": 0.0})
+
+
+func _ghost_spawn_pos() -> Vector3:
+	# Ghosts pop out from behind the player's real furniture when the
+	# room is known, otherwise drift in from down the track as before.
+	if _room_known and randf() < 0.5:
+		var all := _room_furniture + _room_tables
+		if not all.is_empty():
+			var f: Dictionary = all[randi() % all.size()]
+			var fp: Vector3 = f["position"]
+			var fs: Vector3 = f["size"]
+			var c := _room_bounds.get_center()
+			var away := Vector2(fp.x - c.x, fp.z - c.y)
+			if away.length() < 0.05:
+				away = Vector2(0.0, 1.0)
+			away = away.normalized()
+			var edge := maxf(fs.x, fs.z) * 0.5 + 0.4
+			var px := clampf(fp.x + away.x * edge, _room_bounds.position.x + 0.4, _room_bounds.end.x - 0.4)
+			var pz := minf(fp.z + away.y * edge, 1.5)
+			return Vector3(px, randf_range(0.9, 2.1), pz)
+	return Vector3(randf_range(-3.0, 3.0), randf_range(0.9, 2.1), -16.0)
+
+
+func _scenery_x() -> float:
+	var sx := randf_range(-6.0, 6.0)
+	if _room_known:
+		sx = clampf(sx, _room_bounds.position.x + 0.5, _room_bounds.end.x - 0.5)
+	return sx
 
 
 func _step_ghosts(delta: float) -> void:

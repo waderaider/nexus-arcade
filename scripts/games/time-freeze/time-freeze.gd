@@ -44,6 +44,40 @@ var bar_fill: MeshInstance3D = null
 var sim_t := 0.0
 var anchor_t := 0.0
 
+# v0.7.0 RoomKit: level layouts scale to the real room and the puck is
+# clamped to the real room bounds. Cached; default layout without room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_center := Vector3.ZERO
+var _room_scale := 1.0
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): windows -> time-frozen star vistas (the freeze extends outside)
+	_morph_anchors("WINDOW", "scifi", 2)
+	var c := _room_bounds.get_center()
+	_room_center = Vector3(c.x, 0.0, c.y)
+	_room_scale = clampf(minf(_room_bounds.size.x, _room_bounds.size.y) / (BOUND * 2.0), 1.0, 2.6)
+	_build_level(level)  # rebuild the current level on the room-fitted layout
+
+
+## Map a level-design coordinate into the real room (identity when no data).
+func _room_point(p: Vector3) -> Vector3:
+	if _room_walls.is_empty():
+		return p
+	var v := p * _room_scale
+	v.y = p.y
+	return _room_center + v
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "time-freeze_main")
@@ -58,6 +92,7 @@ func _ready() -> void:
 	_build_hud()
 	_build_level(0)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, 0.0), 2.2, 40)
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -200,8 +235,8 @@ func _build_level(idx: int) -> void:
 	state = "playing"
 	state_t = 0.0
 	var lv: Dictionary = levels[idx]
-	start_pos = lv["start"]
-	goal_pos = lv["goal"]
+	start_pos = _room_point(lv["start"])
+	goal_pos = _room_point(lv["goal"])
 	# Floor grid for readability.
 	var grid := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -256,6 +291,7 @@ func _build_level(idx: int) -> void:
 
 func _build_hazard(h: Dictionary) -> void:
 	var htype: String = h["type"]
+	var hc: Vector3 = _room_point(h["center"])  # v0.7.0: hazards fit the real room
 	if htype == "sentry":
 		var node := MeshInstance3D.new()
 		var s := SphereMesh.new()
@@ -263,7 +299,7 @@ func _build_hazard(h: Dictionary) -> void:
 		s.height = 0.3
 		node.mesh = s
 		node.material_override = GraphicsPolish.glow(Color(1.0, 0.25, 0.3), 1.8)
-		node.position = h["center"]
+		node.position = hc
 		level_root.add_child(node)
 		var danger := MeshInstance3D.new()
 		var t := TorusMesh.new()
@@ -273,11 +309,11 @@ func _build_hazard(h: Dictionary) -> void:
 		var dmat := GraphicsPolish.glow(Color(1.0, 0.25, 0.3, 0.45), 1.0)
 		danger.material_override = dmat
 		node.add_child(danger)
-		hazards.append({"type": "sentry", "node": node, "center": h["center"],
+		hazards.append({"type": "sentry", "node": node, "center": hc,
 			"radius": float(h["radius"]), "speed": float(h["speed"]), "phase": float(h["phase"])})
 	else:
 		var pivot := Node3D.new()
-		pivot.position = h["center"]
+		pivot.position = hc
 		level_root.add_child(pivot)
 		var bar := MeshInstance3D.new()
 		var b := BoxMesh.new()
@@ -287,14 +323,14 @@ func _build_hazard(h: Dictionary) -> void:
 		bar.material_override = GraphicsPolish.glow(Color(1.0, 0.2, 0.35), 2.0)
 		pivot.add_child(bar)
 		var hub := MeshInstance3D.new()
-		var hc := CylinderMesh.new()
-		hc.top_radius = 0.10
-		hc.bottom_radius = 0.12
-		hc.height = 0.16
-		hub.mesh = hc
+		var hc2 := CylinderMesh.new()
+		hc2.top_radius = 0.10
+		hc2.bottom_radius = 0.12
+		hc2.height = 0.16
+		hub.mesh = hc2
 		hub.material_override = GraphicsPolish.pbr_preset(Color(0.15, 0.15, 0.18), "metal")
 		pivot.add_child(hub)
-		hazards.append({"type": "laser", "node": pivot, "center": h["center"],
+		hazards.append({"type": "laser", "node": pivot, "center": hc,
 			"length": length, "speed": float(h["speed"]), "phase": float(h["phase"])})
 
 
@@ -405,12 +441,24 @@ func _move_hazards(delta: float) -> void:
 func _move_puck(delta: float) -> void:
 	puck_vel *= maxf(0.0, 1.0 - 2.0 * delta)
 	var p: Vector3 = puck.position + puck_vel * delta
-	if p.x < -BOUND or p.x > BOUND:
-		puck_vel.x = 0.0
-		p.x = clampf(p.x, -BOUND, BOUND)
-	if p.z < -BOUND or p.z > BOUND:
-		puck_vel.z = 0.0
-		p.z = clampf(p.z, -BOUND, BOUND)
+	if not _room_walls.is_empty():
+		# v0.7.0: the puck stays inside the real room bounds.
+		var b := _room_bounds.grow(-0.15)
+		var cx := clampf(p.x, b.position.x, b.position.x + b.size.x)
+		var cz := clampf(p.z, b.position.y, b.position.y + b.size.y)
+		if cx != p.x:
+			puck_vel.x = 0.0
+		if cz != p.z:
+			puck_vel.z = 0.0
+		p.x = cx
+		p.z = cz
+	else:
+		if p.x < -BOUND or p.x > BOUND:
+			puck_vel.x = 0.0
+			p.x = clampf(p.x, -BOUND, BOUND)
+		if p.z < -BOUND or p.z > BOUND:
+			puck_vel.z = 0.0
+			p.z = clampf(p.z, -BOUND, BOUND)
 	p.y = PLAY_Y
 	puck.position = p
 
@@ -501,3 +549,11 @@ func _restart_all() -> void:
 	freeze_used_total = 0.0
 	_build_level(0)
 	ARUpgradeKit.save_anchor("time-freeze_main", global_transform)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

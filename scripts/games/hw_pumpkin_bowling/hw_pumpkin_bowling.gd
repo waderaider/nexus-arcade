@@ -50,6 +50,15 @@ var strike_player: AudioStreamPlayer = null
 var gutter_player: AudioStreamPlayer = null
 var throw_player: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+var _rack_shift_z := 0.0 # slides the pin rack to the room's far end
+var _pit_node: MeshInstance3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -66,6 +75,47 @@ func _ready() -> void:
 	throw_player = _make_player(_make_tone(430.0, 0.18, 0.4))
 	ARUpgradeKit.apply_anchor(self, "hw_pumpkin_bowling_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -4.0), 3.0)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Run the lane down the room's long axis, and slide the pin rack to
+	# the far end of the real room so throws stay inside the play space.
+	# v0.7.0 furniture morphs: the rug becomes an arcane lane carpet the
+	# lane aligns to, and the door becomes the haunted gate the ghost
+	# pins defend.
+	var along_x := _room_bounds.size.x > _room_bounds.size.y * 1.5
+	var rug_anchors := RoomKit.get_anchors("RUG")
+	if not rug_anchors.is_empty():
+		RoomKit.morph(rug_anchors[0], "arcane")
+		var rs: Vector3 = rug_anchors[0]["extents"]
+		along_x = rs.x > rs.z * 1.5
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+	if along_x:
+		rotation.y = PI * 0.5
+	var gp := global_position
+	var far := _room_bounds.position.y + 0.9
+	var axis_p := gp.z
+	if along_x:
+		far = _room_bounds.position.x + 0.9
+		axis_p = gp.x
+	_rack_shift_z = far - axis_p - HEAD_PIN_Z
+	if _pit_node != null:
+		_pit_node.position.z = HEAD_PIN_Z + _rack_shift_z - 2.6
+	_reset_rack()
+	_ready_ball()
 
 
 func _add_light_rig() -> void:
@@ -194,6 +244,7 @@ func _build_lane() -> void:
 	pit.position = Vector3(0.0, 0.9, -9.6)
 	pit.material_override = GraphicsPolish.pbr(Color(0.05, 0.04, 0.08), 0.0, 0.9)
 	add_child(pit)
+	_pit_node = pit
 	# Floor.
 	var floor_inst := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -287,7 +338,7 @@ func _reset_rack() -> void:
 	for row in range(4):
 		for j in range(row + 1):
 			var x := (float(j) - float(row) * 0.5) * PIN_DX
-			var z := HEAD_PIN_Z - float(row) * PIN_DZ
+			var z := HEAD_PIN_Z + _rack_shift_z - float(row) * PIN_DZ
 			_spawn_ghost(Vector3(x, 0.0, z))
 
 
@@ -480,7 +531,7 @@ func _step_ball(delta: float) -> void:
 
 func _check_throw_end() -> void:
 	var planar := Vector2(ball_vel.x, ball_vel.z).length()
-	if ball.position.z < PAST_PINS_Z or (roll_timer > 1.0 and planar < 0.35):
+	if ball.position.z < PAST_PINS_Z + _rack_shift_z or (roll_timer > 1.0 and planar < 0.35):
 		state = ST_SETTLE
 		settle_timer = 1.4
 
@@ -505,7 +556,7 @@ func _resolve_throw() -> void:
 		var bonus := 50 * strike_combo
 		score += bonus
 		_show_msg("STRIKE x%d! +%d" % [strike_combo, bonus], 2.2)
-		GraphicsPolish.spawn_confetti(self, Vector3(0.0, 1.0, HEAD_PIN_Z), 70)
+		GraphicsPolish.spawn_confetti(self, Vector3(0.0, 1.0, HEAD_PIN_Z + _rack_shift_z), 70)
 		strike_player.play()
 	elif knocked > 0:
 		strike_combo = 0

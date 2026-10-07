@@ -22,6 +22,11 @@ var _button_actions := {} ## StaticBody3D -> String
 var _rng := RandomNumberGenerator.new()
 var _anchor_timer := 0.0
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	_rng.randomize()
@@ -37,6 +42,42 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.apply_anchor(self, "zero-g-sandbox_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 2.5, 0), 3.0, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the TV becomes the scifi mission-briefing screen for the sandbox.
+	var _morph_tv := RoomKit.get_anchors("TV")
+	if not _morph_tv.is_empty():
+		RoomKit.morph(_morph_tv[0], "scifi")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	var bx := _room_bounds.position.x
+	var bz := _room_bounds.position.y
+	var sx := _room_bounds.size.x
+	var sz := _room_bounds.size.y
+	# Pull any out-of-bounds bodies back into the real room footprint.
+	for b in _bodies:
+		if is_instance_valid(b):
+			var p: Vector3 = (b as RigidBody3D).global_position
+			p.x = clampf(p.x, bx + 0.5, bx + sx - 0.5)
+			p.z = clampf(p.z, bz + 0.5, bz + sz - 0.5)
+			(b as RigidBody3D).global_position = p
+	# Keep the button row + HUD inside the room.
+	var zrow := clampf(-3.5, bz + 0.8, bz + sz - 0.8)
+	for child in get_children():
+		var n3 := child as Node3D
+		if n3 != null and n3.name.begins_with("Btn_"):
+			n3.position = Vector3(
+				clampf(n3.position.x, bx + 1.0, bx + sx - 1.0), n3.position.y, zrow)
+	if _hud != null:
+		_hud.position = Vector3(bx + sx * 0.5, 4.6, zrow)
 
 
 func _process(delta: float) -> void:
@@ -156,7 +197,12 @@ func _spawn_object() -> void:
 		cs.shape = ss
 	rb.add_child(mi)
 	rb.add_child(cs)
-	rb.position = ARUpgradeKit.clamp_to_room(Vector3(_rng.randf_range(-2.5, 2.5), _rng.randf_range(2.0, 5.0), _rng.randf_range(-2.5, 2.5)))
+	# Spawn inside the real room footprint when roomscale data is available.
+	var spawn_x := _rng.randf_range(_room_bounds.position.x + 0.6,
+		_room_bounds.position.x + _room_bounds.size.x - 0.6)
+	var spawn_z := _rng.randf_range(_room_bounds.position.y + 0.6,
+		_room_bounds.position.y + _room_bounds.size.y - 0.6)
+	rb.position = Vector3(spawn_x, _rng.randf_range(2.0, 5.0), spawn_z)
 	rb.set_meta("mesh", mi)
 	rb.set_meta("base_color", base)
 	rb.gravity_scale = 0.0 if _zero_g else 1.0

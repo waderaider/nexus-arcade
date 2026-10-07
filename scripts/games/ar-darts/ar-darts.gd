@@ -49,6 +49,12 @@ var hud_label: Label3D = null
 var msg_label: Label3D = null
 var help_label: Label3D = null
 var pulse_t := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _board_pos: Vector3 = BOARD_POS
+var _throw_pos := Vector3(0.35, 1.15, 0.9)
 
 
 func _ready() -> void:
@@ -60,6 +66,7 @@ func _ready() -> void:
 	_build_held_dart()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.0), 2.0, 30)
+	_apply_room_layout() # v0.7.0: board on a real wall, throw from room center
 
 
 func _ensure_camera() -> void:
@@ -178,9 +185,14 @@ func _make_dart_mesh() -> MeshInstance3D:
 
 func _build_held_dart() -> void:
 	held_dart = _make_dart_mesh()
-	held_dart.position = Vector3(0.35, 1.15, 0.9)
-	held_dart.rotation_degrees = Vector3(-70, 0, 0)
+	_reset_held_dart()
 	add_child(held_dart)
+
+
+func _reset_held_dart() -> void:
+	held_dart.visible = true
+	held_dart.position = _throw_pos
+	held_dart.rotation_degrees = Vector3(-70, 0, 0)
 
 
 func _build_hud() -> void:
@@ -290,11 +302,11 @@ func _process(delta: float) -> void:
 		elif not pinching and prev_pinch and xr_grab:
 			xr_grab = false
 			if xr_pointer_vel.length() > 1.6:
-				var to_board: Vector3 = (BOARD_POS - pp).normalized()
+				var to_board: Vector3 = (_board_pos - pp).normalized()
 				var vel: Vector3 = to_board * xr_pointer_vel.length() * 0.9 + xr_pointer_vel * 0.35
 				_launch_dart(pp, vel)
 			else:
-				held_dart.position = Vector3(0.35, 1.15, 0.9)
+				_reset_held_dart()
 		prev_pinch = pinching
 	if dart_flying:
 		_move_dart(delta)
@@ -310,7 +322,7 @@ func _move_dart(delta: float) -> void:
 		var dir: Vector3 = dart_vel.normalized()
 		dart_mesh_fly.global_transform.basis = Basis.looking_at(dir, Vector3.UP)
 	# Crossed the board plane?
-	var board_z := BOARD_POS.z
+	var board_z := _board_pos.z
 	if prev_z > board_z and dart_pos.z <= board_z:
 		_resolve_hit(dart_pos)
 		return
@@ -379,9 +391,7 @@ func _resolve_hit(pos: Vector3, floor_hit: bool = false) -> void:
 		_game_over()
 	else:
 		round_num = darts_thrown / DARTS_PER_ROUND + 1
-		held_dart.visible = true
-		held_dart.position = Vector3(0.35, 1.15, 0.9)
-		held_dart.rotation_degrees = Vector3(-70, 0, 0)
+		_reset_held_dart()
 	_update_hud()
 
 
@@ -409,7 +419,49 @@ func _restart() -> void:
 	if dart_mesh_fly != null and is_instance_valid(dart_mesh_fly):
 		dart_mesh_fly.queue_free()
 		dart_mesh_fly = null
-	held_dart.visible = true
-	held_dart.position = Vector3(0.35, 1.15, 0.9)
+	_reset_held_dart()
 	_set_msg("", 0.0)
 	_update_hud()
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# Mount the dartboard on the wall the player faces (normal ~ +Z).
+	var best: Dictionary = {}
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var n: Vector3 = (w["normal"] as Vector3).normalized()
+		if n.z < 0.5:
+			continue
+		if best.is_empty() or (w["position"] as Vector3).z < (best["position"] as Vector3).z:
+			best = w
+	if not best.is_empty():
+		var wp: Vector3 = best["position"]
+		var wn: Vector3 = (best["normal"] as Vector3).normalized()
+		var wsize: Vector2 = best["size"]
+		var half_w := maxf(wsize.x * 0.5 - 0.7, 0.0)
+		var bx := clampf(0.0, wp.x - half_w, wp.x + half_w)
+		var by := clampf(1.75, wp.y - wsize.y * 0.5 + 0.6, wp.y + wsize.y * 0.5 - 0.6)
+		_board_pos = Vector3(bx, by, wp.z + wn.z * 0.05)
+		board.position = to_local(_board_pos)
+		if camera != null:
+			camera.look_at(_board_pos, Vector3.UP)
+	# The player throws from the room center.
+	var c := _room_bounds.get_center()
+	_throw_pos = Vector3(c.x, 1.15, c.y)
+	if not dart_flying:
+		_reset_held_dart()
+	# v0.7.0 MORPH: TV becomes the live neon scoreboard beside the board.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tvs := RoomKit.get_anchors("TV")
+		if not _morph_tvs.is_empty():
+			RoomKit.morph(_morph_tvs[0], "neon")

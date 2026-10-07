@@ -12,6 +12,20 @@ var club: GolfClub
 var strokes := 0
 var _hole_in_one_pending := false
 var _anchor_timer := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+# Course visual refs, so the hole can be re-seated on open floor.
+var _green_node: MeshInstance3D = null
+var _cup_node: MeshInstance3D = null
+var _pole_node: MeshInstance3D = null
+var _flag_node: MeshInstance3D = null
+var _tee_node: MeshInstance3D = null
+var _well_node: Node3D = null
+var _portals_node: Node3D = null
+var _obstacle_nodes: Array = []
 
 func _ready() -> void:
 	_setup_hole()
@@ -24,6 +38,7 @@ func _ready() -> void:
 	_setup_ui()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 0.6, -0.1), 2.5, 30)
 	ARUpgradeKit.apply_anchor(self, "golf_main")
+	_apply_room_layout() # v0.7.0: seat the hole on open floor, cache walls
 
 func _add_polish_light_rig() -> void:
 	for c in get_children():
@@ -40,6 +55,7 @@ func _process(delta: float) -> void:
 	# XR hand putt: pinch near the ball putts it toward the cup (mouse/club swing still works).
 	if ARUpgradeKit.is_xr_active() and ARUpgradeKit.pinch_just_pressed(self, ARUpgradeKit.HAND_RIGHT):
 		_try_pinch_putt()
+	_room_bounce_ball() # v0.7.0: real wall planes stop the ball leaving the room
 
 func _try_pinch_putt() -> void:
 	if ball == null or not is_instance_valid(ball) or ball.is_holed:
@@ -77,6 +93,7 @@ func _build_course_visuals() -> void:
 	green.material_override = gmat
 	green.position = Vector3(0, -0.05, -0.1)
 	add_child(green)
+	_green_node = green
 
 	# Cup: dark cylinder hole marker + rim.
 	var cup := MeshInstance3D.new()
@@ -89,6 +106,7 @@ func _build_course_visuals() -> void:
 	cup.material_override = cmat
 	cup.position = Vector3(hole_data.cup_pos.x, 0.005, hole_data.cup_pos.z)
 	add_child(cup)
+	_cup_node = cup
 
 	# Flag pole.
 	var pole := MeshInstance3D.new()
@@ -101,6 +119,7 @@ func _build_course_visuals() -> void:
 	pole.material_override = pmat
 	pole.position = Vector3(hole_data.cup_pos.x, 0.4, hole_data.cup_pos.z)
 	add_child(pole)
+	_pole_node = pole
 
 	var flag := MeshInstance3D.new()
 	var fbox := BoxMesh.new()
@@ -110,6 +129,7 @@ func _build_course_visuals() -> void:
 	flag.material_override = fmat
 	flag.position = Vector3(hole_data.cup_pos.x + 0.13, 0.72, hole_data.cup_pos.z)
 	add_child(flag)
+	_flag_node = flag
 
 	# Tee marker.
 	var tee := MeshInstance3D.new()
@@ -122,6 +142,7 @@ func _build_course_visuals() -> void:
 	tee.material_override = tmat
 	tee.position = Vector3(hole_data.tee_pos.x, 0.005, hole_data.tee_pos.z)
 	add_child(tee)
+	_tee_node = tee
 
 	# Obstacle visual.
 	for ob in hole_data.obstacles:
@@ -133,6 +154,7 @@ func _build_course_visuals() -> void:
 		m.material_override = omat
 		m.position = ob.get_center()
 		add_child(m)
+		_obstacle_nodes.append(m)
 
 	# Gravity well.
 	var well := GravityWell.new()
@@ -140,11 +162,13 @@ func _build_course_visuals() -> void:
 	well.radius = 0.8
 	well.strength = 2.5
 	add_child(well)
+	_well_node = well
 	hole_data.wells.append(well)
 
 	# Portals.
 	var portals := PortalPair.new()
 	add_child(portals)
+	_portals_node = portals
 	hole_data.portals = portals
 
 func _setup_ball() -> void:
@@ -220,3 +244,111 @@ func _update_stroke_label() -> void:
 	var label := get_node_or_null("StrokeLabel") as Label3D
 	if label:
 		label.text = "Strokes: %d" % strokes
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Seat the hole on open floor inside the room, keeping its shape.
+	var cup_xz := Vector2(hole_data.cup_pos.x, hole_data.cup_pos.z)
+	var shift := Vector3(_open_floor_spot(cup_xz).x - cup_xz.x, 0.0, _open_floor_spot(cup_xz).y - cup_xz.y)
+	# Keep the whole play rect inside the room bounds.
+	var r := hole_data.play_rect
+	r.position += Vector2(shift.x, shift.z)
+	var fix := Vector2.ZERO
+	if r.position.x < _room_bounds.position.x:
+		fix.x = _room_bounds.position.x - r.position.x
+	elif r.end.x > _room_bounds.end.x:
+		fix.x = _room_bounds.end.x - r.end.x
+	if r.position.y < _room_bounds.position.y:
+		fix.y = _room_bounds.position.y - r.position.y
+	elif r.end.y > _room_bounds.end.y:
+		fix.y = _room_bounds.end.y - r.end.y
+	shift += Vector3(fix.x, 0.0, fix.y)
+	if shift.length() > 0.01:
+		hole_data.cup_pos += shift
+		hole_data.tee_pos += shift
+		hole_data.play_rect.position += Vector2(shift.x, shift.z)
+		for i in hole_data.obstacles.size():
+			var ob: AABB = hole_data.obstacles[i]
+			ob.position += shift
+			hole_data.obstacles[i] = ob
+		for n in [_green_node, _cup_node, _pole_node, _flag_node, _tee_node, _well_node, _portals_node] + _obstacle_nodes:
+			if n != null and is_instance_valid(n):
+				(n as Node3D).position += shift
+	# Real furniture becomes extra hole obstacles (resolved by GolfBall).
+	for f_v in _room_furniture:
+		if hole_data.obstacles.size() >= 8:
+			break
+		var f: Dictionary = f_v
+		var c: Vector3 = f["position"]
+		var s: Vector3 = f["size"]
+		var aabb := AABB(c - s * 0.5, s)
+		if aabb.has_point(hole_data.cup_pos) or aabb.has_point(hole_data.tee_pos):
+			continue
+		hole_data.obstacles.append(aabb)
+		var m := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = s
+		m.mesh = b
+		m.material_override = GraphicsPolish.pbr_preset(Color(0.45, 0.32, 0.22), "plastic")
+		m.position = c
+		add_child(m)
+		_obstacle_nodes.append(m)
+	# v0.7.0 MORPH: rug becomes the enchanted fairway green (magic circle + glade glow).
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_rugs := RoomKit.get_anchors("RUG")
+		if not _morph_rugs.is_empty():
+			RoomKit.morph(_morph_rugs[0], "nature")
+
+
+## Open floor point near `want`: clamped to the room, nudged out of furniture.
+func _open_floor_spot(want: Vector2) -> Vector2:
+	var p := want
+	p.x = clampf(p.x, _room_bounds.position.x + 0.6, _room_bounds.end.x - 0.6)
+	p.y = clampf(p.y, _room_bounds.position.y + 0.6, _room_bounds.end.y - 0.6)
+	for f_v in _room_furniture:
+		var f: Dictionary = f_v
+		var c: Vector3 = f["position"]
+		var s: Vector3 = f["size"]
+		var hx := s.x * 0.5 + 0.6
+		var hz := s.z * 0.5 + 0.6
+		var dx := p.x - c.x
+		var dz := p.y - c.z
+		if absf(dx) < hx and absf(dz) < hz:
+			if hx - absf(dx) < hz - absf(dz):
+				p.x = c.x + (hx if dx >= 0.0 else -hx)
+			else:
+				p.y = c.z + (hz if dz >= 0.0 else -hz)
+			p.x = clampf(p.x, _room_bounds.position.x + 0.6, _room_bounds.end.x - 0.6)
+			p.y = clampf(p.y, _room_bounds.position.y + 0.6, _room_bounds.end.y - 0.6)
+	return p
+
+
+## Normal-sign agnostic wall reflection (world space).
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
+
+func _room_bounce_ball() -> void:
+	if _room_walls.is_empty():
+		return
+	if ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	var wvel: Vector3 = global_transform.basis * ball.velocity
+	wvel = _bounce_walls(ball.global_position, wvel, hole_data.ball_radius)
+	ball.velocity = global_transform.basis.inverse() * wvel

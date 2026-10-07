@@ -52,9 +52,16 @@ var hud_label: Label3D = null
 var song_label: Label3D = null
 var help_label: Label3D = null
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _room_anchored := false
+
 
 func _ready() -> void:
-	ARUpgradeKit.apply_anchor(self, "holo-theremin_main")
+	_room_anchored = ARUpgradeKit.apply_anchor(self, "holo-theremin_main")
 	_build_camera()
 	_build_environment()
 	GraphicsPolish.make_light_rig(self)
@@ -63,6 +70,7 @@ func _ready() -> void:
 	_build_audio()
 	_build_ui()
 	GraphicsPolish.spawn_ambient_motes(self, CENTER + Vector3(0, 1.2, 0), 2.0, 30)
+	_apply_room_layout()
 
 
 func _build_camera() -> void:
@@ -335,3 +343,52 @@ func _update_ui() -> void:
 	hud_label.text = "HOLO THEREMIN\nWave: %s\nPitch: %.0f Hz (%s)\nVol: [%s]" % [
 		WAVE_NAMES[wave_idx], freq, _note_name(freq), bar]
 	song_label.text = "%s\n\nMatched: %d\nSongs: %d" % [_song_text(), score, songs_done]
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the rug is the neon performance arena; lamps become arcane lanterns framing the player.
+	var _morph0_rug := RoomKit.get_anchors("RUG")
+	if not _morph0_rug.is_empty():
+		RoomKit.morph(_morph0_rug[0], "neon")
+	var _morph1_lamp := RoomKit.get_anchors("LAMP")
+	if not _morph1_lamp.is_empty():
+		RoomKit.morph(_morph1_lamp[0], "arcane")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Center the play field on the real room floor (skip a restored anchor).
+	if not _room_anchored:
+		var rc := _room_bounds.get_center()
+		var cur: Vector3 = global_transform * Vector3(CENTER.x, 0.0, CENTER.z)
+		global_position += Vector3(rc.x - cur.x, 0.0, rc.y - cur.z)
+	# Frame the play field with glowing markers at the two largest walls.
+	var walls := _room_walls_by_area()
+	for i in mini(2, walls.size()):
+		var w: Dictionary = walls[i]
+		var wp: Vector3 = w["position"]
+		var n: Vector3 = w["normal"]
+		var m := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.08
+		sm.height = 0.16
+		m.mesh = sm
+		m.material_override = GraphicsPolish.glow(Color(0.5, 0.5, 0.9), 1.6)
+		m.position = to_local(Vector3(wp.x, 0.12, wp.z) + n * 0.45)
+		add_child(m)
+
+
+## RoomKit: walls sorted by face area, largest first.
+func _room_walls_by_area() -> Array:
+	var walls := _room_walls.duplicate()
+	walls.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var sa: Vector2 = a["size"]
+		var sb: Vector2 = b["size"]
+		return sa.x * sa.y > sb.x * sb.y)
+	return walls

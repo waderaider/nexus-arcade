@@ -33,6 +33,12 @@ var _audio_player: AudioStreamPlayer = null
 var _audio_gen: AudioStreamGenerator = null
 const AUDIO_RATE := 22050
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "air-drums_main")
@@ -44,6 +50,49 @@ func _ready() -> void:
 	_setup_audio()
 	_new_pattern()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, -0.6), 2.5, 40)
+	_apply_room_layout()
+
+
+## v0.7.0: arrange the drum kit around the largest real table (else the
+## room center); pattern/message HUD follows the kit. Guarded; fallback
+## keeps the default arc layout.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> neon drum-rig stage (kit already seats on the big table)
+	_morph_anchors("TABLE", "neon", 1)
+	var cx := 0.0
+	var cz := -0.9
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			var lp: Vector3 = to_local(t["position"])
+			cx = lp.x
+			cz = lp.z
+	if best_a <= 0.0:
+		var c := _room_bounds.get_center()
+		var lc: Vector3 = to_local(Vector3(c.x, 0.0, c.y))
+		cx = lc.x
+		cz = lc.z
+	var delta := Vector3(cx, 0.0, cz) - Vector3(0.0, 0.0, -0.9)
+	for d_v in drums:
+		var d: Dictionary = d_v
+		d["pos"] = (d["pos"] as Vector3) + delta
+		(d["node"] as Node3D).position += delta
+	if pattern_label != null:
+		pattern_label.position += delta
+	if msg_label != null:
+		msg_label.position += delta
 
 
 func _process(delta: float) -> void:
@@ -383,3 +432,11 @@ func _make_noise_samples(dur: float, volume: float) -> PackedFloat32Array:
 		var env := exp(-t * 7.0)
 		samples[i] = clampf((rng.randf() * 2.0 - 1.0) * env * volume, -1.0, 1.0)
 	return samples
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

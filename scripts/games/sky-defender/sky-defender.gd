@@ -40,6 +40,13 @@ var wave_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _click_consumed := false
 
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -55,6 +62,50 @@ func _ready() -> void:
 	_start_wave()
 	ARUpgradeKit.apply_anchor(self, "sky-defender_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 2.0, 0.0), 4.0)
+	_apply_room_layout() # v0.7.0: drones come from real walls, AA gun sits on furniture (no-op w/o room data).
+
+
+func _room_center3() -> Vector3:
+	var c := _room_bounds.get_center()
+	return Vector3(c.x, 0.0, c.y)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_ready = true
+	# AA position: mount the turret on the largest table/furniture top.
+	var best: Dictionary = {}
+	var best_a := 0.0
+	for t_v in _room_tables + _room_furniture:
+		var t: Dictionary = t_v
+		var s: Vector3 = t["size"]
+		if s.x * s.z > best_a:
+			best_a = s.x * s.z
+			best = t
+	if not best.is_empty():
+		var top: Vector3 = (best["position"] as Vector3) + Vector3(0, (best["size"] as Vector3).y * 0.5, 0)
+		muzzle = to_local(top + Vector3(0, 0.35, 0))
+		var tur := MeshInstance3D.new()
+		var tb := BoxMesh.new()
+		tb.size = Vector3(0.3, 0.25, 0.3)
+		tur.mesh = tb
+		tur.material_override = _mat(Color(0.2, 0.5, 0.8), 1.2, true)
+		tur.position = muzzle + Vector3(0, -0.3, 0)
+		add_child(tur)
+	# v0.7.0 MORPH: the table the turret sits on becomes the AA battery platform.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tables := RoomKit.get_anchors("TABLE")
+		if not _morph_tables.is_empty():
+			RoomKit.morph(_morph_tables[0], "scifi")
 
 
 func _add_light_rig() -> void:
@@ -243,9 +294,27 @@ func _update_spawning(delta: float) -> void:
 
 
 func _spawn_drone() -> void:
-	var side := 1.0 if randf() < 0.5 else -1.0
+	# Drones stream in from real wall faces toward the room center; without
+	# room data they cross the default arena edge-to-edge as before.
+	var speed := _wave_speed() + randf() * 0.4
+	var start: Vector3
+	var vel: Vector3
+	if _room_ready and not _room_walls.is_empty():
+		var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+		var inward: Vector3 = _room_center3() - (w["position"] as Vector3)
+		inward.y = 0.0
+		start = to_local((w["position"] as Vector3) + inward.normalized() * 0.5)
+		start += Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0))
+		start.y = randf_range(0.9, 2.9)
+		var dir: Vector3 = _room_center3() - start
+		dir.y = 0.0
+		vel = dir.normalized() * speed
+	else:
+		var side := 1.0 if randf() < 0.5 else -1.0
+		start = Vector3(side * (BOUND + 0.6), randf_range(0.9, 2.9), randf_range(-5.5, 1.5))
+		vel = Vector3(-side * speed, 0.0, 0.0)
 	var root := Node3D.new()
-	root.position = ARUpgradeKit.clamp_to_room(Vector3(side * (BOUND + 0.6), randf_range(0.9, 2.9), randf_range(-5.5, 1.5)))
+	root.position = ARUpgradeKit.clamp_to_room(start)
 	# Dark boxy body.
 	var body := MeshInstance3D.new()
 	var bbox := BoxMesh.new()
@@ -276,10 +345,9 @@ func _spawn_drone() -> void:
 	lamp.material_override = _mat(Color(1.0, 0.15, 0.15), 2.5, true)
 	root.add_child(lamp)
 	add_child(root)
-	var speed := _wave_speed() + randf() * 0.4
 	drones.append({
 		"root": root, "rotor": rotor,
-		"vel": Vector3(-side * speed, 0.0, 0.0),
+		"vel": vel,
 		"bob": randf() * TAU,
 	})
 
@@ -300,8 +368,13 @@ func _step_drones(delta: float) -> void:
 		var rotor: MeshInstance3D = d["rotor"]
 		if is_instance_valid(rotor):
 			rotor.rotate_y(delta * 22.0)
-		# Reached the opposite wall: the city takes a hit.
-		if (vel.x > 0.0 and root.position.x > BOUND + 0.5) or (vel.x < 0.0 and root.position.x < -BOUND - 0.5):
+		# Reached the opposite wall: the city takes a hit. With room data the
+		# drone counts as through once it leaves the real room floor extents.
+		var crossed := (vel.x > 0.0 and root.position.x > BOUND + 0.5) or (vel.x < 0.0 and root.position.x < -BOUND - 0.5)
+		if _room_ready:
+			var dw := to_global(root.position)
+			crossed = not _room_bounds.grow(0.6).has_point(Vector2(dw.x, dw.z))
+		if crossed:
 			root.queue_free()
 			drones.remove_at(i)
 			_city_hit()

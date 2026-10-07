@@ -47,6 +47,10 @@ var prev_r := Vector3.ZERO
 var punch_cd_l := 0.0
 var punch_cd_r := 0.0
 var orb_colors := [Color(1.0, 0.4, 0.4), Color(0.4, 1.0, 0.6), Color(0.4, 0.7, 1.0), Color(1.0, 0.9, 0.3)]
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -58,6 +62,7 @@ func _ready() -> void:
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -3.0), 2.5, 40)
 	_reset()
+	_apply_room_layout() # v0.7.0: orbs fly in from real wall faces
 
 
 func _ensure_camera() -> void:
@@ -217,7 +222,33 @@ func _on_beat() -> void:
 
 func _spawn_orb() -> void:
 	var travel := TRAVEL_BEATS * beat_interval
-	var speed := (HIT_Z - SPAWN_Z) / travel
+	# Punch lane target (what the hit test uses).
+	var tx := randf_range(-1.0, 1.0)
+	var ty := randf_range(1.1, 1.7)
+	var sx := tx
+	var sy := ty
+	var sz := SPAWN_Z
+	# v0.7.0: fly in from a random wall face the player looks at.
+	if not _room_walls.is_empty():
+		var cands: Array = []
+		for w_v in _room_walls:
+			var w: Dictionary = w_v
+			if (w["normal"] as Vector3).normalized().z > 0.5:
+				cands.append(w)
+		if not cands.is_empty():
+			var w: Dictionary = cands[randi() % cands.size()]
+			var wp: Vector3 = w["position"]
+			var wn: Vector3 = (w["normal"] as Vector3).normalized()
+			var wsize: Vector2 = w["size"]
+			var tangent: Vector3 = wn.cross(Vector3.UP)
+			tangent = tangent.normalized() if tangent.length() > 0.01 else Vector3.RIGHT
+			var flat_n := Vector3(wn.x, 0.0, wn.z).normalized()
+			var sp: Vector3 = wp + tangent * randf_range(-1.0, 1.0) * maxf(wsize.x * 0.5 - 0.4, 0.1) + flat_n * 0.3
+			if sp.z < HIT_Z - 0.6:
+				sx = sp.x
+				sy = clampf(sp.y, 1.0, 1.9)
+				sz = sp.z
+	var speed := (HIT_Z - sz) / travel
 	var col: Color = orb_colors[beats % orb_colors.size()]
 	var node := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -225,7 +256,7 @@ func _spawn_orb() -> void:
 	sm.height = ORB_R * 2.0
 	node.mesh = sm
 	node.material_override = GraphicsPolish.glow(col, 2.0)
-	node.position = Vector3(randf_range(-1.0, 1.0), randf_range(1.1, 1.7), SPAWN_Z)
+	node.position = Vector3(sx, sy, sz)
 	node.add_child(GraphicsPolish.make_trail(col, 0.08))
 	add_child(node)
 	orbs.append({
@@ -233,8 +264,12 @@ func _spawn_orb() -> void:
 		"speed": speed,
 		"arrival": elapsed + travel,
 		"hit": false,
-		"x": node.position.x,
-		"y": node.position.y,
+		"x": tx,
+		"y": ty,
+		"sx": sx,
+		"sy": sy,
+		"t0": elapsed,
+		"travel": travel,
 	})
 
 
@@ -246,6 +281,11 @@ func _update_orbs(delta: float) -> void:
 			orbs.remove_at(i)
 			continue
 		node.position.z += float(o["speed"]) * delta
+		# Converge from the wall spawn point onto the punch lane.
+		if o.has("t0"):
+			var k := clampf((elapsed - float(o["t0"])) / float(o["travel"]), 0.0, 1.0)
+			node.position.x = lerpf(float(o["sx"]), float(o["x"]), k)
+			node.position.y = lerpf(float(o["sy"]), float(o["y"]), k)
 		if not bool(o["hit"]) and elapsed > float(o["arrival"]) + GOOD_WINDOW:
 			_register_miss(o)
 			node.queue_free()
@@ -352,3 +392,23 @@ func _register_miss(o: Dictionary) -> void:
 		state = "gameover"
 		hud_msg.text = "GAME OVER - Score %d  Max combo x%d  (R to retry)" % [score, max_combo]
 		ARUpgradeKit.save_anchor("rhythm-boxer_main", global_transform)
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# Orbs spawn from wall faces (picked per-orb in _spawn_orb); nothing else
+	# moves: the hit zone and HUD keep their default floating-arena layout.
+	# v0.7.0 MORPH: rug becomes the neon boxing-ring canvas.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_rugs := RoomKit.get_anchors("RUG")
+		if not _morph_rugs.is_empty():
+			RoomKit.morph(_morph_rugs[0], "neon")

@@ -42,6 +42,78 @@ var log_pearls_total := 0
 var log_best := 0
 var log_opened: Array = []
 
+# v0.7.0 RoomKit: the room volume is the dive space — treasure chests hide
+# behind real furniture cuboids and air vents sit at real wall bases.
+# Cached; the default layout is untouched without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): storage -> sunken treasure vault (source of the hidden chests)
+	_morph_anchors("STORAGE", "underwater", 1)
+	_room_hide_treasures()
+	_room_place_vents()
+
+
+## Tuck unopened treasure chests behind real furniture/table cuboids
+## (hidden from the room center); extras spread across the room bounds.
+func _room_hide_treasures() -> void:
+	var c := Vector2(_room_bounds.get_center().x, _room_bounds.get_center().y)
+	var half := _room_bounds.size * 0.5
+	var cuboids := _room_tables + _room_furniture
+	var idx := 0
+	for ch in chests:
+		if bool(ch["opened"]):
+			idx += 1
+			continue
+		var node: Node3D = ch["node"]
+		var spot := Vector3.ZERO
+		if idx < cuboids.size():
+			var f: Dictionary = cuboids[idx]
+			var fp: Vector3 = f["position"]
+			var fs: Vector3 = f["size"]
+			var away := Vector2(fp.x - c.x, fp.z - c.y)
+			if away.length() < 0.01:
+				away = Vector2(0, 1)
+			away = away.normalized()
+			spot = Vector3(fp.x + away.x * (fs.x * 0.5 + 0.35), 0.0, fp.z + away.y * (fs.z * 0.5 + 0.35))
+			spot.y = clampf(fp.y + 0.15, 0.28, 1.3)
+		else:
+			var ang := randf() * TAU
+			var r := minf(half.x, half.y) * 0.6
+			spot = Vector3(c.x + cos(ang) * r, randf_range(0.28, 1.1), c.y + sin(ang) * r)
+		node.position = to_local(spot)
+		ch["pos"] = spot
+		idx += 1
+
+
+## Air vents bubble up at the bases of real walls.
+func _room_place_vents() -> void:
+	var c := Vector3(_room_bounds.get_center().x, 0.0, _room_bounds.get_center().y)
+	for i in range(mini(vents.size(), _room_walls.size())):
+		var w: Dictionary = _room_walls[i]
+		var n: Vector3 = w["normal"]
+		var side := signf((c - w["position"]).dot(n))
+		if side == 0.0:
+			side = 1.0
+		var spot: Vector3 = w["position"] + n * side * 0.7
+		spot.y = 0.0
+		var node: Node3D = vents[i]["node"]
+		node.position = to_local(spot)
+		vents[i]["pos"] = spot
+
 # Desktop input.
 var dragging := false
 var drag_start := Vector2.ZERO
@@ -121,6 +193,7 @@ func _ready() -> void:
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, 0.0), 2.5, 60)
 	_set_msg("DIVE START — find 5 treasure chests", 3.0)
+	_apply_room_layout()
 
 
 func _ensure_camera() -> void:
@@ -1007,3 +1080,11 @@ func _save_log() -> void:
 	cfg.set_value("dive", "best_pearls", log_best)
 	cfg.set_value("dive", "chests_opened", opened)
 	cfg.save(DIVE_FILE)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

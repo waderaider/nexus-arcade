@@ -113,6 +113,13 @@ var match_correct := 0
 var match_symbols := ["▲", "●", "■", "★"]
 var feed_t := 0.0
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _tank_roots: Array = []
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -129,6 +136,69 @@ func _ready() -> void:
 	_build_lever()
 	_build_hud()
 	_update_hud()
+	_apply_room_layout()
+
+
+## v0.7.0: specimen tanks rest on the largest real table; a containment
+## field shimmers on the largest real wall. Guarded; fallback keeps the
+## default lab layout.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> lab workbench under the specimen tanks
+	_morph_anchors("TABLE", "scifi", 1)
+	var best := {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best = t
+	if not best.is_empty() and not _tank_roots.is_empty():
+		var tp: Vector3 = best["position"]
+		var top_y: float = tp.y + (best["size"] as Vector3).y * 0.5
+		for i in _tank_roots.size():
+			var off := Vector3(-0.5 if i % 2 == 0 else 0.5, 0, 0)
+			(_tank_roots[i] as Node3D).position = to_local(Vector3(tp.x, top_y, tp.z) + off)
+	var bw := {}
+	var ba := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var wa: float = (w["size"] as Vector2).x * (w["size"] as Vector2).y
+		if wa > ba:
+			ba = wa
+			bw = w
+	if not bw.is_empty():
+		var n: Vector3 = bw["normal"]
+		n.y = 0.0
+		n = n.normalized() if n.length() > 0.01 else Vector3(0, 0, 1)
+		var fw: Vector3 = (bw["position"] as Vector3) + n * 0.07
+		fw.y = 1.5
+		var field := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(1.7, 1.7)
+		field.mesh = pm
+		var fmat := GraphicsPolish.glow(Color(0.2, 0.9, 1.0), 1.3)
+		fmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		fmat.albedo_color.a = 0.35
+		field.material_override = fmat
+		add_child(field)
+		field.position = to_local(fw)
+		var c := _room_bounds.get_center()
+		var d := Vector2(c.x - fw.x, c.y - fw.z)
+		field.rotation.y = atan2(d.x, d.y) if d.length() > 0.05 else 0.0
+		var fl := _lbl("SPECIMEN CONTAINMENT", 36, Color(0.5, 0.95, 1.0), Vector3.ZERO, 0.005)
+		add_child(fl)
+		fl.position = to_local(fw + Vector3(0, 1.05, 0))
+		fl.rotation.y = field.rotation.y
 
 
 func _ensure_camera() -> void:
@@ -392,19 +462,23 @@ func _build_lab_dressing() -> void:
 
 
 func _add_tank(pos: Vector3, model: String, liquid_color: Color) -> void:
+	# v0.7.0: the whole tank is one movable group so RoomKit can rest it on a real table.
+	var root := Node3D.new()
+	root.position = pos
+	add_child(root)
+	_tank_roots.append(root)
 	var tank := _load_model(model)
 	if tank != null:
-		tank.position = pos
 		tank.scale = Vector3.ONE * 1.1
-		add_child(tank)
+		root.add_child(tank)
 	# Glowing liquid core + rising bubbles.
-	var liquid := _cyl(0.3, 0.24, 0.55, GraphicsPolish.glow(liquid_color, 1.4), pos + Vector3(0, 0.55, 0))
-	add_child(liquid)
+	var liquid := _cyl(0.3, 0.24, 0.55, GraphicsPolish.glow(liquid_color, 1.4), Vector3(0, 0.55, 0))
+	root.add_child(liquid)
 	var bub := GPUParticles3D.new()
 	bub.amount = 22
 	bub.lifetime = 2.2
 	bub.preprocess = 2.2
-	bub.position = pos + Vector3(0, 0.35, 0)
+	bub.position = Vector3(0, 0.35, 0)
 	var pm := ParticleProcessMaterial.new()
 	pm.direction = Vector3(0, 1, 0)
 	pm.spread = 12.0
@@ -419,13 +493,13 @@ func _add_tank(pos: Vector3, model: String, liquid_color: Color) -> void:
 	dot.radius = 0.03
 	dot.height = 0.06
 	bub.draw_pass_1 = dot
-	add_child(bub)
+	root.add_child(bub)
 	bubble_nodes.append(bub)
-	GraphicsPolish.make_point_light(self, pos + Vector3(0, 1.0, 0), liquid_color, 0.9, 3.5)
+	GraphicsPolish.make_point_light(root, Vector3(0, 1.0, 0), liquid_color, 0.9, 3.5)
 	# A preserved specimen silhouette floating inside.
-	var spec := _sph(0.12, GraphicsPolish.pbr(Color(0.2, 0.5, 0.35), 0.0, 0.7), pos + Vector3(0, 0.62, 0))
+	var spec := _sph(0.12, GraphicsPolish.pbr(Color(0.2, 0.5, 0.35), 0.0, 0.7), Vector3(0, 0.62, 0))
 	spec.scale = Vector3(1.0, 1.5, 1.0)
-	add_child(spec)
+	root.add_child(spec)
 
 
 func _add_pipe(model: String, pos: Vector3, yaw: float) -> void:
@@ -1724,3 +1798,11 @@ func _update_charge_bar() -> void:
 			mat.emission = Color(1.0, 0.8, 0.2)
 		else:
 			mat.emission = Color(0.3, 1.0, 0.4)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

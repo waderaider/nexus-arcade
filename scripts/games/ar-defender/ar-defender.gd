@@ -43,6 +43,14 @@ var _help_label: Label3D
 var _msg_timer := 0.0
 var _anchor_timer := 0.0
 
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
+var _path_nodes: Array = [] # path strips + spawn portal, for room-layout shifts
+
 var _tower_base_mesh: CylinderMesh
 var _tower_head_mesh: BoxMesh
 var _tower_base_mat: StandardMaterial3D
@@ -66,6 +74,7 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.apply_anchor(self, "ar-defender_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.0, 0), 3.0, 50)
+	_apply_room_layout() # v0.7.0: waves emerge from real walls; furniture blocks towers (no-op w/o room data).
 
 
 func _process(delta: float) -> void:
@@ -175,6 +184,7 @@ func _build_path() -> void:
 		strip.position = Vector3((a.x + b.x) * 0.5, 0.03, (a.z + b.z) * 0.5)
 		strip.rotation.y = -atan2(d.z, d.x)
 		add_child(strip)
+		_path_nodes.append(strip)
 	# Spawn portal marker.
 	var portal := MeshInstance3D.new()
 	var tm := TorusMesh.new()
@@ -185,6 +195,7 @@ func _build_path() -> void:
 	portal.position = waypoints[0] + Vector3(0, 0.45, 0)
 	portal.rotation.x = PI * 0.5
 	add_child(portal)
+	_path_nodes.append(portal)
 
 
 func _build_base() -> void:
@@ -234,6 +245,71 @@ func _say(text: String, hold: float = 2.5) -> void:
 	_msg_timer = hold
 
 
+func _room_center3() -> Vector3:
+	var c := _room_bounds.get_center()
+	return Vector3(c.x, 0.0, c.y)
+
+
+## True when a floor point sits inside a real table/furniture cuboid
+## (furniture acts as an obstacle: towers can't be built inside it).
+func _room_blocked(p: Vector3) -> bool:
+	if not _room_ready:
+		return false
+	var wp := to_global(p)
+	for t_v in _room_tables + _room_furniture:
+		var t: Dictionary = t_v
+		var c: Vector3 = t["position"]
+		var s: Vector3 = t["size"]
+		if absf(wp.x - c.x) < s.x * 0.5 and absf(wp.z - c.z) < s.z * 0.5 and wp.y < c.y + s.y * 0.5:
+			return true
+	return false
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_ready = true
+	# Waves emerge from the nearest real wall: move the path start there.
+	if not _room_walls.is_empty() and _path_nodes.size() >= 2:
+		var w: Dictionary = _room_walls[0]
+		var bd := 1e20
+		for w_v in _room_walls:
+			var wd: Dictionary = w_v
+			var dd: float = to_global(waypoints[0]).distance_squared_to(wd["position"])
+			if dd < bd:
+				bd = dd
+				w = wd
+		var inward: Vector3 = _room_center3() - (w["position"] as Vector3)
+		inward.y = 0.0
+		var spawn_w: Vector3 = (w["position"] as Vector3) + inward.normalized() * 0.45
+		if _room_bounds.grow(-0.2).has_point(Vector2(spawn_w.x, spawn_w.z)):
+			var wp0 := to_local(spawn_w)
+			wp0.y = 0.0
+			waypoints[0] = wp0
+			# Re-aim the first path strip and move the portal marker.
+			var a: Vector3 = waypoints[0]
+			var b: Vector3 = waypoints[1]
+			var d := b - a
+			var strip := _path_nodes[0] as MeshInstance3D
+			(strip.mesh as BoxMesh).size = Vector3(d.length(), 0.03, 0.5)
+			strip.position = Vector3((a.x + b.x) * 0.5, 0.03, (a.z + b.z) * 0.5)
+			strip.rotation.y = -atan2(d.z, d.x)
+			(_path_nodes[_path_nodes.size() - 1] as Node3D).position = waypoints[0] + Vector3(0, 0.45, 0)
+	# v0.7.0 MORPH: the largest table becomes the defense command bunker.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tables := RoomKit.get_anchors("TABLE")
+		if not _morph_tables.is_empty():
+			RoomKit.morph(_morph_tables[0], "scifi")
+
+
 # ---------------------------------------------------------------- input ---
 
 func _handle_click(screen_pos: Vector2) -> void:
@@ -275,6 +351,9 @@ func _click_at_world(p: Vector3) -> void:
 		return
 	if _dist_to_path(p) < 0.55:
 		_say("Too close to the path!")
+		return
+	if _room_blocked(p):
+		_say("Blocked by furniture!")
 		return
 	if p.distance_to(_base_pos) < 0.9:
 		_say("Too close to the base!")
@@ -325,10 +404,20 @@ func _place_tower(p: Vector3) -> void:
 	head.material_override = _head_mat_1
 	head.position = Vector3(0, 0.42, 0)
 	root.add_child(head)
+	# v0.7.0 KayKit: a real mage defends the tower. The procedural base/head
+	# stay as the upgradeable hit-proxy; the model is the visible defender.
+	var mage := ModelLib.spawn("res://assets/models/ar-defender/Mage.glb", root, Vector3.ZERO)
+	var focus: Node3D = head
+	if mage != null:
+		mage.scale = Vector3.ONE * 0.85
+		base.visible = false
+		head.visible = false
+		focus = mage
 	add_child(root)
 	_towers.append({"node": root, "head": head, "head_mesh": head,
 			"pos": Vector3(p.x, 0.0, p.z), "range": 2.4, "damage": 1,
-			"timer": 0.0, "level": 1, "cooldown": 0.55})
+			"timer": 0.0, "level": 1, "cooldown": 0.55,
+			"model": mage, "focus": focus})
 	_play_tone(330.0, 0.12)
 	_say("Tower built! Click it again to upgrade (75).")
 	GraphicsPolish.spawn_sparks(self, root.position + Vector3(0, 0.5, 0), Color(0.2, 0.9, 1.0), 20)
@@ -349,6 +438,9 @@ func _try_upgrade(tw: Dictionary) -> void:
 	var head := tw["head_mesh"] as MeshInstance3D
 	head.material_override = _head_mat_2
 	head.scale = Vector3(1.25, 1.25, 1.25)
+	if tw["model"] != null:
+		# Mirror the upgrade growth onto the visible mage defender.
+		(tw["model"] as Node3D).scale = Vector3.ONE * (0.85 * 1.25)
 	_play_tone(520.0, 0.12)
 	_say("Tower upgraded to level %d!" % int(tw["level"]))
 
@@ -373,9 +465,12 @@ func _update_towers(delta: float) -> void:
 		if target.is_empty():
 			continue
 		var head := tw["head"] as Node3D
+		var focus := tw["focus"] as Node3D
+		if focus == null:
+			focus = head
 		var d: Vector3 = (target["pos"] as Vector3) - head.global_position
 		if d.length() > 0.01:
-			head.rotation.y = atan2(-d.x, -d.z)
+			focus.rotation.y = atan2(-d.x, -d.z)
 		if float(tw["timer"]) <= 0.0:
 			tw["timer"] = float(tw["cooldown"])
 			_fire(tw, target)
@@ -452,7 +547,10 @@ func _update_enemies(delta: float) -> void:
 			e["pos"] = target
 			e["wp"] = wp_index + 1
 		else:
-			e["pos"] = pos + d.normalized() * step
+			# AILib: wander drift keeps waypoint marches from looking robotic.
+			var drift := AILib.wander(e["node"], delta, 0.3)
+			drift.y = 0.0
+			e["pos"] = pos + d.normalized() * step + drift
 		(e["node"] as Node3D).position = (e["pos"] as Vector3) + Vector3(0, 0.16, 0)
 
 

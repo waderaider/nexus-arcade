@@ -31,6 +31,17 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed window the moon hangs beyond (game-local coords).
+var _room_window_pos := Vector3.ZERO
+var _room_window_known := false
+var _moon_node: MeshInstance3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -42,6 +53,50 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -2.0), 3.0, 40)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# v0.7.0 furniture morph: the real window becomes an eerie haunted
+	# vista, and the full moon hangs in the sky beyond it — howl while
+	# facing your window to face the moon.
+	var window_anchors := RoomKit.get_anchors("WINDOW")
+	if not window_anchors.is_empty():
+		RoomKit.morph(window_anchors[0], "haunted")
+		var wp: Vector3 = window_anchors[0]["position"]
+		_room_window_pos = wp
+		_room_window_known = true
+		var c := _room_bounds.get_center()
+		var outward := Vector3(wp.x - c.x, 0.0, wp.z - c.y)
+		if outward.length() < 0.05:
+			outward = Vector3(0.0, 0.0, -1.0)
+		outward = outward.normalized()
+		if _moon_node != null:
+			_moon_node.position = Vector3(c.x, 0.0, c.y) + outward * 8.0 + Vector3(0.0, 3.4, 0.0)
+
+
+## Wall normal flipped to point into the room (normals are sign-agnostic).
+func _wall_inward(w: Dictionary) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3(0.0, 0.0, 1.0)
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	var wp: Vector3 = w["position"]
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n
+	return n
 
 
 func _add_light_rig() -> void:
@@ -95,6 +150,7 @@ func _build_clearing() -> void:
 	moon.position = Vector3(0.0, 3.4, -9.0)
 	moon.material_override = _mat(Color(0.95, 0.93, 0.75), 1.8)
 	add_child(moon)
+	_moon_node = moon
 	GraphicsPolish.make_point_light(self, Vector3(0.0, 3.0, -4.0), Color(0.85, 0.9, 1.0), 0.7, 9.0)
 	# Dead trees ringing the clearing.
 	for i in range(7):
@@ -319,9 +375,8 @@ func _release_howl() -> void:
 
 
 func _spawn_villager() -> void:
-	var ang := randf() * TAU
 	var root := Node3D.new()
-	root.position = Vector3(cos(ang) * 4.4, 0.0, -1.5 + sin(ang) * 4.4)
+	root.position = _villager_spawn_pos()
 	root.rotation.y = atan2(-root.position.x, -(root.position.z + 1.5))
 	add_child(root)
 	# Body + head.
@@ -360,6 +415,20 @@ func _spawn_villager() -> void:
 	flame.material_override = GraphicsPolish.glow(Color(1.0, 0.55, 0.15), 2.0)
 	root.add_child(flame)
 	villagers.append({"node": root, "speed": randf_range(0.35, 0.55) + elapsed * 0.002, "flame": flame})
+
+
+func _villager_spawn_pos() -> Vector3:
+	# Villagers close in from the real walls when the room is known,
+	# otherwise from a circle clamped to the room's extents.
+	if _room_known and not _room_walls.is_empty():
+		var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+		var bp: Vector3 = (w["position"] as Vector3) + _wall_inward(w) * 0.45
+		return Vector3(bp.x, 0.0, bp.z)
+	var r := 4.4
+	if _room_known:
+		r = minf(4.4, maxf(1.2, minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.4))
+	var ang := randf() * TAU
+	return Vector3(cos(ang) * r, 0.0, -1.5 + sin(ang) * r)
 
 
 func _step_villagers(delta: float) -> void:

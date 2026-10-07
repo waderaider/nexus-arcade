@@ -38,6 +38,11 @@ var _clash_cooldown := 0.0
 var _record_cooldown := 0.0
 var _hit_stop_active := false
 
+# v0.7.0 RoomKit: real room layout (cached; empty without XR room data).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	_load_records()
@@ -53,6 +58,69 @@ func _ready() -> void:
 	_spawn_opponent()
 	_announce("NEON DUEL", 2.0)
 	_start_match()
+	_apply_room_layout()
+
+
+## v0.7.0 RoomKit wiring (headless-safe: fallbacks keep the default layout).
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_fit_arena_to_room()
+	# Re-seat the opponent against the real wall if the fight hasn't started.
+	if not is_fighting and not match_over and _opponent != null and is_instance_valid(_opponent):
+		_reset_round_positions()
+	# v0.7.0 MORPH: rug becomes the neon duel-arena circle; TV becomes the scoreboard.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_rugs := RoomKit.get_anchors("RUG")
+		if not _morph_rugs.is_empty():
+			RoomKit.morph(_morph_rugs[0], "neon")
+		var _morph_tvs := RoomKit.get_anchors("TV")
+		if not _morph_tvs.is_empty():
+			RoomKit.morph(_morph_tvs[0], "neon")
+
+
+## Fit the arena ring inside the real room; opponent spawns against walls.
+func _fit_arena_to_room() -> void:
+	var c := _room_bounds.get_center()
+	var r := clampf(minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.2, 1.0, ARENA_RADIUS)
+	if _arena_ring != null and is_instance_valid(_arena_ring):
+		_arena_ring.position = Vector3(c.x, 0.02, c.y)
+		_arena_ring.scale = Vector3.ONE * (r / ARENA_RADIUS)
+
+
+## Opponent spawns backed against the wall the player faces (wall spawn);
+## falls back to 2 m ahead of the head when no room data exists.
+func _room_opponent_spawn() -> Vector3:
+	var flat_fwd: Vector3 = -_head.global_transform.basis.z
+	flat_fwd.y = 0
+	if flat_fwd.length() < 0.01:
+		flat_fwd = Vector3.FORWARD
+	flat_fwd = flat_fwd.normalized()
+	var fallback: Vector3 = _head.global_position + flat_fwd * 2.0
+	if _room_walls.is_empty():
+		return ARUpgradeKit.clamp_to_room(fallback)
+	# Nearest wall to the fallback point = the wall the player faces.
+	var best: Dictionary = _room_walls[0]
+	var bd := 1e9
+	for w in _room_walls:
+		var d: float = (w["position"] - fallback).length()
+		if d < bd:
+			bd = d
+			best = w
+	var n: Vector3 = best["normal"]
+	var side := signf((_head.global_position - best["position"]).dot(n))
+	if side == 0.0:
+		side = 1.0
+	var p: Vector3 = best["position"] + n * side * 0.8
+	p.y = 0.0
+	return p
 
 
 func _add_polish_light_rig() -> void:
@@ -67,12 +135,7 @@ func _spawn_opponent() -> void:
 	_opponent.name = "DuelOpponent"
 	add_child(_opponent)
 	if _head:
-		var flat_fwd: Vector3 = -_head.global_transform.basis.z
-		flat_fwd.y = 0
-		if flat_fwd.length() < 0.01:
-			flat_fwd = Vector3.FORWARD
-		_opponent.global_position = ARUpgradeKit.clamp_to_room(
-			_head.global_position + flat_fwd.normalized() * 2.0)
+		_opponent.global_position = _room_opponent_spawn()
 		_opponent.initialize(_head)
 	_opponent.set_difficulty(difficulty)
 
@@ -129,12 +192,7 @@ func _start_round() -> void:
 
 func _reset_round_positions() -> void:
 	if _head and is_instance_valid(_opponent):
-		var flat_fwd: Vector3 = -_head.global_transform.basis.z
-		flat_fwd.y = 0
-		if flat_fwd.length() < 0.01:
-			flat_fwd = Vector3.FORWARD
-		_opponent.global_position = ARUpgradeKit.clamp_to_room(
-			_head.global_position + flat_fwd.normalized() * 2.0)
+		_opponent.global_position = _room_opponent_spawn()
 		_opponent.visible = true
 		_opponent.initialize(_head)
 

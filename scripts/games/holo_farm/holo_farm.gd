@@ -71,6 +71,14 @@ var _msg := ""
 var _msg_t := 0.0
 var _save_t := 0.0
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_has := false
+var stall_node: Node3D = null
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "holo_farm_main")
@@ -87,6 +95,74 @@ func _ready() -> void:
 	_build_hud()
 	_apply_upgrades_visual()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -0.5), 4.0, 40)
+	_apply_room_layout()
+
+
+## v0.7.0: crop plots go on open floor inside the real room, clear of
+## furniture footprints; the market stall moves to a clear spot near the
+## room center. Guarded; fallback keeps the default farm layout.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> potting bench; plants -> living crops
+	_morph_anchors("TABLE", "nature", 1)
+	_morph_anchors("PLANT", "nature", 2)
+	_room_has = true
+	_layout_farm_room()
+
+
+func _layout_farm_room() -> void:
+	if not _room_has:
+		return
+	var spots := _open_floor_spots(plots.size(), 0.55)
+	for i in mini(spots.size(), plots.size()):
+		((plots[i] as Dictionary)["node"] as Node3D).position = farm_root.to_local(spots[i])
+	if stall_node != null:
+		var near := _open_floor_spots(6, 0.9)
+		if not near.is_empty():
+			var c := _room_bounds.get_center()
+			var bc := Vector3(c.x, 0.0, c.y)
+			var bn: Vector3 = near[0]
+			var bd := 1e9
+			for s_v in near:
+				var s: Vector3 = s_v
+				var dd: float = s.distance_to(bc)
+				if dd < bd:
+					bd = dd
+					bn = s
+			stall_node.position = farm_root.to_local(bn)
+
+
+func _footprint_blocked(p: Vector3, margin: float) -> bool:
+	for f_v in _room_furniture + _room_tables:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if absf(p.x - fp.x) < fs.x * 0.5 + margin and absf(p.z - fp.z) < fs.z * 0.5 + margin:
+			return true
+	return false
+
+
+func _open_floor_spots(count: int, margin: float) -> Array:
+	var spots: Array = []
+	var b := _room_bounds
+	var y := b.position.y + 0.6
+	while y <= b.position.y + b.size.y - 0.6 and spots.size() < count:
+		var x := b.position.x + 0.6
+		while x <= b.position.x + b.size.x - 0.6 and spots.size() < count:
+			var p := Vector3(x, 0.0, y)
+			if not _footprint_blocked(p, margin):
+				spots.append(p)
+			x += 1.1
+		y += 1.1
+	return spots
 
 
 func _ensure_camera() -> void:
@@ -560,6 +636,7 @@ func _build_stall() -> void:
 	sign.position = Vector3(0.0, 2.55, 0.0)
 	sign.pixel_size = 0.004
 	stall.add_child(sign)
+	stall_node = stall # v0.7.0: RoomKit may relocate the stall
 
 
 func _sell_all() -> void:
@@ -574,8 +651,9 @@ func _sell_all() -> void:
 		_set_msg("Basket is empty - harvest crops first!", 1.8)
 		return
 	coins += total
-	GraphicsPolish.spawn_confetti(self, stall_pos + Vector3(0, 1.6, 0), 50)
-	GraphicsPolish.spawn_sparks(self, stall_pos + Vector3(0, 1.2, 0), Color(1.0, 0.85, 0.30), 30)
+	var sp := stall_node.position if stall_node != null else stall_pos
+	GraphicsPolish.spawn_confetti(self, sp + Vector3(0, 1.6, 0), 50)
+	GraphicsPolish.spawn_sparks(self, sp + Vector3(0, 1.2, 0), Color(1.0, 0.85, 0.30), 30)
 	Haptics.pulse(0.8, 0.15)
 	_set_msg("Sold %d crops for %d coins!" % [count, total], 2.2)
 	_save()
@@ -665,6 +743,7 @@ func _buy_upgrade(id: String) -> void:
 		"up_plots":
 			up_plots16 = true
 			_build_plots()
+			_layout_farm_room() # v0.7.0: re-seat plots on open floor after the grid rebuild
 		"up_sprinkler":
 			up_sprinkler = true
 		"up_scarecrow":
@@ -1278,3 +1357,11 @@ func _process(delta: float) -> void:
 		_save_t = 0.0
 		_save()
 	_update_hud()
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

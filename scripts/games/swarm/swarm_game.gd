@@ -17,6 +17,14 @@ var portals: Array[WallPortal] = []
 
 var _anchor_timer := 0.0
 
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
+var _hud_labels: Array = []
+
 
 func _ready() -> void:
 	_ensure_fallback_camera()
@@ -41,6 +49,8 @@ func _ready() -> void:
 	blaster = PinchBlaster.new()
 	add_child(blaster)
 	blaster.director = director
+	_hud_labels = labels
+	_apply_room_layout() # v0.7.0: snap portals to real walls, core behind furniture (no-op w/o room data).
 
 
 func _process(delta: float) -> void:
@@ -55,6 +65,74 @@ func _process(delta: float) -> void:
 	if ARUpgradeKit.is_xr_active() and ARUpgradeKit.pinch_just_pressed(self, ARUpgradeKit.HAND_RIGHT):
 		if blaster != null:
 			blaster.shoot_forward()
+
+
+func _room_center3() -> Vector3:
+	var c := _room_bounds.get_center()
+	return Vector3(c.x, 0.0, c.y)
+
+
+func _largest_cover() -> Dictionary:
+	var best: Dictionary = {}
+	var best_a := 0.0
+	for t_v in _room_tables + _room_furniture:
+		var t: Dictionary = t_v
+		var s: Vector3 = t["size"]
+		var a := s.x * s.z
+		if a > best_a:
+			best_a = a
+			best = t
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_ready = true
+	# Enemies stream inward from real wall faces: snap portals to the largest walls.
+	var walls := _room_walls.duplicate()
+	walls.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var sa: Vector2 = a["size"]
+		var sb: Vector2 = b["size"]
+		return sa.x * sa.y > sb.x * sb.y)
+	for i in mini(portals.size(), walls.size()):
+		var w: Dictionary = walls[i]
+		var inward: Vector3 = _room_center3() - (w["position"] as Vector3)
+		inward.y = 0.0
+		var lp := to_local((w["position"] as Vector3) + inward.normalized() * 0.3)
+		var portal: WallPortal = portals[i]
+		portal.position = Vector3(lp.x, PORTAL_HEIGHT, lp.z)
+		portal.look_at(to_global(Vector3(0.0, PORTAL_HEIGHT, 0.0)), Vector3.UP)
+	# Cover: tuck the core behind the largest furniture cuboid.
+	var cover := _largest_cover()
+	if not cover.is_empty() and is_instance_valid(core):
+		var c: Vector3 = cover["position"]
+		var s: Vector3 = cover["size"]
+		var away: Vector3 = c - _room_center3()
+		away.y = 0.0
+		var target := c + away.normalized() * (maxf(s.x, s.z) * 0.5 + 0.7)
+		target.y = 0.0
+		var nl := to_local(target)
+		var shift := nl - core.position
+		core.position = nl
+		for l_v in _hud_labels:
+			(l_v as Label3D).position += shift
+	# v0.7.0 MORPH: TV becomes the command briefing screen; doors become breach airlocks.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tvs := RoomKit.get_anchors("TV")
+		if not _morph_tvs.is_empty():
+			RoomKit.morph(_morph_tvs[0], "scifi")
+		var _morph_doors := RoomKit.get_anchors("DOOR")
+		if not _morph_doors.is_empty():
+			RoomKit.morph(_morph_doors[0], "scifi")
 
 
 func _on_game_over_fx(_score: int) -> void:

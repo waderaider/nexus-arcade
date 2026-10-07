@@ -44,6 +44,17 @@ var restart_hold := 0.0
 
 const PLATE_POS := Vector3(0.0, 0.75, -1.6)
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+var _table_node: MeshInstance3D = null
+var _plate_node: MeshInstance3D = null
+var _station_light: OmniLight3D = null
+var _plate_pos := PLATE_POS
+
 
 func _ready() -> void:
 	GraphicsPolish.make_light_rig(self)
@@ -57,6 +68,48 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(820.0, 0.6, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_candy_stack_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.6), 2.5, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table is the candy pedestal the stack is built on; storage becomes the candy treasure vault.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "candy")
+	var _morph1_storage := RoomKit.get_anchors("STORAGE")
+	if not _morph1_storage.is_empty():
+		RoomKit.morph(_morph1_storage[0], "candy")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	if _room_tables.is_empty():
+		return
+	# Serve the candy station on the player's real table; the virtual
+	# table is hidden so the plate sits on real furniture.
+	var t: Dictionary = _room_tables[0]
+	var tp: Vector3 = t["position"]
+	var ts: Vector3 = t["size"]
+	var target := Vector3(tp.x, tp.y + ts.y * 0.5 + 0.03, tp.z)
+	if _room_bounds.size.x > 1.5:
+		target.x = clampf(target.x, _room_bounds.position.x + 0.7, _room_bounds.end.x - 0.7)
+	if _room_bounds.size.y > 1.5:
+		target.z = clampf(target.z, _room_bounds.position.y + 0.7, _room_bounds.end.y - 0.7)
+	var delta := target - _plate_pos
+	if _table_node != null:
+		_table_node.visible = false
+	if _plate_node != null:
+		_plate_node.position += delta
+	if _station_light != null:
+		_station_light.position += delta
+	_plate_pos = target
+	stack_top_y = _plate_pos.y + 0.03 + float(score) * PIECE_HEIGHT * 0.92
 
 
 func _ensure_fallback_camera() -> void:
@@ -79,6 +132,7 @@ func _build_table() -> void:
 	table.position = Vector3(0.0, 0.68, -1.6)
 	table.material_override = GraphicsPolish.pbr(Color(0.35, 0.22, 0.12), 0.05, 0.7)
 	add_child(table)
+	_table_node = table
 	# Plate.
 	var plate := MeshInstance3D.new()
 	var pc := CylinderMesh.new()
@@ -86,13 +140,14 @@ func _build_table() -> void:
 	pc.bottom_radius = 0.30
 	pc.height = 0.05
 	plate.mesh = pc
-	plate.position = PLATE_POS
+	plate.position = _plate_pos
 	plate_mat = GraphicsPolish.glow(Color(1.0, 0.75, 0.25), 0.8)
 	plate.material_override = plate_mat
 	add_child(plate)
-	stack_top_y = PLATE_POS.y + 0.03
+	_plate_node = plate
+	stack_top_y = _plate_pos.y + 0.03
 	# Candy bowl backdrop glow.
-	GraphicsPolish.make_point_light(self, Vector3(0.0, 1.6, -1.6), Color(1.0, 0.6, 0.2), 0.8, 4.0)
+	_station_light = GraphicsPolish.make_point_light(self, Vector3(0.0, 1.6, -1.6), Color(1.0, 0.6, 0.2), 0.8, 4.0)
 
 
 func _build_hud() -> void:
@@ -176,7 +231,7 @@ func _process(delta: float) -> void:
 
 func _spawn_piece() -> void:
 	var node := _build_candy_corn()
-	node.position = Vector3(randf_range(-0.8, 0.8), 2.7, -1.6 + randf_range(-0.3, 0.3))
+	node.position = Vector3(_plate_pos.x + randf_range(-0.8, 0.8), 2.7, _plate_pos.z + randf_range(-0.3, 0.3))
 	node.rotation.y = randf() * TAU
 	add_child(node)
 	pieces.append({
@@ -276,10 +331,10 @@ func _step_pieces(delta: float) -> void:
 
 
 func _land_piece(i: int, p: Dictionary, node: MeshInstance3D) -> void:
-	var flat := Vector2(node.position.x - PLATE_POS.x, node.position.z - PLATE_POS.z).length()
+	var flat := Vector2(node.position.x - _plate_pos.x, node.position.z - _plate_pos.z).length()
 	if flat <= PLACE_RADIUS:
 		p["pstate"] = P_PLACED
-		node.position = Vector3(PLATE_POS.x + (node.position.x - PLATE_POS.x) * 0.4, stack_top_y + PIECE_HEIGHT * 0.5, PLATE_POS.z + (node.position.z - PLATE_POS.z) * 0.4)
+		node.position = Vector3(_plate_pos.x + (node.position.x - _plate_pos.x) * 0.4, stack_top_y + PIECE_HEIGHT * 0.5, _plate_pos.z + (node.position.z - _plate_pos.z) * 0.4)
 		node.rotation = Vector3.ZERO
 		stack_top_y += PIECE_HEIGHT * 0.92
 		score += 1
@@ -331,7 +386,7 @@ func _reset_game() -> void:
 	spawn_timer = 0.0
 	score = 0
 	toppled = 0
-	stack_top_y = PLATE_POS.y + 0.03
+	stack_top_y = _plate_pos.y + 0.03
 	restart_hold = 0.0
 	state = ST_PLAY
 	_show_msg("STACK 'EM HIGH!", 1.2)

@@ -39,6 +39,10 @@ var pocket_mat: StandardMaterial3D = null
 var hud_label: Label3D = null
 var msg_label: Label3D = null
 var help_label: Label3D = null
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -53,6 +57,7 @@ func _ready() -> void:
 	ARUpgradeKit.apply_anchor(table_root, "ar-billiards_main")
 	_reset()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.2, 0.4), 2.0, 30)
+	_apply_room_layout() # v0.7.0: align to a real table surface when scanned
 
 
 func _build_camera() -> void:
@@ -251,7 +256,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _table_plane_point(o: Vector3, d: Vector3) -> Variant:
 	# Intersect the ray with the ball plane in table-local coords.
-	var plane_y := table_root.global_position.y + 0.04 + BALL_R
+	var plane_y := table_root.global_position.y + (0.04 + BALL_R) * table_root.scale.y
 	if absf(d.y) < 0.0001:
 		return null
 	var t := (plane_y - o.y) / d.y
@@ -479,3 +484,43 @@ func _update_ui() -> void:
 	hud_label.text = "AR BILLIARDS\nShots: %d\nBalls left: %d" % [shots, _balls_left()]
 	if state == "aim" and aiming:
 		hud_label.text += "\nPower: %d%%" % int(power / MAX_POWER * 100.0)
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): lamps -> neon pool-hall lighting over the table
+	_morph_anchors("LAMP", "neon", 2)
+	# Align the virtual table with the largest real table surface.
+	var best_t: Dictionary = {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best_t = t
+	if best_t.is_empty():
+		return
+	var tc: Vector3 = best_t["position"]
+	var ts: Vector3 = best_t["size"]
+	# Shrink the virtual table to fit on small real tables (physics is in
+	# table-local coords, so scaling is safe).
+	var s := minf(1.0, minf(ts.x / (TABLE_X + 0.2), ts.z / (TABLE_Z + 0.2)))
+	table_root.scale = Vector3.ONE * maxf(s, 0.4)
+	table_root.global_position = Vector3(tc.x, tc.y + ts.y * 0.5 + 0.04 * table_root.scale.y, tc.z)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

@@ -29,6 +29,13 @@ const EXIT_CELL := Vector2i(7, 7)
 const TOKEN_CELLS := [Vector2i(1, 7), Vector2i(3, 4), Vector2i(7, 1), Vector2i(5, 6), Vector2i(2, 5)]
 const PATROL := [Vector2i(1, 5), Vector2i(1, 7), Vector2i(3, 7), Vector2i(5, 7), Vector2i(5, 5)]
 
+# v0.7.0 KayKit: real wall/prop models (CC0, KayKit Dungeon Remastered +
+# Halloween Bits). KayKit wall is 4x4x1m; maze cells are 0.42m.
+const MODEL_DIR := "res://assets/models/hw_haunted_maze/"
+const WALL_MODEL_SCALE := Vector3(0.105, 0.1375, 0.42)
+const LAMP_CELLS := [Vector2i(2, 2), Vector2i(4, 4), Vector2i(6, 6)]
+const GRAVE_CELL := Vector2i(7, 6)
+
 var camera: Camera3D = null
 var state := ST_PLAY
 var time_left := ROUND_TIME
@@ -58,12 +65,19 @@ var hurt_player: AudioStreamPlayer = null
 var win_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_floor()
 	_build_hedges()
+	_build_decor() # v0.7.0 KayKit: lantern posts + gravemarker (model only)
 	_build_tokens()
 	_build_exit()
 	_build_player()
@@ -77,6 +91,7 @@ func _ready() -> void:
 	hurt_player = _make_player(_make_tone(130.0, 0.30, 0.6))
 	win_player = _make_player(_make_tone(880.0, 0.45, 0.55))
 	end_player = _make_player(_make_tone(330.0, 0.5, 0.5))
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -130,13 +145,18 @@ func _build_hedges() -> void:
 		for j in range(MAZE_N):
 			if (MAP[i] as String).substr(j, 1) != "#":
 				continue
-			var h := MeshInstance3D.new()
-			var box := BoxMesh.new()
-			box.size = Vector3(CELL, 0.55, CELL)
-			h.mesh = box
-			h.position = _cell_center(Vector2i(i, j)) + Vector3(0.0, 0.275, 0.0)
-			h.material_override = hedge_mat
-			add_child(h)
+			# v0.7.0 KayKit: real stone wall segment; null falls back to the hedge box.
+			var wall_model := ModelLib.spawn(MODEL_DIR + "wall.glb", self, _cell_center(Vector2i(i, j)))
+			if wall_model != null:
+				wall_model.scale = WALL_MODEL_SCALE
+			else:
+				var h := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = Vector3(CELL, 0.55, CELL)
+				h.mesh = box
+				h.position = _cell_center(Vector2i(i, j)) + Vector3(0.0, 0.275, 0.0)
+				h.material_override = hedge_mat
+				add_child(h)
 			var trim := MeshInstance3D.new()
 			var trim_box := BoxMesh.new()
 			trim_box.size = Vector3(CELL * 0.96, 0.05, CELL * 0.96)
@@ -144,6 +164,20 @@ func _build_hedges() -> void:
 			trim.position = _cell_center(Vector2i(i, j)) + Vector3(0.0, 0.57, 0.0)
 			trim.material_override = trim_mat
 			add_child(trim)
+
+
+## v0.7.0 KayKit: lantern posts on solid wall cells + a gravemarker near
+## the exit. Decor only: silently skipped when a model fails to load.
+func _build_decor() -> void:
+	for cell in LAMP_CELLS:
+		var lamp := ModelLib.spawn(MODEL_DIR + "post_lantern.gltf", self, _cell_center(cell))
+		if lamp != null:
+			lamp.scale = Vector3.ONE * 0.35
+			lamp.rotation.y = randf() * TAU
+	var grave := ModelLib.spawn(MODEL_DIR + "gravemarker_A.gltf", self, _cell_center(GRAVE_CELL))
+	if grave != null:
+		grave.scale = Vector3.ONE * 0.5
+		grave.rotation.y = randf() * TAU
 
 
 func _build_tokens() -> void:
@@ -478,3 +512,31 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: doors become haunted dungeon gates (maze exits); windows show haunted eerie vistas.
+	var _morph0_door := RoomKit.get_anchors("DOOR")
+	for _mi in range(mini(_morph0_door.size(), 2)):
+		RoomKit.morph(_morph0_door[_mi], "haunted")
+	var _morph1_window := RoomKit.get_anchors("WINDOW")
+	if not _morph1_window.is_empty():
+		RoomKit.morph(_morph1_window[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Center the maze on the real room floor (maze center is local origin).
+	var rc := _room_bounds.get_center()
+	global_position += Vector3(rc.x, 0.0, rc.y) - Vector3(global_position.x, 0.0, global_position.z)
+	# Shrink the maze uniformly when the room is smaller than the maze grid.
+	var fit := minf(_room_bounds.size.x, _room_bounds.size.y) / (CELL * float(MAZE_N) + 0.6)
+	if fit < 1.0:
+		var s := maxf(fit, 0.45)
+		scale = Vector3(s, 1.0, s)

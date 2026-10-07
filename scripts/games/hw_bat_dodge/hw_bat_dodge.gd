@@ -34,6 +34,19 @@ var anchor_timer := 0.0
 var restart_hold := 0.0
 var won := false
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed door gate the bats burst from (game-local coords).
+var _room_door_pos := Vector3.ZERO
+var _room_door_known := false
+var _dodge_half_x := 1.6
+var _dodge_y_lo := 0.8
+var _dodge_y_hi := 2.6
+
 
 func _ready() -> void:
 	GraphicsPolish.make_light_rig(self)
@@ -45,6 +58,45 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(880.0, 0.6, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_bat_dodge_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.6, -2.0), 3.0, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Keep the desktop dodge range inside the real room so the player
+	# cannot lean through a wall.
+	_dodge_half_x = maxf(0.8, minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.4)
+	# v0.7.0 furniture morph: the real door becomes a haunted dungeon
+	# gate the bats burst out of (see _bat_spawn_pos). RoomKit.morph
+	# adds the skin to the scene itself — no add_child needed.
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+		_room_door_pos = door_anchors[0]["position"]
+		_room_door_known = true
+
+
+## Wall normal flipped to point into the room (normals are sign-agnostic).
+func _wall_inward(w: Dictionary) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3(0.0, 0.0, 1.0)
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	var wp: Vector3 = w["position"]
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n
+	return n
 
 
 func _ensure_fallback_camera() -> void:
@@ -143,14 +195,14 @@ func _move_camera_desktop(delta: float) -> void:
 		my += 1.0
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 		my -= 1.0
-	camera.position.x = clampf(camera.position.x + mx * 2.4 * delta, -1.6, 1.6)
-	camera.position.y = clampf(camera.position.y + my * 1.8 * delta, 0.8, 2.6)
+	camera.position.x = clampf(camera.position.x + mx * 2.4 * delta, -_dodge_half_x, _dodge_half_x)
+	camera.position.y = clampf(camera.position.y + my * 1.8 * delta, _dodge_y_lo, _dodge_y_hi)
 
 
 func _spawn_bat(speed: float) -> void:
 	var cp := _cam_pos()
 	var node := Node3D.new()
-	node.position = cp + Vector3(randf_range(-3.0, 3.0), randf_range(-0.5, 2.2), -7.0)
+	node.position = _bat_spawn_pos(cp)
 	# Body.
 	var body := MeshInstance3D.new()
 	var bs := SphereMesh.new()
@@ -181,6 +233,29 @@ func _spawn_bat(speed: float) -> void:
 		"node": node, "wl": wl, "wr": wr, "vel": vel,
 		"speed": speed, "closest": 999.0, "flap": randf() * TAU,
 	})
+
+
+func _bat_spawn_pos(cp: Vector3) -> Vector3:
+	# Bats dive out of the real walls when the room is known.
+	# The morphed door gate is a favored roost: about a third of the
+	# bats burst straight out of the haunted dungeon gate.
+	if _room_door_known and randf() < 0.35:
+		var c := _room_bounds.get_center()
+		var inward := Vector3(c.x - _room_door_pos.x, 0.0, c.y - _room_door_pos.z)
+		if inward.length() < 0.05:
+			inward = Vector3(0.0, 0.0, 1.0)
+		var gp: Vector3 = _room_door_pos + inward.normalized() * 0.45
+		return Vector3(gp.x, clampf(cp.y + randf_range(-0.4, 0.8), 0.8, 2.6), gp.z)
+	if _room_known and not _room_walls.is_empty():
+		var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+		var bp: Vector3 = (w["position"] as Vector3) + _wall_inward(w) * 0.35
+		return Vector3(bp.x, clampf(cp.y + randf_range(-0.5, 1.0), 0.8, 2.6), bp.z)
+	var sx := cp.x + randf_range(-3.0, 3.0)
+	var sz := cp.z - 7.0
+	if _room_known:
+		sx = clampf(sx, _room_bounds.position.x + 0.4, _room_bounds.end.x - 0.4)
+		sz = clampf(sz, _room_bounds.position.y + 0.5, _room_bounds.end.y - 0.5)
+	return Vector3(sx, cp.y + randf_range(-0.5, 2.2), sz)
 
 
 func _make_wing(side: float) -> MeshInstance3D:

@@ -143,6 +143,77 @@ func _ready() -> void:
 	_build_hud()
 	_start_brief("MECH PILOT // SYSTEMS ONLINE\nMission 1: Destroy 8 rogue drones", 3.0, 1)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 2.5, 40)
+	_apply_room_layout()
+
+
+# v0.7.0 RoomKit: drone waves spawn at real wall faces, projectiles bounce
+# off real wall planes, and wreckage drifts to the floor. Cached; the
+# default floating-arena layout is untouched without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): chairs -> mech cockpit seats
+	_morph_anchors("CHAIR", "scifi", 2)
+
+
+## Normal-sign agnostic wall reflection.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
+
+## Drone wave spawn: a random point on a real wall face, offset into the room.
+func _room_drone_spawn(ang: float, r: float) -> Vector3:
+	var fallback := ARUpgradeKit.clamp_to_room(Vector3(cos(ang) * r, randf_range(1.3, 1.9), sin(ang) * r))
+	if _room_walls.is_empty():
+		return fallback
+	var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+	var n: Vector3 = w["normal"]
+	var sz: Vector2 = w["size"]
+	var c: Vector3 = w["position"]
+	var right := n.cross(Vector3.UP).normalized()
+	if right.length() < 0.01:
+		right = Vector3.RIGHT
+	var p := c + right * randf_range(-sz.x * 0.4, sz.x * 0.4)
+	p.y = clampf(c.y + randf_range(-sz.y * 0.3, sz.y * 0.3), 0.8, 2.2)
+	var ctr := Vector3(_room_bounds.get_center().x, 1.5, _room_bounds.get_center().y)
+	var side := signf((ctr - c).dot(n))
+	if side == 0.0:
+		side = 1.0
+	return ARUpgradeKit.clamp_to_room(to_local(p + n * side * 0.6), 0.3)
+
+
+## Downed drone leaves a wreck chunk that drifts to the floor.
+func _room_wreckage(pos: Vector3) -> void:
+	if _room_walls.is_empty():
+		return
+	var wreck := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.22, 0.06, 0.22)
+	wreck.mesh = bm
+	wreck.material_override = GraphicsPolish.glow(Color(0.35, 0.12, 0.08), 0.6)
+	add_child(wreck)
+	wreck.global_position = pos
+	wreck.rotation = Vector3(randf() * 0.8, randf() * TAU, randf() * 0.8)
+	var floor_local: Vector3 = to_local(Vector3(pos.x, 0.04, pos.z))
+	var tw := wreck.create_tween().set_parallel(true)
+	tw.tween_property(wreck, "position", floor_local, 1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(wreck, "rotation:y", wreck.rotation.y + 1.5, 1.2)
 
 
 func _ensure_camera() -> void:
@@ -517,7 +588,7 @@ func _make_drone() -> Dictionary:
 	add_child(root)
 	var ang := randf_range(0.0, TAU)
 	var r := randf_range(2.4, 3.2)
-	root.position = ARUpgradeKit.clamp_to_room(Vector3(cos(ang) * r, randf_range(1.3, 1.9), sin(ang) * r))
+	root.position = _room_drone_spawn(ang, r)
 	GraphicsPolish.spawn_sparks(self, root.position, Color(1.0, 0.4, 0.1), 10)
 	return {"node": root, "hp": DRONE_HP, "rotor": rotor, "eye": eye, "shoot_t": randf_range(1.0, 2.5), "strafe": [-1.0, 1.0][randi() % 2], "orbit_r": r, "ang": ang, "flash": 0.0}
 
@@ -708,6 +779,8 @@ func _damage_drone(d: Dictionary, dmg: int, at: Vector3) -> void:
 		if n != null and is_instance_valid(n):
 			GraphicsPolish.spawn_confetti(self, n.global_position, 40)
 			GraphicsPolish.spawn_sparks(self, n.global_position, Color(1.0, 0.5, 0.1), 30)
+			# v0.7.0 RoomKit: wreckage drifts to the real floor.
+			_room_wreckage(n.global_position)
 			n.queue_free()
 		# Swept out of the drones array by _update_drones (never erase mid-loop).
 		drones_destroyed += 1
@@ -948,6 +1021,13 @@ func _update_projectiles(delta: float) -> void:
 			n.queue_free()
 			continue
 		n.global_position += (p.get("vel") as Vector3) * delta
+		# v0.7.0 RoomKit: bolts bounce off real wall planes.
+		if not _room_walls.is_empty():
+			var gv: Vector3 = p.get("vel")
+			var nv: Vector3 = _bounce_walls(n.global_position, gv, 0.1)
+			if nv != gv:
+				p["vel"] = nv
+				GraphicsPolish.spawn_sparks(self, n.global_position, Color(0.6, 0.8, 1.0), 6)
 		var pos: Vector3 = n.global_position
 		var hit := false
 		if bool(p.get("friendly", false)):
@@ -1140,3 +1220,11 @@ func _save_best() -> void:
 		var cfg := ConfigFile.new()
 		cfg.set_value("mech", "best_score", best)
 		cfg.save(BEST_FILE)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

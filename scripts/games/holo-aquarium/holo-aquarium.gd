@@ -70,6 +70,12 @@ var cycle_label: Label3D = null
 var hud_main: Label3D = null
 var hud_help: Label3D = null
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _fake_wall: MeshInstance3D = null
+
 
 func _ready() -> void:
 	# Restore the persisted tank placement (no-op when no anchor was saved).
@@ -83,6 +89,67 @@ func _ready() -> void:
 	# Cool accent light inside the tank + drifting water motes.
 	GraphicsPolish.make_point_light(self, TANK_CENTER + Vector3(0.0, 0.0, 0.8), Color(0.45, 0.75, 1.0), 0.9, 5.0)
 	GraphicsPolish.spawn_ambient_motes(self, TANK_CENTER, 1.9, 36)
+	_apply_room_layout()
+
+
+func _largest_wall(walls: Array) -> Dictionary:
+	var best: Dictionary = walls[0]
+	var best_area := 0.0
+	for w in walls:
+		var s: Vector2 = w["size"]
+		var area := s.x * s.y
+		if area > best_area:
+			best_area = area
+			best = w
+	return best
+
+
+func _snap_tank(center_world: Vector3) -> void:
+	# TANK_CENTER is in this node's local frame; move the whole assembly so
+	# the tank center lands on the given world point.
+	var off: Vector3 = global_transform.basis * TANK_CENTER
+	global_position = center_world - off
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table becomes an underwater reef pedestal; the rug becomes the ocean floor beneath the tank.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "underwater")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "underwater")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	var placed := false
+	# Prefer hanging the tank on the face of the largest real wall.
+	if not _room_walls.is_empty():
+		var w := _largest_wall(_room_walls)
+		var wpos: Vector3 = w["position"]
+		var n: Vector3 = (w["normal"] as Vector3).normalized()
+		if absf(n.y) <= 0.5:
+			var center: Vector3 = wpos + n * (TANK_SIZE.z * 0.5 + 0.08)
+			center.y = clampf(wpos.y, 1.25, 1.95)
+			_snap_tank(center)
+			placed = true
+	# Otherwise stand it on a sturdy table big enough for the 3.6 m tank.
+	if not placed and not _room_tables.is_empty():
+		for t in _room_tables:
+			var ts: Vector3 = t["size"]
+			var tp: Vector3 = t["position"]
+			if ts.x >= 3.8 and ts.z >= 1.4:
+				_snap_tank(Vector3(tp.x, tp.y + ts.y * 0.5 + TANK_SIZE.y * 0.5 + 0.02, tp.z))
+				placed = true
+				break
+	if placed and _fake_wall != null:
+		# A real wall/table now holds the tank: drop the decorative back wall.
+		_fake_wall.visible = false
 
 
 func _mat(color: Color, rough: float = 0.6, emission: Color = Color(0, 0, 0)) -> StandardMaterial3D:
@@ -122,7 +189,7 @@ func _build_environment() -> void:
 	amb.environment = env
 	add_child(amb)
 
-	# Back wall the tank hangs on.
+	# Back wall the tank hangs on (hidden when roomscale places the tank).
 	var wall := MeshInstance3D.new()
 	var wb := BoxMesh.new()
 	wb.size = Vector3(9.0, 5.0, 0.2)
@@ -130,6 +197,7 @@ func _build_environment() -> void:
 	wall.material_override = GraphicsPolish.pbr_preset(Color(0.10, 0.12, 0.20), "matte")
 	wall.position = Vector3(0.0, 2.0, -2.62)
 	add_child(wall)
+	_fake_wall = wall
 
 	# Floor.
 	var floor_mi := MeshInstance3D.new()
@@ -536,14 +604,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _tank_hit(o: Vector3, d: Vector3) -> Array:
-	# Intersect the ray with the tank's front-glass plane, then check bounds.
+	# Intersect the ray with the tank's front-glass plane in this node's
+	# local frame (the whole assembly may have been moved by roomscale),
+	# then check bounds. Returns the local hit point.
+	var lo: Vector3 = to_local(o)
+	var ld: Vector3 = (to_local(o + d) - lo).normalized()
 	var pz: float = TANK_CENTER.z + TANK_SIZE.z * 0.5
-	if absf(d.z) < 0.0001:
+	if absf(ld.z) < 0.0001:
 		return []
-	var t: float = (pz - o.z) / d.z
+	var t: float = (pz - lo.z) / ld.z
 	if t <= 0.0:
 		return []
-	var p: Vector3 = o + d * t
+	var p: Vector3 = lo + ld * t
 	if absf(p.x - TANK_CENTER.x) > TANK_SIZE.x * 0.5:
 		return []
 	if absf(p.y - TANK_CENTER.y) > TANK_SIZE.y * 0.5:

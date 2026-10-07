@@ -199,6 +199,13 @@ func _build(accent: Color) -> void:
 			row.append(0)
 		_histogram.append(row)
 
+	# v0.7.0 KayKit: real adventurer body (Knight). Falls back to the
+	# procedural robe/hood figure below when the model is unavailable.
+	var duelist := ModelLib.spawn("res://assets/models/duel/Knight.glb", self, Vector3(0, -0.78, 0))
+	var model_ok := duelist != null
+	if model_ok:
+		duelist.scale = Vector3.ONE * 0.95
+
 	var robe_mat := StandardMaterial3D.new()
 	robe_mat.albedo_color = Color(0.10, 0.08, 0.16)
 	robe_mat.metallic = 0.2
@@ -208,48 +215,50 @@ func _build(accent: Color) -> void:
 	dark_mat.metallic = 0.6
 	dark_mat.roughness = 0.5
 
-	# Robe: cone, wide at the bottom.
-	var robe := MeshInstance3D.new()
-	robe.name = "Robe"
-	var rcone := CylinderMesh.new()
-	rcone.top_radius = 0.16
-	rcone.bottom_radius = 0.45
-	rcone.height = 1.3
-	rcone.radial_segments = 14
-	robe.mesh = rcone
-	robe.material_override = robe_mat
-	robe.position = Vector3(0, -0.15, 0)
-	add_child(robe)
+	if not model_ok:
+		# Robe: cone, wide at the bottom.
+		var robe := MeshInstance3D.new()
+		robe.name = "Robe"
+		var rcone := CylinderMesh.new()
+		rcone.top_radius = 0.16
+		rcone.bottom_radius = 0.45
+		rcone.height = 1.3
+		rcone.radial_segments = 14
+		robe.mesh = rcone
+		robe.material_override = robe_mat
+		robe.position = Vector3(0, -0.15, 0)
+		add_child(robe)
 
-	# Sash / trim ring.
-	var trim := MeshInstance3D.new()
-	trim.name = "Trim"
-	var tcyl := CylinderMesh.new()
-	tcyl.top_radius = 0.36
-	tcyl.bottom_radius = 0.36
-	tcyl.height = 0.03
-	trim.mesh = tcyl
-	var tmat := StandardMaterial3D.new()
-	tmat.albedo_color = accent
-	tmat.emission_enabled = true
-	tmat.emission = accent
-	tmat.emission_energy_multiplier = 1.4
-	trim.material_override = tmat
-	trim.position = Vector3(0, -0.42, 0)
-	add_child(trim)
+		# Sash / trim ring.
+		var trim := MeshInstance3D.new()
+		trim.name = "Trim"
+		var tcyl := CylinderMesh.new()
+		tcyl.top_radius = 0.36
+		tcyl.bottom_radius = 0.36
+		tcyl.height = 0.03
+		trim.mesh = tcyl
+		var tmat := StandardMaterial3D.new()
+		tmat.albedo_color = accent
+		tmat.emission_enabled = true
+		tmat.emission = accent
+		tmat.emission_energy_multiplier = 1.4
+		trim.material_override = tmat
+		trim.position = Vector3(0, -0.42, 0)
+		add_child(trim)
 
-	# Head.
-	var head := MeshInstance3D.new()
-	head.name = "Head"
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.17
-	sphere.height = 0.34
-	head.mesh = sphere
-	head.material_override = dark_mat
-	head.position = Vector3(0, 0.62, 0)
-	add_child(head)
+		# Head.
+		var head := MeshInstance3D.new()
+		head.name = "Head"
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.17
+		sphere.height = 0.34
+		head.mesh = sphere
+		head.material_override = dark_mat
+		head.position = Vector3(0, 0.62, 0)
+		add_child(head)
 
-	# Emissive visor (telegraphs attacks by flashing).
+	# Emissive visor (telegraphs attacks by flashing). Kept in both paths:
+	# on the KayKit knight it reads as a glowing visor slit on the helmet.
 	var visor := MeshInstance3D.new()
 	visor.name = "Visor"
 	var vbox := BoxMesh.new()
@@ -261,25 +270,26 @@ func _build(accent: Color) -> void:
 	_visor_mat.emission = accent
 	_visor_mat.emission_energy_multiplier = 2.5
 	visor.material_override = _visor_mat
-	visor.position = Vector3(0, 0.63, 0.145)
+	visor.position = Vector3(0, 0.70, 0.16) if model_ok else Vector3(0, 0.63, 0.145)
 	add_child(visor)
 
-	# Hover glow ring.
-	var glow := MeshInstance3D.new()
-	glow.name = "HoverGlow"
-	var gcyl := CylinderMesh.new()
-	gcyl.top_radius = 0.475
-	gcyl.bottom_radius = 0.475
-	gcyl.height = 0.015
-	glow.mesh = gcyl
-	var gmat := StandardMaterial3D.new()
-	gmat.albedo_color = accent
-	gmat.emission_enabled = true
-	gmat.emission = accent
-	gmat.emission_energy_multiplier = 2.0
-	glow.material_override = gmat
-	glow.position = Vector3(0, -0.84, 0)
-	add_child(glow)
+	if not model_ok:
+		# Hover glow ring.
+		var glow := MeshInstance3D.new()
+		glow.name = "HoverGlow"
+		var gcyl := CylinderMesh.new()
+		gcyl.top_radius = 0.475
+		gcyl.bottom_radius = 0.475
+		gcyl.height = 0.015
+		glow.mesh = gcyl
+		var gmat := StandardMaterial3D.new()
+		gmat.albedo_color = accent
+		gmat.emission_enabled = true
+		gmat.emission = accent
+		gmat.emission_energy_multiplier = 2.0
+		glow.material_override = gmat
+		glow.position = Vector3(0, -0.84, 0)
+		add_child(glow)
 
 	# Blade on a mount so we can pose it per-state.
 	_blade_mount = Node3D.new()

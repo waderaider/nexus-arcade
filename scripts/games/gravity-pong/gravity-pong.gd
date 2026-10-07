@@ -43,6 +43,7 @@ var hud_label: Label3D = null
 var msg_label: Label3D = null
 var help_label: Label3D = null
 var _anchor_t := 0.0
+var _room_bounds := Rect2(-2.0, -2.0, 4.0, 4.0) # v0.7.0: RoomKit cache
 
 
 func _ready() -> void:
@@ -55,6 +56,15 @@ func _ready() -> void:
 	_build_wells()
 	_build_hud()
 	_reset_ball()
+	RoomKit.refresh() # v0.7.0: cache room layout (safe no-op without XR).
+	if RoomKit.is_available() and RoomKit.has_room_data():
+		_room_bounds = RoomKit.room_bounds()
+		# v0.7.0 MORPH: windows become deep-space vistas (gravity wells curve like planets).
+		if not has_meta("_morphs_applied"):
+			set_meta("_morphs_applied", true)
+			var _morph_wins := RoomKit.get_anchors("WINDOW")
+			if not _morph_wins.is_empty():
+				RoomKit.morph(_morph_wins[0], "scifi")
 
 
 func _process(delta: float) -> void:
@@ -306,6 +316,10 @@ func _move_ball(delta: float) -> void:
 		pos.x = -FIELD_X + BALL_R
 		ball_vel.x = absf(ball_vel.x)
 
+	# RoomKit (v0.7.0): bounce off the real room boundary when scanned.
+	if RoomKit.is_available() and RoomKit.has_room_data():
+		pos = _room_wall_bounce(pos)
+
 	# Paddles: box collision on the XZ plane.
 	if ball_vel.z > 0.0:
 		if _hits_paddle(pos, player_paddle):
@@ -328,6 +342,42 @@ func _move_ball(delta: float) -> void:
 		_reset_ball()
 		_check_win()
 	_update_hud()
+
+
+## RoomKit (v0.7.0): bounce the ball off the real room boundary, in world
+## space: room extents from room_bounds() plus real wall planes from
+## get_walls(). No-op without room data; arena logic is unchanged.
+func _room_wall_bounce(pos: Vector3) -> Vector3:
+	var gpos: Vector3 = to_global(pos)
+	var wvel: Vector3 = global_transform.basis * ball_vel
+	var r := _room_bounds
+	if gpos.x > r.end.x - BALL_R:
+		gpos.x = r.end.x - BALL_R
+		wvel.x = -absf(wvel.x)
+	elif gpos.x < r.position.x + BALL_R:
+		gpos.x = r.position.x + BALL_R
+		wvel.x = absf(wvel.x)
+	if gpos.z > r.end.y - BALL_R:
+		gpos.z = r.end.y - BALL_R
+		wvel.z = -absf(wvel.z)
+	elif gpos.z < r.position.y + BALL_R:
+		gpos.z = r.position.y + BALL_R
+		wvel.z = absf(wvel.z)
+	for w_v in RoomKit.get_walls():
+		var w: Dictionary = w_v
+		var n: Vector3 = (w["normal"] as Vector3).normalized()
+		if absf(n.y) > 0.5:
+			continue # not a vertical wall
+		var dist: float = (gpos - (w["position"] as Vector3)).dot(n)
+		if absf(dist) < BALL_R:
+			var vn := wvel.dot(n)
+			if (dist > 0.0 and vn < 0.0) or (dist < 0.0 and vn > 0.0):
+				wvel = wvel.bounce(n)
+				gpos += n * (-signf(dist) * (BALL_R - absf(dist) + 0.005))
+	if wvel.length() > 0.001:
+		wvel = wvel.normalized() * ball_speed
+	ball_vel = global_transform.basis.inverse() * wvel
+	return to_local(gpos)
 
 
 func _hits_paddle(pos: Vector3, paddle: MeshInstance3D) -> bool:

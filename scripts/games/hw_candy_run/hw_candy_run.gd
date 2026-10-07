@@ -33,6 +33,16 @@ var catch_player: AudioStreamPlayer = null
 var miss_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 var rng := RandomNumberGenerator.new()
+
+## RoomKit v0.7.0: cached room layout + local drop-zone ranges (defaults = old).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _room_sx0 := -1.5
+var _room_sx1 := 1.5
+var _room_sz0 := -1.8
+var _room_sz1 := 0.4
 var candy_colors: Array = [
 	Color(1.0, 0.25, 0.35), Color(0.25, 0.8, 1.0), Color(0.5, 1.0, 0.3),
 	Color(1.0, 0.75, 0.15), Color(0.8, 0.4, 1.0), Color(1.0, 0.5, 0.1),
@@ -54,6 +64,7 @@ func _ready() -> void:
 		candies.append(_build_candy())
 		(candies[i] as Dictionary)["active"] = false
 		((candies[i] as Dictionary)["node"] as Node3D).visible = false
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -201,7 +212,13 @@ func _spawn_candy() -> void:
 			continue
 		var node: Node3D = c["node"]
 		node.visible = true
-		node.position = Vector3(rng.randf_range(-1.5, 1.5), SPAWN_Y, rng.randf_range(-1.8, 0.4))
+		var sp := Vector3(rng.randf_range(_room_sx0, _room_sx1), SPAWN_Y, rng.randf_range(_room_sz0, _room_sz1))
+		# RoomKit v0.7.0: some candy hides behind real furniture.
+		if (not _room_tables.is_empty() or not _room_furniture.is_empty()) and rng.randf() < 0.4:
+			var fs := _room_furniture_lurk(SPAWN_Y)
+			if fs != Vector3.INF:
+				sp = fs + Vector3(rng.randf_range(-0.3, 0.3), 0.0, rng.randf_range(-0.3, 0.3))
+		node.position = sp
 		node.rotation = Vector3(rng.randf_range(0.0, TAU), rng.randf_range(0.0, TAU), 0.0)
 		c["speed"] = rng.randf_range(1.7, 2.7)
 		c["spin"] = rng.randf_range(1.5, 4.0)
@@ -317,3 +334,70 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		_dress_spooky() # v0.7.0: defaults still apply without RoomKit
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		_dress_spooky() # v0.7.0: defaults still apply without room data
+		return
+	# v0.7.0 MORPH-C: storage becomes the candy treasure vault (the run's goal); the rug is the candy track start.
+	var _morph0_storage := RoomKit.get_anchors("STORAGE")
+	if not _morph0_storage.is_empty():
+		RoomKit.morph(_morph0_storage[0], "candy")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "candy")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Fit the candy drop zone to the real room floor (game-local ranges).
+	var b := _room_bounds
+	var c0 := to_local(Vector3(b.position.x, 0.0, b.position.y))
+	var c1 := to_local(Vector3(b.end.x, 0.0, b.end.y))
+	_room_sx0 = minf(c0.x, c1.x) + 0.3
+	_room_sx1 = maxf(c0.x, c1.x) - 0.3
+	_room_sz0 = minf(c0.z, c1.z) + 0.3
+	_room_sz1 = maxf(c0.z, c1.z) - 0.3
+	if _room_sx1 < _room_sx0:
+		_room_sx0 = -1.5
+		_room_sx1 = 1.5
+	if _room_sz1 < _room_sz0:
+		_room_sz0 = -1.8
+		_room_sz1 = 0.4
+	_dress_spooky() # v0.7.0 KayKit set dressing, fit to the drop zone
+
+
+## RoomKit: spot behind a random table/furniture cuboid, away from room center.
+func _room_furniture_lurk(y: float) -> Vector3:
+	var items: Array = _room_tables + _room_furniture
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[rng.randi_range(0, items.size() - 1)]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := _room_bounds.get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.45
+	return to_local(Vector3(wp.x + away.x * clearance, y, wp.z + away.y * clearance))
+
+
+## v0.7.0 KayKit set dressing: spooky props ringing the candy drop zone
+## (candle clusters, barrels, a chest). Guarded - null spawns are skipped,
+## never crash; uses the room-fit drop-zone ranges above.
+func _dress_spooky() -> void:
+	var dir := "res://assets/models/hw_candy_run/"
+	var mid_z := (_room_sz0 + _room_sz1) * 0.5
+	ModelLib.spawn(dir + "candle_triple.glb", self, Vector3(_room_sx0 - 0.60, 0.0, mid_z))
+	ModelLib.spawn(dir + "candle_triple.glb", self, Vector3(_room_sx1 + 0.60, 0.0, mid_z))
+	ModelLib.spawn(dir + "chest.glb", self, Vector3(_room_sx1 + 0.90, 0.0, _room_sz1 + 0.50))
+	ModelLib.spawn(dir + "barrel_small.glb", self, Vector3(_room_sx0 - 0.90, 0.0, _room_sz1 + 0.50))
+	ModelLib.spawn(dir + "barrel_small.glb", self, Vector3(_room_sx0 - 0.90, 0.0, _room_sz0 - 0.40))

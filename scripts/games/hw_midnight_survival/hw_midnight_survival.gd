@@ -34,6 +34,20 @@ var hurt_player: AudioStreamPlayer = null
 var chime_a: AudioStreamPlayer = null
 var chime_b: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed dungeon gate and monster lair the spooks pour out of
+# (game-local coords).
+var _room_door_pos := Vector3.ZERO
+var _room_door_known := false
+var _room_bed_pos := Vector3.ZERO
+var _room_bed_known := false
+var _clock_node: Node3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -48,6 +62,50 @@ func _ready() -> void:
 	chime_b = _make_player(_make_tone(880.0, 0.70, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_midnight_survival_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.6, -1.0), 3.0)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Keep the clock tower inside the real room.
+	if _clock_node != null and _room_bounds.size.y > 1.5:
+		_clock_node.position.z = maxf(_clock_node.position.z, _room_bounds.position.y + 0.8)
+	# v0.7.0 furniture morphs: the real door becomes a haunted dungeon
+	# gate and the bed becomes a monster lair — spooks pour out of both
+	# (see _spook_spawn_pos).
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+		_room_door_pos = door_anchors[0]["position"]
+		_room_door_known = true
+	var bed_anchors := RoomKit.get_anchors("BED")
+	if not bed_anchors.is_empty():
+		RoomKit.morph(bed_anchors[0], "haunted")
+		_room_bed_pos = bed_anchors[0]["position"]
+		_room_bed_known = true
+
+
+## Wall normal flipped to point into the room (normals are sign-agnostic).
+func _wall_inward(w: Dictionary) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3(0.0, 0.0, 1.0)
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	var wp: Vector3 = w["position"]
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n
+	return n
 
 
 func _add_light_rig() -> void:
@@ -170,6 +228,7 @@ func _build_clock() -> void:
 	var root := Node3D.new()
 	root.position = Vector3(0.0, 2.4, -4.2)
 	add_child(root)
+	_clock_node = root
 	# Tower post.
 	var post := MeshInstance3D.new()
 	var pc := CylinderMesh.new()
@@ -256,8 +315,6 @@ func _show_msg(text: String, duration: float = 1.6) -> void:
 
 func _spawn_spook() -> void:
 	var kind := randi_range(0, 2) # 0 ghost, 1 bat, 2 pumpkin-head
-	var angle := randf() * TAU
-	var radius := randf_range(4.2, 5.0)
 	var root := Node3D.new()
 	var base_y := 1.2
 	var speed := 0.55 + elapsed * 0.008 + randf() * 0.30
@@ -273,9 +330,28 @@ func _spawn_spook() -> void:
 			base_y = 0.45
 			_build_pumpkin_mesh(root)
 			speed *= 1.25
-	root.position = Vector3(cos(angle) * radius, base_y, sin(angle) * radius - 1.0)
+	root.position = _spook_spawn_pos(base_y)
 	add_child(root)
 	spooks.append({"node": root, "kind": kind, "speed": speed, "phase": randf() * TAU, "base_y": base_y, "wings": wings})
+
+
+func _spook_spawn_pos(base_y: float) -> Vector3:
+	# Spooks emerge from the real walls when the room is known,
+	# otherwise close in from a circle clamped to the room's extents.
+	# The morphed dungeon gate and monster lair are favored spawn mouths.
+	if _room_door_known and randf() < 0.30:
+		return Vector3(_room_door_pos.x, base_y, _room_door_pos.z)
+	if _room_bed_known and randf() < 0.25:
+		return Vector3(_room_bed_pos.x + randf_range(-0.3, 0.3), minf(base_y, 0.6), _room_bed_pos.z + randf_range(-0.3, 0.3))
+	if _room_known and not _room_walls.is_empty() and randf() < 0.6:
+		var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+		var bp: Vector3 = (w["position"] as Vector3) + _wall_inward(w) * 0.4
+		return Vector3(bp.x, base_y, bp.z)
+	var r := randf_range(4.2, 5.0)
+	if _room_known:
+		r = minf(r, maxf(1.6, minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.3))
+	var ang := randf() * TAU
+	return Vector3(cos(ang) * r, base_y, sin(ang) * r - 1.0)
 
 
 func _build_ghost_mesh(root: Node3D) -> void:

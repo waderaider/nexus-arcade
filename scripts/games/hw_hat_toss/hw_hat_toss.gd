@@ -33,6 +33,18 @@ var toss_player: AudioStreamPlayer = null
 var ringer_player: AudioStreamPlayer = null
 var thud_player: AudioStreamPlayer = null
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: couch imp that hides behind the player's couch and lunges at
+# the stands on every ringer.
+var _imp: Node3D = null
+var _imp_home := Vector3.ZERO
+var _imp_lunge_t := -1.0
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -46,6 +58,97 @@ func _ready() -> void:
 	thud_player = _make_player(_make_tone(150.0, 0.18, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_hat_toss_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -2.0), 2.5)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Fit the hat stands inside the real room: scale their layout so the
+	# farthest stand lands within the room's depth and width.
+	var c := _room_bounds.get_center()
+	var zscale := minf(1.0, maxf(0.4, (_room_bounds.size.y - 1.0) / 3.3))
+	var xscale := minf(1.0, maxf(0.4, (_room_bounds.size.x - 1.0) / 1.1))
+	var base := [Vector2(-0.55, -1.7), Vector2(0.0, -2.5), Vector2(0.55, -3.3)]
+	for i in range(stands.size()):
+		var s: Dictionary = stands[i]
+		var b: Vector2 = base[i]
+		var nx: float = c.x + b.x * xscale
+		var nz: float = c.y + b.y * zscale
+		var node: Node3D = s["node"]
+		if is_instance_valid(node):
+			node.position = Vector3(nx, 0.0, nz)
+		s["x"] = nx
+		s["z"] = nz
+		s["top"] = Vector3(nx, 0.55, nz)
+	# v0.7.0 furniture morph: the couch becomes a haunted perch. A
+	# mischievous imp hides behind it and lunges at the stands every
+	# time you land a ringer (see _resolve_landing / _update_imp).
+	var couch_anchors := RoomKit.get_anchors("COUCH")
+	if not couch_anchors.is_empty():
+		var canchor: Dictionary = couch_anchors[0]
+		RoomKit.morph(canchor, "haunted")
+		var cp: Vector3 = canchor["position"]
+		var cs: Vector3 = canchor["extents"]
+		if _imp == null:
+			_imp = _make_imp()
+		# Hide on the player side of the couch, behind its bulk.
+		_imp_home = Vector3(cp.x, 0.0, cp.z + cs.z * 0.5 + 0.25)
+		_imp.position = _imp_home
+		_imp.visible = true
+
+
+func _make_imp() -> Node3D:
+	# A mischievous couch imp: glowing eyes on a shadowy body, waiting
+	# behind the player's couch to lunge at the stands on a ringer.
+	var root := Node3D.new()
+	root.name = "CouchImp"
+	var body := MeshInstance3D.new()
+	var bm := SphereMesh.new()
+	bm.radius = 0.16
+	bm.height = 0.32
+	body.mesh = bm
+	body.position = Vector3(0.0, 0.30, 0.0)
+	body.material_override = GraphicsPolish.pbr(Color(0.12, 0.05, 0.18), 0.0, 0.6)
+	root.add_child(body)
+	for side in [-1.0, 1.0]:
+		var eye := MeshInstance3D.new()
+		var em := SphereMesh.new()
+		em.radius = 0.035
+		em.height = 0.07
+		eye.mesh = em
+		eye.position = Vector3(side * 0.07, 0.38, -0.13)
+		eye.material_override = GraphicsPolish.glow(Color(1.0, 0.25, 0.1), 2.4)
+		root.add_child(eye)
+	root.visible = false
+	add_child(root)
+	return root
+
+
+func _update_imp(delta: float) -> void:
+	if _imp == null or not _imp.visible:
+		return
+	if _imp_lunge_t < 0.0:
+		# Idle: bob behind the couch, peeking over it.
+		_imp.position = _imp_home + Vector3(0.0, 0.05 + sin(elapsed * 3.0) * 0.05, 0.0)
+		return
+	# Lunge at the stands in an arc, then sink back behind the couch.
+	_imp_lunge_t += delta
+	var k := clampf(_imp_lunge_t / 0.9, 0.0, 1.0)
+	var arc := sin(k * PI)
+	var target := Vector3(_imp_home.x * 0.4, 0.0, -2.2)
+	_imp.position = _imp_home.lerp(target, arc) + Vector3(0.0, arc * 0.5, 0.0)
+	if k >= 1.0:
+		_imp_lunge_t = -1.0
+		_imp.position = _imp_home
 
 
 func _add_light_rig() -> void:
@@ -93,6 +196,7 @@ func _process(delta: float) -> void:
 	_update_grab()
 	_update_flying(delta)
 	_update_landed(delta)
+	_update_imp(delta)
 	if ring_cooldown > 0.0:
 		ring_cooldown -= delta
 		if ring_cooldown <= 0.0 and ready_ring == null:
@@ -199,7 +303,7 @@ func _build_stands() -> void:
 		tip.rotation_degrees.z = -28.0
 		tip.material_override = GraphicsPolish.pbr(Color(0.25, 0.10, 0.45), 0.1, 0.55)
 		root.add_child(tip)
-		stands.append({"x": x, "z": z, "points": int(d["points"]), "top": Vector3(x, 0.55, z)})
+		stands.append({"x": x, "z": z, "points": int(d["points"]), "top": Vector3(x, 0.55, z), "node": root})
 
 
 func _make_ring_node() -> MeshInstance3D:
@@ -265,9 +369,13 @@ func _throw_ring() -> void:
 		var tt := (0.55 - o.y) / d.y
 		target = o + d * tt
 	target.y = 0.55
-	target = ARUpgradeKit.clamp_to_room(target, 0.2)
-	if target.z > -0.9:
-		target.z = -0.9
+	if _room_known:
+		target.x = clampf(target.x, _room_bounds.position.x + 0.2, _room_bounds.end.x - 0.2)
+		target.z = clampf(target.z, _room_bounds.position.y + 0.2, _room_bounds.end.y - 0.2)
+	else:
+		target = ARUpgradeKit.clamp_to_room(target, 0.2)
+		if target.z > -0.9:
+			target.z = -0.9
 	var node := ready_ring
 	ready_ring = null
 	node.add_child(GraphicsPolish.make_trail(Color(1.0, 0.6, 0.15), 0.04))
@@ -314,6 +422,8 @@ func _resolve_landing(node: MeshInstance3D) -> void:
 		score += pts
 		ringers += 1
 		ringer_player.play()
+		# The couch imp lunges at the stands to celebrate (or taunt).
+		_imp_lunge_t = 0.0
 		GraphicsPolish.spawn_sparks(self, to_local(node.global_position), Color(1.0, 0.85, 0.25), 24)
 		_show_msg("RINGER! +%d" % pts, 1.6)
 	else:

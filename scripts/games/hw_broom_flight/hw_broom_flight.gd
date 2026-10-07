@@ -39,6 +39,15 @@ var win_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout + local ring-course x range (defaults = old).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _room_rx0 := -1.2
+var _room_rx1 := 1.2
+var _moon: MeshInstance3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -54,6 +63,7 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -2.0), 3.0, 50)
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -170,7 +180,7 @@ func _build_rings() -> void:
 
 
 func _place_ring(ring: Dictionary, z: float) -> void:
-	ring["x"] = randf_range(-1.2, 1.2)
+	ring["x"] = randf_range(_room_rx0, _room_rx1)
 	ring["y"] = randf_range(0.9, 2.2)
 	ring["z"] = z
 	ring["passed"] = false
@@ -189,6 +199,7 @@ func _build_sky() -> void:
 	moon_mat = GraphicsPolish.glow(Color(0.95, 0.95, 0.85), 1.1)
 	moon.material_override = moon_mat
 	add_child(moon)
+	_moon = moon
 	var floor_inst := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(14.0, 14.0)
@@ -370,3 +381,55 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the rug is the arcane magic-circle launch pad; windows open on a haunted night-sky vista.
+	var _morph0_rug := RoomKit.get_anchors("RUG")
+	if not _morph0_rug.is_empty():
+		RoomKit.morph(_morph0_rug[0], "arcane")
+	var _morph1_window := RoomKit.get_anchors("WINDOW")
+	if not _morph1_window.is_empty():
+		RoomKit.morph(_morph1_window[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Fit the ring course to the real room width (game-local x range).
+	var b := _room_bounds
+	var c0 := to_local(Vector3(b.position.x, 0.0, b.position.y))
+	var c1 := to_local(Vector3(b.end.x, 0.0, b.end.y))
+	_room_rx0 = minf(c0.x, c1.x) + 0.7
+	_room_rx1 = maxf(c0.x, c1.x) - 0.7
+	if _room_rx1 - _room_rx0 < 0.8:
+		_room_rx0 = -1.2
+		_room_rx1 = 1.2
+	# Hang the moon decor high on the largest real wall.
+	if not _room_walls.is_empty() and _moon != null:
+		var w := _room_largest_wall()
+		if not w.is_empty():
+			var wp: Vector3 = w["position"]
+			var n: Vector3 = w["normal"]
+			var nn := Vector3(n.x, 0.0, n.z)
+			if nn.length() > 0.01:
+				_moon.global_position = wp + nn.normalized() * 0.6 + Vector3(0.0, 1.6, 0.0)
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best

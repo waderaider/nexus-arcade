@@ -87,6 +87,12 @@ var hud: Label3D = null
 var help_label: Label3D = null
 var _anchor_timer := 0.0
 var _click_consumed := false
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_table_top_y := -1.0 ## real tabletop height, -1 = unknown
 
 
 func _ready() -> void:
@@ -103,6 +109,49 @@ func _ready() -> void:
 	if not ARUpgradeKit.apply_anchor(self, "ar-dj_main") and ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.place_on_table(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 2.0)
+	_apply_room_layout()
+
+
+# ------------------------------------------------------------------ room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> neon DJ stage; lamps -> club lights
+	_morph_anchors("TABLE", "neon", 1)
+	_morph_anchors("LAMP", "neon", 2)
+	_seat_rig_on_table()
+
+
+## ROOMKIT: shift the whole DJ rig so the decks and mixer rest on the real
+## tabletop height (largest sane table), not the fixed TABLE_TOP constant.
+func _seat_rig_on_table() -> void:
+	var best_top := -1.0
+	var best_area := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var top: Vector3 = t["position"]
+		var size: Vector3 = t["size"]
+		var top_y: float = top.y + size.y * 0.5
+		if size.x * size.z < 0.6 or top_y < 0.4 or top_y > 1.3:
+			continue
+		if size.x * size.z > best_area:
+			best_area = size.x * size.z
+			best_top = top_y
+	if best_top < 0.0:
+		return
+	_room_table_top_y = best_top
+	var delta := best_top - TABLE_TOP
+	if absf(delta) > 0.05 and absf(delta) < 0.6:
+		position.y += delta
+	_update_hud()
 
 
 func _add_light_rig() -> void:
@@ -600,6 +649,8 @@ func _update_hud() -> void:
 		int(BPM), fader, gain_a, gain_b, master,
 		_deck_state(deck_a), _deck_state(deck_b),
 	]
+	if _room_table_top_y > 0.0:
+		hud.text += "\nOn your table (%.2f m)" % _room_table_top_y
 
 
 func _pinch_active() -> bool:
@@ -621,3 +672,11 @@ func _poll_pinch() -> void:
 			_toggle_deck(deck_a)
 		elif kind == "disc_b":
 			_toggle_deck(deck_b)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

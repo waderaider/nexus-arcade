@@ -36,6 +36,57 @@ var _anchor_t := 0.0
 var _rotor_t := 0.0
 var mouse_pos := Vector2.ZERO
 
+# v0.7.0 RoomKit: the ring course fits inside the real room; the drone
+# bounces off real wall planes. Cached; default layout without room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_fit_course_to_room()
+	# v0.7.0 MORPH: doors become the race-course hangar gates.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_doors := RoomKit.get_anchors("DOOR")
+		if not _morph_doors.is_empty():
+			RoomKit.morph(_morph_doors[0], "scifi")
+
+
+## Reposition the checkpoint rings so the course fits the real room.
+func _fit_course_to_room() -> void:
+	if rings.is_empty():
+		return
+	var c := _room_bounds.get_center()
+	var center := Vector3(c.x, RING_Y, c.y)
+	var r := clampf(minf(_room_bounds.size.x, _room_bounds.size.y) * 0.5 - 0.8, 1.2, RING_TRACK_R)
+	for i in rings.size():
+		var ring := rings[i] as MeshInstance3D
+		if not is_instance_valid(ring):
+			continue
+		var ang := TAU * float(i) / float(rings.size())
+		var y := RING_Y + sin(ang * 2.0) * 0.25
+		ring.position = Vector3(center.x + cos(ang) * r, y, center.z + sin(ang) * r)
+		ring.look_at(Vector3(center.x, y, center.z), Vector3.UP)
+
+
+## Normal-sign agnostic wall reflection.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "drone-racer_main")
@@ -48,6 +99,7 @@ func _ready() -> void:
 	_build_hud()
 	_reset_race()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.35, 0.0), 3.2, 40)
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -132,8 +184,8 @@ func _build_rings() -> void:
 		add_child(inst)
 		inst.look_at(Vector3(0.0, y, 0.0), Vector3.UP)
 		var tag := GraphicsPolish.make_label(str(i + 1), 96, Color.WHITE)
-		tag.position = inst.position + Vector3(0.0, 0.9, 0.0)
-		add_child(tag)
+		tag.position = Vector3(0.0, 0.9, 0.0)
+		inst.add_child(tag)  # rides with the ring when room layout refits it
 		rings.append(inst)
 		ring_mats.append(mat)
 
@@ -237,6 +289,9 @@ func _fly_drone(delta: float, xr: bool, boost: bool) -> void:
 	var speed := DRONE_SPEED * (BOOST_MULT if boost else 1.0)
 	var desired := to_target.normalized() * minf(to_target.length() * 4.0, speed) if to_target.length() > 0.05 else Vector3.ZERO
 	drone_vel = drone_vel.lerp(desired, clampf(6.0 * delta, 0.0, 1.0))
+	# v0.7.0 RoomKit: the drone bounces off real wall planes.
+	if not _room_walls.is_empty():
+		drone_vel = _bounce_walls(drone.global_position, drone_vel, 0.2)
 	drone.global_position += drone_vel * delta
 	drone.global_position.y = clampf(drone.global_position.y, 0.5, 2.4)
 	# Bank toward movement.

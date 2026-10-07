@@ -86,6 +86,12 @@ var _anchor_timer := 0.0
 var _twin_grow_t := 0.0
 var _twin: Node3D = null
 var _status_label: Label3D = null
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_table_top_y := -1.0 ## real tabletop height, -1 = unknown
 
 
 func _ready() -> void:
@@ -96,6 +102,52 @@ func _ready() -> void:
 	_load_care()
 	_build_shelf()
 	_show_step(Step.CAPTURE)
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): plants -> triage glow on the patients themselves
+	_morph_anchors("PLANT", "nature", 2)
+	_seat_shelf_on_table()
+
+
+## ROOMKIT: rest the plant shelf on the largest detected tabletop so the
+## pots sit on a real surface instead of floating at a fixed spot.
+func _seat_shelf_on_table() -> void:
+	var t := _largest_table()
+	if t.is_empty() or _shelf_root == null:
+		return
+	var top: Vector3 = t["position"]
+	var size: Vector3 = t["size"]
+	# Only use sane table-like surfaces: big enough, waist height.
+	if size.x * size.z < 0.6 or top.y + size.y * 0.5 < 0.35 or top.y + size.y * 0.5 > 1.3:
+		return
+	_room_table_top_y = top.y + size.y * 0.5
+	_shelf_root.position = Vector3(top.x, _room_table_top_y, top.z)
+
+
+func _largest_table() -> Dictionary:
+	var best := {}
+	var best_area := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var size: Vector3 = t["size"]
+		var area := size.x * size.z
+		if area > best_area:
+			best_area = area
+			best = t
+	return best
 
 
 func _process(delta: float) -> void:
@@ -302,6 +354,9 @@ func _build_care_step() -> void:
 	# Holo Garden twin: pot + animated plant (right side).
 	var twin_anchor := Node3D.new()
 	twin_anchor.position = Vector3(1.45, 0.0, -1.4)
+	if _room_table_top_y > 0.0:
+		# ROOMKIT: the twin pot sits on the real tabletop.
+		twin_anchor.position.y = _room_table_top_y
 	_step_root.add_child(twin_anchor)
 	var pot := _build_pot()
 	pot.position = Vector3(0, 0.14, 0)
@@ -370,6 +425,13 @@ func _build_shelf() -> void:
 		empty.position = Vector3(0, 0.3, 0.9)
 		empty.pixel_size = 0.007
 		_shelf_root.add_child(empty)
+	# v0.7.0 KayKit: a real wooden shelf plank under the plant-card row, sized
+	# to the collection. Falls back to the floating cards when unavailable.
+	var plank := ModelLib.spawn("res://assets/models/plant_doctor/shelf_B_large.gltf",
+		_shelf_root, Vector3(0, -0.17, 0.9))
+	if plank != null:
+		var w := clampf(float(maxi(n, 1)) * 0.56 / 2.0, 0.8, 2.6)
+		plank.scale = Vector3(w, 1.0, 1.0)
 
 
 func _make_shelf_card(species_idx: int, pos: Vector3) -> void:
@@ -756,3 +818,11 @@ func _mark_watered() -> void:
 	_update_status_label()
 	_build_shelf()
 	GraphicsPolish.spawn_sparks(self, Vector3(-0.55, 0.4, -1.4), Color(0.4, 0.8, 1.0), 24)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

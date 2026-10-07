@@ -47,6 +47,12 @@ var tension_fill: MeshInstance3D = null
 var sim_t := 0.0
 var ripple_t := 0.0
 var anchor_t := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _pond_center: Vector3 = POND_CENTER
 
 
 func _ready() -> void:
@@ -61,6 +67,7 @@ func _ready() -> void:
 	_build_hud()
 	_reset_cast()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, -0.9), 2.2, 40)
+	_apply_room_layout() # v0.7.0: pond on open floor inside the room
 
 
 func _process(delta: float) -> void:
@@ -175,7 +182,7 @@ func _define_species() -> void:
 func _build_pond() -> void:
 	var pond := Node3D.new()
 	pond.name = "Pond"
-	pond.position = POND_CENTER
+	pond.position = _pond_center
 	add_child(pond)
 	# Dark basin so fish shadows read through the water.
 	var basin := MeshInstance3D.new()
@@ -346,8 +353,9 @@ func _try_cast() -> void:
 	dir = dir.normalized()
 	var dist := clampf(0.9 + speed * 0.45, 0.8, 3.4)
 	var landing := Vector3(ROD_TIP.x, POND_Y, ROD_TIP.z) + dir * dist
-	landing.x = clampf(landing.x, -1.75, 1.75)
-	landing.z = clampf(landing.z, -1.75, 1.75)
+	# v0.7.0: keep casts inside the scanned room.
+	landing.x = clampf(landing.x, _room_bounds.position.x + 0.2, _room_bounds.end.x - 0.2)
+	landing.z = clampf(landing.z, _room_bounds.position.y + 0.2, _room_bounds.end.y - 0.2)
 	# Solve a 0.8s projectile arc to the landing point.
 	var T := 0.8
 	bobber_vel = Vector3(
@@ -363,7 +371,7 @@ func _fly_bobber(delta: float) -> void:
 	bobber_vel.y -= 9.8 * delta
 	bobber.position += bobber_vel * delta
 	if bobber.position.y <= POND_Y + 0.02 and bobber_vel.y < 0.0:
-		var flat := Vector2(bobber.position.x - POND_CENTER.x, bobber.position.z - POND_CENTER.z)
+		var flat := Vector2(bobber.position.x - _pond_center.x, bobber.position.z - _pond_center.z)
 		bobber.position.y = POND_Y + 0.02
 		if flat.length() <= POND_RADIUS:
 			state = "waiting"
@@ -522,3 +530,44 @@ func _restart() -> void:
 	collection.clear()
 	_reset_cast()
 	ARUpgradeKit.save_anchor("ar-fishing_main", global_transform)
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Center the pond on open floor: room center, nudged out of furniture.
+	var c := _room_bounds.get_center()
+	var p := Vector2(c.x, c.y)
+	for f_v in _room_furniture + _room_tables:
+		var f: Dictionary = f_v
+		var fc: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		var hx := fs.x * 0.5 + POND_RADIUS + 0.3
+		var hz := fs.z * 0.5 + POND_RADIUS + 0.3
+		var dx := p.x - fc.x
+		var dz := p.y - fc.z
+		if absf(dx) < hx and absf(dz) < hz:
+			if hx - absf(dx) < hz - absf(dz):
+				p.x = fc.x + (hx if dx >= 0.0 else -hx)
+			else:
+				p.y = fc.z + (hz if dz >= 0.0 else -hz)
+	p.x = clampf(p.x, _room_bounds.position.x + POND_RADIUS + 0.2, _room_bounds.end.x - POND_RADIUS - 0.2)
+	p.y = clampf(p.y, _room_bounds.position.y + POND_RADIUS + 0.2, _room_bounds.end.y - POND_RADIUS - 0.2)
+	_pond_center = Vector3(p.x, 0.0, p.y)
+	var pond := get_node_or_null("Pond")
+	if pond != null:
+		pond.position = _pond_center
+	# v0.7.0 MORPH: plants become overgrown pond reeds / water creatures in the pond biome.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_plants := RoomKit.get_anchors("PLANT")
+		if not _morph_plants.is_empty():
+			RoomKit.morph(_morph_plants[0], "nature")

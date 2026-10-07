@@ -38,6 +38,11 @@ var drag_distance := 0.0
 var hud_label: Label3D = null
 var help_label: Label3D = null
 var _anchor_timer := 0.0
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -46,9 +51,51 @@ func _ready() -> void:
 	_ensure_fallback_camera()
 	_ensure_light()
 	_build_floor()
+	_build_writing_nook() # v0.7.0 KayKit set dressing (null-safe)
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.4, 1.0), 2.5, 35)
 	_load_notes()
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): screens/tv -> giant note dashboard
+	_morph_anchors("SCREEN", "scifi", 1)
+	_morph_anchors("TV", "scifi", 1)
+
+
+## Pin a note position onto the nearest real wall face (within 0.4 m).
+## Returns [pos: Vector3, normal: Vector3] (normal = ZERO when not pinned).
+func _pin_to_wall(p: Vector3) -> Array:
+	if _room_walls.is_empty():
+		return [p, Vector3.ZERO]
+	var best := p
+	var best_n := Vector3.ZERO
+	var best_d := 0.4
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var n: Vector3 = w["normal"]
+		var to_p: Vector3 = p - w["position"]
+		var signed_d: float = to_p.dot(n)
+		var tangent: Vector3 = to_p - n * signed_d
+		var reach: float = maxf((w["size"] as Vector2).x, (w["size"] as Vector2).y) * 0.5
+		if absf(signed_d) < best_d and tangent.length() <= reach:
+			best_d = absf(signed_d)
+			var s := signf(signed_d)
+			best_n = n * (s if s != 0.0 else 1.0)
+			best = p - n * signed_d + best_n * 0.035
+	return [best, best_n]
 
 
 func _process(delta: float) -> void:
@@ -128,6 +175,36 @@ func _build_floor() -> void:
 	add_child(floor_inst)
 
 
+## v0.7.0 KayKit set dressing: a cozy writing nook (desk + chair + lit
+## candle on the desk). Guarded - a null spawn skips that piece, and the
+## candle only spawns when the desk did.
+func _build_writing_nook() -> void:
+	var dir := "res://assets/models/holo-notes/"
+	var desk := ModelLib.spawn(dir + "table_small.glb", self, Vector3(2.20, 0.0, 2.20))
+	var chair := ModelLib.spawn(dir + "chair.glb", self, Vector3(2.20, 0.0, 1.45))
+	if chair != null:
+		chair.rotation.y = PI # facing the desk
+	if desk != null:
+		ModelLib.spawn(dir + "candle_lit.glb", desk, Vector3(0.15, _model_top_y(desk) + 0.01, 0.10))
+
+
+## Highest local-space Y of the model's meshes (for stacking props on top).
+func _model_top_y(node: Node3D) -> float:
+	var box := AABB()
+	var started := false
+	for c in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var ta: AABB = mi.transform * mi.get_aabb()
+		if not started:
+			box = ta
+			started = true
+		else:
+			box = box.merge(ta)
+	return box.end.y if started else 0.5
+
+
 func _build_hud() -> void:
 	hud_label = GraphicsPolish.make_label("", 48, Color.WHITE)
 	hud_label.position = Vector3(-2.4, 2.5, 1.2)
@@ -174,7 +251,8 @@ func _placement_point(screen_pos: Vector2) -> Vector3:
 
 func _place_note_at_mouse(screen_pos: Vector2) -> void:
 	var pos := _placement_point(screen_pos)
-	_create_note(pos, _next_preset_text(), 0)
+	var pin := _pin_to_wall(pos)
+	_create_note(pin[0], _next_preset_text(), 0, pin[1])
 	GraphicsPolish.spawn_sparks(self, pos, Color(1.0, 0.9, 0.4), 16)
 	_save_notes()
 	_update_hud()
@@ -185,7 +263,8 @@ func _place_note_hand() -> void:
 	var p := ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT)
 	p = ARUpgradeKit.clamp_to_room(p)
 	p.y = clampf(p.y, 0.35, 2.6)
-	_create_note(p, _next_preset_text(), 0)
+	var pin := _pin_to_wall(p)
+	_create_note(pin[0], _next_preset_text(), 0, pin[1])
 	GraphicsPolish.spawn_sparks(self, p, Color(1.0, 0.9, 0.4), 16)
 	_save_notes()
 	_update_hud()
@@ -197,10 +276,13 @@ func _next_preset_text() -> String:
 	return text
 
 
-func _create_note(pos: Vector3, text: String, color_idx: int) -> void:
+func _create_note(pos: Vector3, text: String, color_idx: int, wall_normal := Vector3.ZERO) -> void:
 	var root := Node3D.new()
 	root.position = pos
 	add_child(root)
+	# ROOMKIT: wall-pinned notes face out from the wall face.
+	if wall_normal.length_squared() > 0.001:
+		root.look_at(root.global_position + wall_normal, Vector3.UP)
 	var mesh_inst := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = NOTE_SIZE
@@ -345,3 +427,11 @@ func _load_notes() -> void:
 			int(entry.get("c", 0)) % NOTE_COLORS.size()
 		)
 	_update_hud()
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

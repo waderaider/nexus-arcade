@@ -30,6 +30,16 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed plant nest the spiders drop out of (game-local coords).
+var _room_nest_pos := Vector3.ZERO
+var _room_nest_known := false
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -40,6 +50,41 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.8, -1.0), 2.5, 36)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# v0.7.0 furniture morph: the real plant becomes an overgrown
+	# web-nest the spiders drop out of (see _spider_spawn_pos).
+	var plant_anchors := RoomKit.get_anchors("PLANT")
+	if not plant_anchors.is_empty():
+		RoomKit.morph(plant_anchors[0], "nature")
+		_room_nest_pos = plant_anchors[0]["position"]
+		_room_nest_known = true
+
+
+## Wall normal flipped to point into the room (normals are sign-agnostic).
+func _wall_inward(w: Dictionary) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3(0.0, 0.0, 1.0)
+	n = n.normalized()
+	var c := _room_bounds.get_center()
+	var wp: Vector3 = w["position"]
+	if n.dot(Vector3(c.x, 0.0, c.y) - Vector3(wp.x, 0.0, wp.z)) < 0.0:
+		n = -n
+	return n
 
 
 func _add_light_rig() -> void:
@@ -201,10 +246,8 @@ func _try_grab(origin: Vector3, dir: Vector3) -> void:
 
 
 func _spawn_spider() -> void:
-	var x := randf_range(-1.6, 1.6)
-	var z := randf_range(-2.6, 0.4)
 	var root := Node3D.new()
-	root.position = Vector3(x, SPAWN_TOP, z)
+	root.position = _spider_spawn_pos()
 	add_child(root)
 	# Body.
 	var body := MeshInstance3D.new()
@@ -259,6 +302,27 @@ func _spawn_spider() -> void:
 		"speed": randf_range(0.35, 0.65) + elapsed * 0.004,
 		"sway_phase": randf() * TAU,
 	})
+
+
+func _spider_spawn_pos() -> Vector3:
+	# Spiders drop from the real wall faces when the room is known,
+	# otherwise from a room-bounds-clamped patch of ceiling.
+	# The morphed plant is an overgrown nest: some spiders drop from
+	# directly above it.
+	if _room_nest_known and randf() < 0.4:
+		return Vector3(
+			_room_nest_pos.x + randf_range(-0.25, 0.25), SPAWN_TOP,
+			_room_nest_pos.z + randf_range(-0.25, 0.25))
+	if _room_known and not _room_walls.is_empty() and randf() < 0.6:
+		var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+		var bp: Vector3 = (w["position"] as Vector3) + _wall_inward(w) * 0.25
+		return Vector3(bp.x, SPAWN_TOP, bp.z)
+	if _room_known:
+		var c := _room_bounds.get_center()
+		var hx := maxf(0.6, _room_bounds.size.x * 0.5 - 0.5)
+		var hz := maxf(0.6, _room_bounds.size.y * 0.5 - 0.5)
+		return Vector3(c.x + randf_range(-hx, hx), SPAWN_TOP, c.y + randf_range(-hz, hz))
+	return Vector3(randf_range(-1.6, 1.6), SPAWN_TOP, randf_range(-2.6, 0.4))
 
 
 func _step_spiders(delta: float) -> void:

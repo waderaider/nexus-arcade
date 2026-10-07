@@ -36,6 +36,7 @@ var patches: Array = []
 var patch_positions: Array = []
 var plant_roots: Array = []
 var water_rings: Array = []
+var soil_nodes: Array = []
 var hud_label: Label3D = null
 var mode_label: Label3D = null
 var msg_label: Label3D = null
@@ -46,6 +47,11 @@ var shop_btn_pos := Vector3(2.6, 0.6, -2.2)
 var msg_t := 0.0
 var prev_w := false
 var prev_b := false
+
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 var flower_colors := [
 	Color(1.0, 0.3, 0.5),
 	Color(1.0, 0.6, 0.1),
@@ -69,6 +75,115 @@ func _ready() -> void:
 	_update_hud()
 	# Drifting pollen motes over the beds.
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, 0.0), 2.6, 48)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table is the nature planting bench; real houseplants overgrow with the nature skin.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "nature")
+	var _morph1_plant := RoomKit.get_anchors("PLANT")
+	if not _morph1_plant.is_empty():
+		RoomKit.morph(_morph1_plant[0], "nature")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# Move the plant beds onto open floor inside the real room bounds,
+	# steering clear of tables and furniture footprints.
+	var furn := RoomKit.get_furniture()
+	var spots := _open_floor_spots(PATCH_COUNT, furn)
+	for i in range(mini(PATCH_COUNT, spots.size())):
+		var sp: Vector3 = spots[i]
+		patch_positions[i] = sp
+		(soil_nodes[i] as Node3D).position = sp
+		(plant_roots[i] as Node3D).position = Vector3(sp.x, 0.16, sp.z)
+		(water_rings[i] as Node3D).position = Vector3(sp.x, 0.17, sp.z)
+	# Climbers grow up the nearest real wall.
+	if not _room_walls.is_empty():
+		_plant_climbers(_nearest_wall(_room_walls))
+
+
+func _open_floor_spots(count: int, furn: Array) -> Array:
+	var spots: Array = []
+	var bx := _room_bounds.position.x
+	var bz := _room_bounds.position.y
+	var sx := _room_bounds.size.x
+	var sz := _room_bounds.size.y
+	var cols := 4
+	var rows := 3
+	for r in rows:
+		for c in cols:
+			var x := bx + sx * (float(c) + 0.5) / float(cols)
+			var z := bz + sz * (float(r) + 0.5) / float(rows)
+			if x < bx + 0.6 or x > bx + sx - 0.6 or z < bz + 0.6 or z > bz + sz - 0.6:
+				continue
+			if _spot_blocked(x, z, furn):
+				continue
+			spots.append(Vector3(x, 0.08, z))
+			if spots.size() >= count:
+				return spots
+	return spots
+
+
+func _spot_blocked(x: float, z: float, furn: Array) -> bool:
+	for f in furn + _room_tables:
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if absf(x - fp.x) < fs.x * 0.5 + 0.7 and absf(z - fp.z) < fs.z * 0.5 + 0.7:
+			return true
+	return false
+
+
+func _nearest_wall(walls: Array) -> Dictionary:
+	var cx := _room_bounds.position.x + _room_bounds.size.x * 0.5
+	var cz := _room_bounds.position.y + _room_bounds.size.y * 0.5
+	var best: Dictionary = walls[0]
+	var best_d := 1e9
+	for w in walls:
+		var wp: Vector3 = w["position"]
+		var d := Vector2(wp.x - cx, wp.z - cz).length()
+		if d < best_d:
+			best_d = d
+			best = w
+	return best
+
+
+func _plant_climbers(w: Dictionary) -> void:
+	var wpos: Vector3 = w["position"]
+	var n: Vector3 = (w["normal"] as Vector3).normalized()
+	if absf(n.y) > 0.5:
+		return
+	var tangent: Vector3 = n.cross(Vector3.UP).normalized()
+	var vine_mat := GraphicsPolish.pbr_preset(Color(0.16, 0.45, 0.2), "matte")
+	var leaf_mat := GraphicsPolish.pbr_preset(Color(0.25, 0.65, 0.3), "matte")
+	for i in 5:
+		var base: Vector3 = wpos + n * 0.08 + tangent * (float(i) - 2.0) * 0.55
+		base.y = 0.05
+		var h := 1.2 + float(i % 3) * 0.35
+		var vine := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.02
+		cm.bottom_radius = 0.035
+		cm.height = h
+		vine.mesh = cm
+		vine.material_override = vine_mat
+		vine.position = to_local(base + Vector3(0, h * 0.5, 0))
+		add_child(vine)
+		var leaf := MeshInstance3D.new()
+		var lm := CylinderMesh.new()
+		lm.top_radius = 0.01
+		lm.bottom_radius = 0.16
+		lm.height = 0.4
+		leaf.mesh = lm
+		leaf.material_override = leaf_mat
+		leaf.position = to_local(base + Vector3(0, h + 0.15, 0))
+		add_child(leaf)
 
 
 func _process(delta: float) -> void:
@@ -174,6 +289,7 @@ func _build_patches() -> void:
 			soil.material_override = _solid(Color(0.35, 0.22, 0.12))
 			soil.position = pos
 			add_child(soil)
+			soil_nodes.append(soil)
 			var root := Node3D.new()
 			root.position = Vector3(pos.x, 0.16, pos.z)
 			add_child(root)

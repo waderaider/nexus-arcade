@@ -33,6 +33,70 @@ var _banner_label: Label3D = null
 var _rng := RandomNumberGenerator.new()
 var _anchor_timer := 0.0
 
+# v0.7.0 RoomKit: the war-table sits on the real largest table; destroyed
+# ships leave wreckage that drifts to the floor. Cached; default layout
+# without room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		_spawn_opening_fleet()  # intentional floating-space fallback: default layout
+		return
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		_spawn_opening_fleet()
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): windows -> battle viewports on the fleet engagement
+	_morph_anchors("WINDOW", "scifi", 2)
+	_place_board_on_table()
+	_spawn_opening_fleet()
+
+
+## Sit the war-table board on the largest detected real table surface.
+func _place_board_on_table() -> void:
+	if _room_tables.is_empty() or _board == null:
+		return
+	var best: Dictionary = _room_tables[0]
+	for t in _room_tables:
+		var s: Vector3 = t["size"]
+		var bs: Vector3 = best["size"]
+		if s.x * s.z > bs.x * bs.z:
+			best = t
+	var top: float = float(best["position"].y) + float(best["size"].y) * 0.5 + 0.02
+	var bp: Vector3 = best["position"]
+	var old := _board.global_position
+	_board.global_position = Vector3(bp.x, top, bp.z)
+	# UI labels are positioned off BOARD_POS; shift them with the board.
+	var shift: Vector3 = _board.global_position - old
+	if _stats_label != null and is_instance_valid(_stats_label):
+		_stats_label.position += shift
+	if _banner_label != null and is_instance_valid(_banner_label):
+		_banner_label.position += shift
+
+
+## Destroyed ship leaves a wreck chunk that drifts down to the floor.
+func _room_wreckage(pos: Vector3, color: Color) -> void:
+	if _room_walls.is_empty():
+		return
+	var wreck := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.10, 0.035, 0.07)
+	wreck.mesh = bm
+	wreck.material_override = GraphicsPolish.glow(color.darkened(0.4), 0.8)
+	add_child(wreck)
+	wreck.global_position = pos  # pos is world-space (unit.global_position)
+	wreck.rotation = Vector3(randf() * 0.6, randf() * TAU, randf() * 0.6)
+	var floor_local: Vector3 = to_local(Vector3(pos.x, 0.03, pos.z))
+	var tw := wreck.create_tween().set_parallel(true)
+	tw.tween_property(wreck, "position", floor_local, 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(wreck, "rotation:y", wreck.rotation.y + 2.0, 1.4)
+
 
 func _ready() -> void:
 	_rng.randomize()
@@ -43,7 +107,11 @@ func _ready() -> void:
 	_build_shipyard_marker()
 	_build_ui()
 	GraphicsPolish.spawn_ambient_motes(self, BOARD_POS + Vector3(0, 0.3, 0), 1.2, 40)
-	# Opening player fleet.
+	_apply_room_layout()
+
+
+## Opening player fleet, positioned on the final board placement.
+func _spawn_opening_fleet() -> void:
 	for i in 3:
 		spawn_unit(StarforgeUnit.Side.PLAYER, StarforgeUnit.UnitType.FIGHTER,
 			board_to_world(0.16 + i * 0.05, 0.35 + i * 0.12), true)
@@ -279,6 +347,8 @@ func _on_unit_died(unit: StarforgeUnit) -> void:
 	if is_instance_valid(unit):
 		var burst := Color(0.4, 0.9, 1.0) if unit.side == StarforgeUnit.Side.PLAYER else Color(1.0, 0.4, 0.2)
 		GraphicsPolish.spawn_sparks(self, unit.global_position, burst, 20)
+		# v0.7.0 RoomKit: wreckage drifts to the real floor.
+		_room_wreckage(unit.global_position, burst)
 
 
 func _on_base_destroyed(building: StarforgeBuilding) -> void:
@@ -379,3 +449,11 @@ func _update_stats() -> void:
 		return
 	_stats_label.text = "◈ %d   Fleet %d/%d   Enemy %d" % [
 		int(player_resources), player_units.size(), PLAYER_CAP, enemy_units.size()]
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

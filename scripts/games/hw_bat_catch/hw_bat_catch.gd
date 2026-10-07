@@ -28,6 +28,12 @@ var win_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -43,6 +49,7 @@ func _ready() -> void:
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.5), 2.5, 36)
 	for i in range(BAT_COUNT):
 		_spawn_bat()
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -108,6 +115,15 @@ func _show_msg(text: String) -> void:
 
 
 func _random_spot() -> Vector3:
+	# RoomKit v0.7.0: bats burst out of real wall faces or lurk behind furniture.
+	if not _room_walls.is_empty() and randf() < 0.5:
+		var ws := _room_wall_face(randf_range(1.0, 2.3), 0.4)
+		if ws != Vector3.INF:
+			return ws
+	if (not _room_tables.is_empty() or not _room_furniture.is_empty()) and randf() < 0.3:
+		var fs := _room_furniture_lurk(randf_range(1.2, 2.0))
+		if fs != Vector3.INF:
+			return fs
 	return Vector3(randf_range(-1.7, 1.7), randf_range(1.0, 2.3), randf_range(-3.0, -0.5))
 
 
@@ -332,3 +348,57 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: windows become haunted bat roosts (bats stream from them); lamps become haunted lanterns.
+	var _morph0_window := RoomKit.get_anchors("WINDOW")
+	if not _morph0_window.is_empty():
+		RoomKit.morph(_morph0_window[0], "haunted")
+	var _morph1_lamp := RoomKit.get_anchors("LAMP")
+	if not _morph1_lamp.is_empty():
+		RoomKit.morph(_morph1_lamp[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+
+
+## RoomKit: random wall-face point (game-local), or Vector3.INF when none.
+func _room_wall_face(y: float, inset: float) -> Vector3:
+	if _room_walls.is_empty():
+		return Vector3.INF
+	var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		return Vector3.INF
+	n = n.normalized()
+	var tangent := Vector3(-n.z, 0.0, n.x)
+	var span: Vector2 = w["size"]
+	var off := randf_range(-1.0, 1.0) * maxf(span.x * 0.5 - 0.5, 0.0)
+	return to_local(Vector3(wp.x, y, wp.z) + n * inset + tangent * off)
+
+
+## RoomKit: spot behind a random table/furniture cuboid, away from room center.
+func _room_furniture_lurk(y: float) -> Vector3:
+	var items: Array = _room_tables + _room_furniture
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[randi() % items.size()]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := _room_bounds.get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.45
+	return to_local(Vector3(wp.x + away.x * clearance, y, wp.z + away.y * clearance))

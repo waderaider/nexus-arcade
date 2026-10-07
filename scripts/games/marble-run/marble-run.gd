@@ -37,6 +37,13 @@ var hud_label: Label3D = null
 var msg_label: Label3D = null
 var help_label: Label3D = null
 var pulse_t := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _start_pos: Vector3 = START_POS
+var _start_pad: MeshInstance3D = null
 
 
 func _ready() -> void:
@@ -51,6 +58,7 @@ func _ready() -> void:
 	_restore_layout()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.0, 0.0), 2.5, 30)
+	_apply_room_layout() # v0.7.0: start on the biggest real table, wall bounces
 
 
 func _ensure_camera() -> void:
@@ -99,6 +107,7 @@ func _build_floor() -> void:
 	pad.material_override = GraphicsPolish.glow(Color(0.3, 1.0, 0.5), 1.6)
 	pad.position = Vector3(START_POS.x, 0.02, START_POS.z)
 	add_child(pad)
+	_start_pad = pad
 
 
 func _part_mesh(type_idx: int) -> MeshInstance3D:
@@ -188,7 +197,7 @@ func _build_marble() -> void:
 	sphere.height = MARBLE_R * 2.0
 	marble.mesh = sphere
 	marble.material_override = GraphicsPolish.glow(Color(1.0, 0.95, 0.8), 1.8)
-	marble.position = START_POS
+	marble.position = _start_pos
 	add_child(marble)
 	marble.add_child(GraphicsPolish.make_trail(Color(1.0, 0.8, 0.3), 0.05))
 
@@ -278,18 +287,18 @@ func _restore_layout() -> void:
 func _release_marble() -> void:
 	if marble_rolling:
 		return
-	marble.position = START_POS
+	marble.position = _start_pos
 	marble_vel = START_VEL
 	marble_rolling = true
 	state = "rolling"
 	_set_msg("", 0.0)
-	GraphicsPolish.spawn_sparks(self, START_POS, Color(0.4, 1.0, 0.6), 14)
+	GraphicsPolish.spawn_sparks(self, _start_pos, Color(0.4, 1.0, 0.6), 14)
 
 
 func _reset_marble() -> void:
 	marble_rolling = false
 	marble_vel = Vector3.ZERO
-	marble.position = START_POS
+	marble.position = _start_pos
 	state = "build"
 	_set_msg("", 0.0)
 	_update_hud()
@@ -426,9 +435,18 @@ func _move_marble(delta: float) -> void:
 	# Clamp speed.
 	if marble_vel.length() > 8.0:
 		marble_vel = marble_vel.normalized() * 8.0
+	# v0.7.0: bounce off real wall planes and furniture cuboids.
+	if not _room_walls.is_empty():
+		var wv: Vector3 = global_transform.basis * marble_vel
+		wv = _bounce_walls(to_global(pos), wv, MARBLE_R)
+		wv = _bounce_furniture(to_global(pos), wv, MARBLE_R)
+		marble_vel = global_transform.basis.inverse() * wv
 	marble.position = pos
-	# Lost marble: off the play area.
-	if absf(pos.x) > 6.5 or absf(pos.z) > 6.5 or pos.y < -1.0:
+	# Lost marble: off the play area (room bounds when scanned).
+	var lost := absf(pos.x) > 6.5 or absf(pos.z) > 6.5
+	if not _room_walls.is_empty():
+		lost = not _room_bounds.grow(0.5).has_point(Vector2(pos.x, pos.z))
+	if lost or pos.y < -1.0:
 		marble_rolling = false
 		_set_msg("Marble lost! R to reset", 2.5)
 		state = "build"
@@ -443,5 +461,74 @@ func _win(pos: Vector3) -> void:
 	GraphicsPolish.spawn_sparks(self, pos, Color(0.4, 1.0, 0.5), 24)
 	_set_msg("GOAL! +%d" % gained, 3.0)
 	ARUpgradeKit.save_anchor("marble-run_main", global_transform)
-	marble.position = START_POS
+	marble.position = _start_pos
 	_update_hud()
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Start the track elevated on the largest real table.
+	var best_t: Dictionary = {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best_t = t
+	if best_t.is_empty():
+		return
+	var tc: Vector3 = best_t["position"]
+	var ts: Vector3 = best_t["size"]
+	_start_pos = Vector3(tc.x, tc.y + ts.y * 0.5 + 0.12, tc.z)
+	_start_pos.x = clampf(_start_pos.x, _room_bounds.position.x + 0.5, _room_bounds.end.x - 0.5)
+	_start_pos.z = clampf(_start_pos.z, _room_bounds.position.y + 0.5, _room_bounds.end.y - 0.5)
+	if not marble_rolling and marble != null:
+		marble.position = _start_pos
+	if _start_pad != null:
+		_start_pad.position = Vector3(_start_pos.x, _start_pos.y - 0.10, _start_pos.z)
+	# v0.7.0 MORPH: the table the track starts on becomes the launch gantry workbench.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tables := RoomKit.get_anchors("TABLE")
+		if not _morph_tables.is_empty():
+			RoomKit.morph(_morph_tables[0], "scifi")
+
+
+## Normal-sign agnostic wall reflection (world space).
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
+
+## Furniture cuboids are solid: reflect the least-penetration axis (world space).
+func _bounce_furniture(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for f_v in _room_furniture:
+		var f: Dictionary = f_v
+		var c: Vector3 = f["position"]
+		var s: Vector3 = f["size"]
+		var d: Vector3 = pos - c
+		var px := s.x * 0.5 + radius - absf(d.x)
+		var py := s.y * 0.5 + radius - absf(d.y)
+		var pz := s.z * 0.5 + radius - absf(d.z)
+		if px > 0.0 and py > 0.0 and pz > 0.0:
+			if px <= py and px <= pz and signf(vel.x) == signf(d.x):
+				vel.x = -vel.x
+			elif py <= px and py <= pz and signf(vel.y) == signf(d.y):
+				vel.y = -vel.y
+			elif pz <= px and pz <= py and signf(vel.z) == signf(d.z):
+				vel.z = -vel.z
+	return vel

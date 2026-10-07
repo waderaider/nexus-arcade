@@ -42,6 +42,61 @@ var hit_player: AudioStreamPlayer = null
 var miss_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 
+# v0.7.0 RoomKit: notes stream in from the real wall behind the spawn field.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _spawn_z := SPAWN_Z
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_fit_note_highway_to_room()
+	# v0.7.0 MORPH: rug becomes the neon-lit performance stage floor.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_rugs := RoomKit.get_anchors("RUG")
+		if not _morph_rugs.is_empty():
+			RoomKit.morph(_morph_rugs[0], "neon")
+
+
+## Notes originate from the wall face the highway points at; travel speed
+## auto-scales because _travel_speed() is computed from _spawn_z.
+func _fit_note_highway_to_room() -> void:
+	var best: Dictionary = _room_walls[0]
+	for w in _room_walls:
+		if float(w["position"].z) < float(best["position"].z):
+			best = w
+	# Keep at least ~3 m of travel so notes stay readable.
+	_spawn_z = minf(float(best["position"].z) + 0.4, -4.0)
+
+
+func _room_note_pos(lane: float, row: float) -> Vector3:
+	return Vector3(lane, row, _spawn_z)
+
+
+## Missed notes burst against the wall behind the player instead of
+## vanishing mid-air.
+func _room_miss_fx(p: Vector3) -> void:
+	if _room_walls.is_empty():
+		return
+	var best: Dictionary = _room_walls[0]
+	var bd := 1e9
+	for w in _room_walls:
+		var d: float = absf((p - w["position"]).dot(w["normal"]))
+		if d < bd:
+			bd = d
+			best = w
+	var wp: Vector3 = best["position"]
+	GraphicsPolish.spawn_sparks(self, Vector3(p.x, p.y, wp.z), Color(1.0, 0.3, 0.3), 8)
+
 
 func _ready() -> void:
 	# AR: restore this game's persisted spatial anchor, if one was saved.
@@ -55,6 +110,7 @@ func _ready() -> void:
 	tick_player = _make_player(_make_tone(1800.0, 0.05, 0.45))
 	hit_player = _make_player(_make_tone(990.0, 0.12, 0.55))
 	miss_player = _make_player(_make_tone(150.0, 0.25, 0.5))
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -95,6 +151,7 @@ func _process(delta: float) -> void:
 		node.position.z += float(n["speed"]) * delta
 		node.rotate_y(delta * 2.0)
 		if node.position.z > MISS_Z:
+			_room_miss_fx(node.position)
 			node.queue_free()
 			notes.remove_at(i)
 			_on_miss()
@@ -199,7 +256,7 @@ func _update_hud() -> void:
 
 ## Seconds for a note to travel spawn -> zone = 2 beats at current BPM.
 func _travel_speed() -> float:
-	return (ZONE_Z - SPAWN_Z) / (2.0 * 60.0 / bpm)
+	return (ZONE_Z - _spawn_z) / (2.0 * 60.0 / bpm)
 
 
 func _on_beat() -> void:
@@ -219,7 +276,7 @@ func _spawn_note() -> void:
 	var mat := GraphicsPolish.glow(col, 2.0)
 	node.material_override = mat
 	node.add_child(GraphicsPolish.make_trail(col, 0.06))
-	node.position = Vector3(LANES[randi() % LANES.size()], ROWS[randi() % ROWS.size()], SPAWN_Z)
+	node.position = _room_note_pos(LANES[randi() % LANES.size()], ROWS[randi() % ROWS.size()])
 	add_child(node)
 	notes.append({"node": node, "mat": mat, "speed": _travel_speed()})
 

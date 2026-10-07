@@ -65,11 +65,23 @@ var hud_main: Label3D = null
 var hud_help: Label3D = null
 var notify_label: Label3D = null
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var note_paper: MeshInstance3D = null
+var note_label: Label3D = null
+var note_hit_node: Node3D = null
+var scroll_node: Node3D = null
+var scroll_label: Label3D = null
+
 
 func _ready() -> void:
 	# Restore the persisted room placement (no-op when no anchor was saved).
 	ARUpgradeKit.apply_anchor(self, "ar-escape-room_main")
 	_build_environment()
+	_dress_dungeon() # v0.7.0 KayKit set dressing (null-safe)
 	_build_door()
 	_build_clues()
 	_build_panel()
@@ -83,6 +95,97 @@ func _ready() -> void:
 		GraphicsPolish.make_light_rig(self, 1.1)
 	# Dust motes drifting through the room.
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.6, 0.0), 2.8, 40)
+	_apply_room_layout()
+
+
+## v0.7.0: hide the blue key behind the biggest real furniture piece, and
+## tape the note poster + riddle scroll to real walls. Guarded; fallback
+## keeps the default staged room.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): screens/tv -> mission clue terminals
+	_morph_anchors("SCREEN", "scifi", 1)
+	_morph_anchors("TV", "scifi", 1)
+	var f := _largest_cuboid(_room_furniture)
+	if not f.is_empty() and key_nodes.has("blue"):
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		var c := _room_bounds.get_center()
+		var away := Vector2(fp.x - c.x, fp.z - c.y)
+		away = away.normalized() if away.length() > 0.05 else Vector2(0, 1)
+		var dist := maxf(fs.x, fs.z) * 0.5 + 0.35
+		var bk := key_nodes["blue"] as Node3D
+		bk.position = to_local(Vector3(fp.x + away.x * dist, 0.12, fp.z + away.y * dist))
+		key_home["blue"] = bk.position
+	var sorted_walls := _room_walls.duplicate()
+	sorted_walls.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (a["size"] as Vector2).x * (a["size"] as Vector2).y > (b["size"] as Vector2).x * (b["size"] as Vector2).y)
+	if not sorted_walls.is_empty():
+		_mount_poster(sorted_walls[0], 1.5)
+		if sorted_walls.size() > 1:
+			_mount_scroll(sorted_walls[1], 1.2)
+
+
+func _largest_cuboid(items: Array) -> Dictionary:
+	var best := {}
+	var best_v := 0.0
+	for f_v in items:
+		var f: Dictionary = f_v
+		var s: Vector3 = f["size"]
+		var v := s.x * s.y * s.z
+		if v > best_v:
+			best_v = v
+			best = f
+	return best
+
+
+func _wall_face(w: Dictionary, height: float) -> Vector3:
+	var n: Vector3 = w["normal"]
+	n.y = 0.0
+	if n.length() < 0.01:
+		n = Vector3(0, 0, 1)
+	n = n.normalized()
+	var fw: Vector3 = (w["position"] as Vector3) + n * 0.07
+	fw.y = height
+	return fw
+
+
+func _wall_yaw(fw: Vector3) -> float:
+	var c := _room_bounds.get_center()
+	var d := Vector2(c.x - fw.x, c.y - fw.z)
+	return atan2(d.x, d.y) if d.length() > 0.05 else 0.0
+
+
+func _mount_poster(w: Dictionary, height: float) -> void:
+	if note_paper == null:
+		return
+	var fw := _wall_face(w, height)
+	var yaw := _wall_yaw(fw)
+	note_paper.transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, PI * 0.5), to_local(fw))
+	if note_label != null:
+		note_label.position = to_local(fw + Vector3(0, 0.32, 0))
+		note_label.rotation.y = yaw
+	if note_hit_node != null:
+		note_hit_node.position = to_local(fw)
+
+
+func _mount_scroll(w: Dictionary, height: float) -> void:
+	if scroll_node == null:
+		return
+	var fw := _wall_face(w, height)
+	var yaw := _wall_yaw(fw)
+	scroll_node.position = to_local(fw)
+	scroll_node.rotation = Vector3(0, yaw, PI * 0.5)
+	if scroll_label != null:
+		scroll_label.position = to_local(fw + Vector3(0, 0.35, 0))
+		scroll_label.rotation.y = yaw
 
 
 func _mat(color: Color, rough: float = 0.6, emission: Color = Color(0, 0, 0)) -> StandardMaterial3D:
@@ -159,6 +262,23 @@ func _build_environment() -> void:
 	# Two paintings for flavor.
 	_box(Vector3(0.08, 0.9, 1.3), Color(0.45, 0.25, 0.55), Vector3(-2.92, 1.8, 0.6), self)
 	_box(Vector3(0.08, 0.7, 1.0), Color(0.20, 0.45, 0.55), Vector3(2.92, 1.7, -0.8), self)
+
+
+## v0.7.0 KayKit set dressing: real dungeon props as room flavor (chests,
+## barrels, lit wall torches). Every spawn is guarded - a null return from
+## ModelLib.spawn (missing model) simply skips that prop, leaving the
+## procedural room intact.
+func _dress_dungeon() -> void:
+	var dir := "res://assets/models/ar-escape-room/"
+	# Lit torches flanking the exit door.
+	for tx in [-1.05, 1.05]:
+		ModelLib.spawn(dir + "torch_mounted.glb", self, Vector3(tx, 1.55, -2.90))
+	# Treasure chest tucked into the front-left corner.
+	ModelLib.spawn(dir + "chest.glb", self, Vector3(-2.45, 0.0, 2.35))
+	# Barrel against the restart-button wall.
+	ModelLib.spawn(dir + "barrel_large.glb", self, Vector3(2.50, 0.0, -2.35))
+	# Candle shelf against the left wall.
+	ModelLib.spawn(dir + "shelf_small.glb", self, Vector3(-2.80, 0.0, -2.20))
 
 
 func _build_door() -> void:
@@ -277,11 +397,12 @@ func _build_clues() -> void:
 			leg.position = Vector3(-1.9 + lx, 0.36, -1.2 + lz)
 			add_child(leg)
 	# The note (paper).
-	_box(Vector3(0.34, 0.025, 0.44), Color(0.93, 0.90, 0.80), Vector3(-1.9, 0.79, -1.2), self)
-	_label("NOTE", Vector3(-1.9, 1.05, -1.2), Color(1.0, 0.95, 0.75), 0.006)
+	note_paper = _box(Vector3(0.34, 0.025, 0.44), Color(0.93, 0.90, 0.80), Vector3(-1.9, 0.79, -1.2), self) # v0.7.0: RoomKit may wall-mount this
+	note_label = _label("NOTE", Vector3(-1.9, 1.05, -1.2), Color(1.0, 0.95, 0.75), 0.006)
 	var note_hit := MeshInstance3D.new()
 	note_hit.position = Vector3(-1.9, 0.82, -1.2)
 	add_child(note_hit)
+	note_hit_node = note_hit
 	_add_interactable("note", note_hit, 0.40)
 
 	# --- Shelf with 5 books (the code hint) ---
@@ -346,7 +467,8 @@ func _build_clues() -> void:
 	scroll.rotation.z = PI * 0.5
 	scroll.position = Vector3(-2.3, 0.09, 1.3)
 	add_child(scroll)
-	_label("SCROLL", Vector3(-2.3, 0.45, 1.3), Color(0.95, 0.88, 0.70), 0.006)
+	scroll_node = scroll
+	scroll_label = _label("SCROLL", Vector3(-2.3, 0.45, 1.3), Color(0.95, 0.88, 0.70), 0.006)
 	_add_interactable("scroll", scroll, 0.40)
 
 	# --- RESTART button on the back wall ---
@@ -868,3 +990,11 @@ func _sphere_t(o: Vector3, d: Vector3, c: Vector3, r: float) -> float:
 func _pinch_active() -> bool:
 	# Hand-tracking hook: wire to XR hand pinch in a future pass.
 	return false
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

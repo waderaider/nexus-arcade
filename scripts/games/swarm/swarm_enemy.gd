@@ -112,7 +112,9 @@ func _physics_process(delta: float) -> void:
 		side = Vector3.RIGHT
 	side = side.normalized()
 	var wobble := side * (sin(Time.get_ticks_msec() / 1000.0 * 3.0 + _wobble_phase) * WOBBLE_AMP)
-	global_position += (dir * speed + wobble) * delta
+	# AILib: boids-lite separation so drones don't stack up on the core.
+	var boids := AILib.flock(self, get_tree().get_nodes_in_group("swarm_enemies"), delta)
+	global_position += (dir * speed + wobble) * delta + boids
 	if dir.length_squared() > 0.000001:
 		look_at(target, Vector3.UP)
 

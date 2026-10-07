@@ -34,17 +34,69 @@ var _help_label: Label3D
 var _ai_pending := false
 var _ai_timer := 0.0
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _board_root: Node3D = null # container for board + pieces (room-placeable)
+
 
 func _ready() -> void:
 	_ensure_camera()
 	_build_light_and_floor()
 	_build_materials()
+	_board_root = Node3D.new()
+	_board_root.name = "Board"
+	add_child(_board_root)
 	_build_board()
 	_build_overlays()
 	_build_labels()
 	GraphicsPolish.spawn_ambient_motes(self, BOARD_CENTER + Vector3(0, 0.6, 0), 2.0, 30)
 	ARUpgradeKit.apply_anchor(self, "holo-chess_main")
 	_reset_game()
+	_apply_room_layout()
+
+
+## Tile-top plane height in world space (follows the room-placed board).
+func _tile_top_world() -> float:
+	if _board_root == null:
+		return TILE_TOP_Y
+	return _board_root.global_position.y + TILE_TOP_Y * _board_root.scale.y
+
+
+## v0.7.0: center the board on the largest real table, scaled to fit it,
+## with the turn label floating above. Guarded; fallback keeps the floor board.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): tables -> enchanted arcane war tables under the board
+	_morph_anchors("TABLE", "arcane", 1)
+	var best := {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best = t
+	if best.is_empty() or _board_root == null:
+		return
+	var tp: Vector3 = best["position"]
+	var ts: Vector3 = best["size"]
+	var s: float = clampf(minf(ts.x, ts.z) * 0.92 / 2.8, 0.3, 1.0)
+	var top_y: float = tp.y + ts.y * 0.5
+	_board_root.scale = Vector3.ONE * s
+	_board_root.position = to_local(Vector3(tp.x, top_y, tp.z)) - Vector3(BOARD_CENTER.x, 0.05, BOARD_CENTER.z) * s
+	if _turn_label != null:
+		_turn_label.position = to_local(Vector3(tp.x, top_y + 1.25, tp.z))
 
 
 func _process(delta: float) -> void:
@@ -87,7 +139,7 @@ func _handle_pinch_select() -> void:
 	var dir: Vector3 = ray[1]
 	if absf(dir.y) < 0.0001:
 		return
-	var t := (TILE_TOP_Y - origin.y) / dir.y
+	var t := (_tile_top_world() - origin.y) / dir.y
 	if t < 0.0:
 		return
 	var sq := _world_to_square(origin + dir * t)
@@ -148,7 +200,7 @@ func _build_board() -> void:
 	base.position = Vector3(BOARD_CENTER.x, 0.02, BOARD_CENTER.z)
 	var base_mat := GraphicsPolish.pbr(Color(0.05, 0.07, 0.1), 0.6, 0.4)
 	base.material_override = base_mat
-	add_child(base)
+	_board_root.add_child(base)
 	var cyan_mat := GraphicsPolish.glow(Color(0.16, 0.55, 0.65), 0.9)
 	var dark_mat := GraphicsPolish.pbr_preset(Color(0.07, 0.09, 0.13), "matte")
 	for f in range(8):
@@ -160,7 +212,7 @@ func _build_board() -> void:
 			tile.position = Vector3((f - 3.5) * TILE + BOARD_CENTER.x, TILE_TOP_Y - 0.01,
 					(r - 3.5) * TILE + BOARD_CENTER.z)
 			tile.material_override = cyan_mat if (f + r) % 2 == 0 else dark_mat
-			add_child(tile)
+			_board_root.add_child(tile)
 
 
 func _build_overlays() -> void:
@@ -172,7 +224,7 @@ func _build_overlays() -> void:
 	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_sel_box.material_override = smat
 	_sel_box.visible = false
-	add_child(_sel_box)
+	_board_root.add_child(_sel_box)
 	var dot_mesh := SphereMesh.new()
 	dot_mesh.radius = 0.03
 	dot_mesh.height = 0.06
@@ -183,7 +235,7 @@ func _build_overlays() -> void:
 		dot.mesh = dot_mesh
 		dot.material_override = dmat
 		dot.visible = false
-		add_child(dot)
+		_board_root.add_child(dot)
 		_hint_dots.append(dot)
 
 
@@ -280,7 +332,7 @@ func _make_piece_node(ptype: String, color: int) -> Node3D:
 func _place_piece(ptype: String, color: int, f: int, r: int) -> void:
 	var node := _make_piece_node(ptype, color)
 	node.position = _square_world(f, r)
-	add_child(node)
+	_board_root.add_child(node)
 	grid[f][r] = {"type": ptype, "color": color, "node": node}
 
 
@@ -295,8 +347,9 @@ func _setup_pieces() -> void:
 # ---------------------------------------------------------------- input ---
 
 func _world_to_square(p: Vector3) -> Vector2i:
-	var f := int(floor((p.x - BOARD_CENTER.x + BOARD_HALF) / TILE))
-	var r := int(floor((p.z - BOARD_CENTER.z + BOARD_HALF) / TILE))
+	var lp: Vector3 = _board_root.to_local(p) if _board_root != null else p
+	var f := int(floor((lp.x - BOARD_CENTER.x + BOARD_HALF) / TILE))
+	var r := int(floor((lp.z - BOARD_CENTER.z + BOARD_HALF) / TILE))
 	if f < 0 or f > 7 or r < 0 or r > 7:
 		return Vector2i(-1, -1)
 	return Vector2i(f, r)
@@ -314,7 +367,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 	var dir := _cam.project_ray_normal(screen_pos)
 	if absf(dir.y) < 0.0001:
 		return
-	var t := (TILE_TOP_Y - origin.y) / dir.y
+	var t := (_tile_top_world() - origin.y) / dir.y
 	if t < 0.0:
 		return
 	var sq := _world_to_square(origin + dir * t)
@@ -534,7 +587,7 @@ func _apply_move(from_sq: Vector2i, to_sq: Vector2i) -> Dictionary:
 		(victim["node"] as Node).queue_free()
 		# Capture burst in the capturer's hologram color.
 		var burst := Color(0.4, 0.9, 1.0) if int(mover["color"]) == 0 else Color(1.0, 0.55, 0.2)
-		GraphicsPolish.spawn_sparks(self, _square_world(to_sq.x, to_sq.y) + Vector3(0, 0.12, 0), burst, 18)
+		GraphicsPolish.spawn_sparks(_board_root, _square_world(to_sq.x, to_sq.y) + Vector3(0, 0.12, 0), burst, 18)
 	grid[to_sq.x][to_sq.y] = mover
 	grid[from_sq.x][from_sq.y] = {}
 	var node := mover["node"] as Node3D
@@ -631,3 +684,11 @@ func _play_tone(freq: float, dur: float = 0.1) -> void:
 	player.stream = wav
 	player.play()
 	player.finished.connect(player.queue_free)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

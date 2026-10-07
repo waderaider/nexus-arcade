@@ -41,6 +41,51 @@ var help_label: Label3D = null
 var wood_mat: StandardMaterial3D = null
 var cap_mat: StandardMaterial3D = null
 
+# v0.7.0 RoomKit: the tower base sits on the largest detected real table
+# surface (floor fallback), and fallen blocks rest on that surface too.
+# Cached; the default layout is untouched without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_table_top := TABLE_Y
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_room_place_tower()
+	# v0.7.0 MORPH: the table becomes the demolition pad platform.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tables := RoomKit.get_anchors("TABLE")
+		if not _morph_tables.is_empty():
+			RoomKit.morph(_morph_tables[0], "scifi")
+
+
+## Sit the tower on the largest real table; re-aim the camera at it.
+func _room_place_tower() -> void:
+	if _room_tables.is_empty():
+		_room_table_top = TABLE_Y
+		return
+	var best: Dictionary = _room_tables[0]
+	for t in _room_tables:
+		var s: Vector3 = t["size"]
+		var bs: Vector3 = best["size"]
+		if s.x * s.z > bs.x * bs.z:
+			best = t
+	_room_table_top = float(best["position"].y) + float(best["size"].y) * 0.5
+	var tp: Vector3 = best["position"]
+	if tower_root != null and is_instance_valid(tower_root):
+		tower_root.global_position = Vector3(tp.x, _room_table_top, tp.z)
+	if cam != null and is_instance_valid(cam):
+		cam.look_at(Vector3(tp.x, _room_table_top + 0.6, tp.z), Vector3.UP)
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "tower-topple_main")
@@ -51,6 +96,7 @@ func _ready() -> void:
 	_build_ui()
 	_reset()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.2, -1), 2.0, 30)
+	_apply_room_layout()
 
 
 func _build_camera() -> void:
@@ -148,6 +194,7 @@ func _reset() -> void:
 	grabbed = {}
 	_build_blocks()
 	ARUpgradeKit.place_on_table(tower_root, 1.0, TABLE_Y)
+	_room_place_tower()  # v0.7.0: override with the real table when available
 	ARUpgradeKit.save_anchor("tower-topple_main", global_transform)
 	msg_label.text = ""
 
@@ -353,7 +400,7 @@ func _update_falling(delta: float) -> void:
 		n.global_position += v * delta
 		n.rotation += (bd["spin"] as Vector3) * delta
 		bd["vel"] = v
-		var table_top := TABLE_Y + 0.02
+		var table_top := _room_table_top + 0.02
 		if n.global_position.y <= table_top + BLOCK_SIZE.y * 0.5 and v.y < 0.0:
 			if absf(v.y) > 1.2:
 				v.y = -v.y * 0.35
@@ -365,7 +412,7 @@ func _update_falling(delta: float) -> void:
 				bd["mode"] = "rest"
 				bd["vel"] = Vector3.ZERO
 				n.global_position.y = table_top + BLOCK_SIZE.y * 0.5
-		if n.global_position.y < TABLE_Y - 0.6:
+		if n.global_position.y < _room_table_top - 0.6:
 			# Fell off the table: the tower is doomed.
 			_collapse()
 
@@ -387,7 +434,7 @@ func _update_lean(delta: float) -> void:
 		if bd["mode"] != "tower":
 			continue
 		var n: Node3D = bd["node"]
-		if n.global_position.y < TABLE_Y - 0.10:
+		if n.global_position.y < _room_table_top - 0.10:
 			_collapse()
 			return
 

@@ -31,6 +31,80 @@ var msg_label: Label3D = null
 var help_label: Label3D = null
 var glove_mat: StandardMaterial3D = null
 
+# v0.7.0 RoomKit: debris rests on real table surfaces, target orbs mount
+# along a real wall face, and thrown debris bounces off real wall planes.
+# Cached; the default layout is untouched without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): rug -> glowing gravity arena (aura marks the target drop zone)
+	_morph_anchors("RUG", "scifi", 1)
+	_room_place_props()
+
+
+## Debris rests on real table tops; target orbs line the widest wall face.
+func _room_place_props() -> void:
+	if not _room_tables.is_empty():
+		for i in debris.size():
+			var d: Dictionary = debris[i]
+			var n: MeshInstance3D = d["node"]
+			var t: Dictionary = _room_tables[i % _room_tables.size()]
+			var tp: Vector3 = t["position"]
+			var ts: Vector3 = t["size"]
+			var spot := Vector3(
+				tp.x + randf_range(-ts.x * 0.3, ts.x * 0.3),
+				tp.y + ts.y * 0.5 + 0.06,
+				tp.z + randf_range(-ts.z * 0.3, ts.z * 0.3))
+			n.position = to_local(spot)
+			d["vel"] = Vector3(randf_range(-0.15, 0.15), 0.0, randf_range(-0.15, 0.15))
+	if not _room_walls.is_empty() and not targets.is_empty():
+		var best: Dictionary = _room_walls[0]
+		for w in _room_walls:
+			if float(w["size"].x) > float(best["size"].x):
+				best = w
+		var nrm: Vector3 = best["normal"]
+		var c := Vector3(_room_bounds.get_center().x, 0.0, _room_bounds.get_center().y)
+		var side := signf((c - best["position"]).dot(nrm))
+		if side == 0.0:
+			side = 1.0
+		var right := nrm.cross(Vector3.UP).normalized()
+		if right.length() < 0.01:
+			right = Vector3.RIGHT
+		var base: Vector3 = best["position"] + nrm * side * 0.5
+		var span := minf(float(best["size"].x) - 0.6, 2.4)
+		for i in targets.size():
+			var td: Dictionary = targets[i]
+			var x := (float(i) / maxf(float(targets.size() - 1), 1.0) - 0.5) * span
+			var lp := to_local(Vector3(base.x + right.x * x, 0.0, base.z + right.z * x))
+			var ped: MeshInstance3D = td["ped"]
+			var orb: MeshInstance3D = td["orb"]
+			var ring: MeshInstance3D = td["ring"]
+			ped.position = lp + Vector3(0, 0.4, 0)
+			orb.position = lp + Vector3(0, 0.98, 0)
+			ring.position = lp + Vector3(0, 0.82, 0)
+			td["home"] = orb.position
+
+
+## Normal-sign agnostic wall reflection.
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "gravity-glove_main")
@@ -41,6 +115,7 @@ func _ready() -> void:
 	_build_targets()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.2, 0.0), 2.0, 40)
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -177,7 +252,7 @@ func _build_targets() -> void:
 		ring.position = Vector3(x, 0.82, -1.3)
 		add_child(ring)
 		targets.append({
-			"orb": orb, "mat": omat, "ring": ring,
+			"ped": ped, "orb": orb, "mat": omat, "ring": ring,
 			"home": Vector3(x, 0.98, -1.3),
 			"vel": Vector3.ZERO, "knocked": false,
 			"phase": randf() * TAU,
@@ -289,12 +364,30 @@ func _move_debris(delta: float) -> void:
 				v += to.normalized() * ASSIST_FORCE * (1.0 - dist / ASSIST_DIST) * delta
 		v *= maxf(0.0, 1.0 - 0.15 * delta)
 		var p: Vector3 = n.position + v * delta
-		if p.x < -BOUND or p.x > BOUND:
-			v.x = -v.x
-			p.x = clampf(p.x, -BOUND, BOUND)
-		if p.z < -BOUND or p.z > BOUND:
-			v.z = -v.z
-			p.z = clampf(p.z, -BOUND, BOUND)
+		if not _room_walls.is_empty():
+			# v0.7.0 RoomKit: debris bounces off real wall planes and stays
+			# inside the real room (world-space test, local-space result).
+			var bx: Transform3D = n.get_parent().global_transform
+			var gp: Vector3 = bx * p
+			var gv: Vector3 = bx.basis * v
+			var nv: Vector3 = _bounce_walls(gp, gv, 0.12)
+			if nv != gv:
+				v = bx.basis.inverse() * nv
+			var b := _room_bounds.grow(-0.15)
+			var cx := clampf(gp.x, b.position.x, b.position.x + b.size.x)
+			var cz := clampf(gp.z, b.position.y, b.position.y + b.size.y)
+			if cx != gp.x:
+				v.x = -v.x
+			if cz != gp.z:
+				v.z = -v.z
+			p = bx.affine_inverse() * Vector3(cx, gp.y, cz)
+		else:
+			if p.x < -BOUND or p.x > BOUND:
+				v.x = -v.x
+				p.x = clampf(p.x, -BOUND, BOUND)
+			if p.z < -BOUND or p.z > BOUND:
+				v.z = -v.z
+				p.z = clampf(p.z, -BOUND, BOUND)
 		if p.y < Y_LO or p.y > Y_HI:
 			v.y = -v.y
 			p.y = clampf(p.y, Y_LO, Y_HI)
@@ -383,3 +476,11 @@ func _restart() -> void:
 		var ring: MeshInstance3D = td["ring"]
 		ring.visible = true
 	ARUpgradeKit.save_anchor("gravity-glove_main", global_transform)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

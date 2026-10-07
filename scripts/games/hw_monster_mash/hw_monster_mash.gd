@@ -38,6 +38,15 @@ var msg_timer := 0.0
 var anchor_timer := 0.0
 var restart_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout + extra spawn points (game-local).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _room_spawn_extra: Array = []
+# v0.7.0 KayKit: skeleton dancers flanking the stage (ambient set dressing).
+var _skeleton_dancers: Array = [] # dicts: node, base_y, phase
+
 const SPAWN_POINTS := [
 	Vector3(-1.25, 1.15, -2.0), Vector3(-0.62, 1.45, -2.2),
 	Vector3(0.0, 1.15, -2.0), Vector3(0.62, 1.45, -2.2),
@@ -55,6 +64,7 @@ func _ready() -> void:
 	_ensure_fallback_camera()
 	mouse_pos = get_viewport().get_visible_rect().size * 0.5
 	_build_stage()
+	_build_skeleton_dancers() # v0.7.0 KayKit set dressing (null-safe)
 	_build_hud()
 	tick_player = _make_player(_make_tone(140.0, 0.09, 0.55))
 	hit_player = _make_player(_make_tone(620.0, 0.10, 0.55))
@@ -63,6 +73,7 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(780.0, 0.6, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_monster_mash_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -2.0), 2.5, 50)
+	_apply_room_layout()
 
 
 func _ensure_fallback_camera() -> void:
@@ -98,6 +109,25 @@ func _build_stage() -> void:
 	beat_ball.material_override = beat_mat
 	add_child(beat_ball)
 	GraphicsPolish.make_point_light(self, Vector3(0.0, 2.0, -1.2), Color(1.0, 0.55, 0.2), 0.9, 5.0)
+
+
+## v0.7.0 KayKit set dressing: two skeleton dancers flank the stage,
+## bouncing to the beat. Guarded - missing models simply skip the dancers;
+## the procedural stage and monsters are unchanged.
+func _build_skeleton_dancers() -> void:
+	var dir := "res://assets/models/hw_monster_mash/"
+	var defs: Array = [
+		{"f": "Skeleton_Minion.glb", "x": -1.90},
+		{"f": "Skeleton_Rogue.glb", "x": 1.90},
+	]
+	for d_v in defs:
+		var d: Dictionary = d_v
+		var skel := ModelLib.spawn(dir + str(d["f"]), self, Vector3(float(d["x"]), 0.0, -2.0))
+		if skel == null:
+			continue
+		skel.scale = Vector3.ONE * 0.9
+		skel.rotation.y = -signf(float(d["x"])) * 0.35 # face the stage
+		_skeleton_dancers.append({"node": skel, "base_y": 0.0, "phase": randf() * TAU})
 
 
 func _build_hud() -> void:
@@ -166,6 +196,15 @@ func _process(delta: float) -> void:
 		var s := 1.0 + beat_flash * 0.6
 		beat_ball.scale = Vector3(s, s, s)
 		GraphicsPolish.pulse_glow(beat_mat, 1.4, 1.0, song_time, 4.0)
+	# v0.7.0: skeleton dancers bounce and sway to the beat.
+	for sd_v in _skeleton_dancers:
+		var sd: Dictionary = sd_v
+		var sn: Node3D = sd["node"]
+		if not is_instance_valid(sn):
+			continue
+		var t: float = song_time + float(sd["phase"])
+		sn.position.y = float(sd["base_y"]) + absf(sin(t * 4.0)) * 0.09
+		sn.rotation.z = sin(t * 4.0) * 0.08
 	if msg_timer > 0.0:
 		msg_timer -= delta
 		if msg_timer <= 0.0:
@@ -180,9 +219,9 @@ func _on_beat() -> void:
 	beat_flash = 1.0
 	if tick_player != null:
 		tick_player.play()
-	_spawn_monster(SPAWN_POINTS[randi() % SPAWN_POINTS.size()])
+	_spawn_monster(_pick_spawn())
 	if song_time > 45.0 and randf() < 0.3:
-		_spawn_monster(SPAWN_POINTS[randi() % SPAWN_POINTS.size()])
+		_spawn_monster(_pick_spawn())
 
 
 func _spawn_monster(pos: Vector3) -> void:
@@ -394,3 +433,71 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the rug is the neon dance arena; chairs become haunted monster nests.
+	var _morph0_rug := RoomKit.get_anchors("RUG")
+	if not _morph0_rug.is_empty():
+		RoomKit.morph(_morph0_rug[0], "neon")
+	var _morph1_chair := RoomKit.get_anchors("CHAIR")
+	if not _morph1_chair.is_empty():
+		RoomKit.morph(_morph1_chair[0], "haunted")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Monsters emerge from real wall faces and lurk behind real furniture.
+	_room_spawn_extra.clear()
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var wp: Vector3 = w["position"]
+		var n: Vector3 = w["normal"]
+		n.y = 0.0
+		if n.length() < 0.01:
+			continue
+		n = n.normalized()
+		var p: Vector3 = to_local(Vector3(wp.x, 0.0, wp.z) + n * 0.5)
+		_room_spawn_extra.append(Vector3(p.x, randf_range(1.0, 1.5), p.z))
+		if _room_spawn_extra.size() >= 6:
+			break
+	for f_v in _room_tables + _room_furniture:
+		var fs := _room_furniture_lurk(1.15)
+		if fs != Vector3.INF:
+			_room_spawn_extra.append(fs)
+		if _room_spawn_extra.size() >= 10:
+			break
+	# Center the stage disc on the real room floor.
+	var rc := _room_bounds.get_center()
+	var cur: Vector3 = global_transform * Vector3(0.0, 0.0, -2.0)
+	global_position += Vector3(rc.x - cur.x, 0.0, rc.y - cur.z)
+
+
+## RoomKit v0.7.0: spawn point — sometimes a real wall face or furniture lurk spot.
+func _pick_spawn() -> Vector3:
+	if not _room_spawn_extra.is_empty() and randf() < 0.45:
+		return _room_spawn_extra[randi() % _room_spawn_extra.size()]
+	return SPAWN_POINTS[randi() % SPAWN_POINTS.size()]
+
+
+## RoomKit: spot behind a random table/furniture cuboid, away from room center.
+func _room_furniture_lurk(y: float) -> Vector3:
+	var items: Array = _room_tables + _room_furniture
+	if items.is_empty():
+		return Vector3.INF
+	var f: Dictionary = items[randi() % items.size()]
+	var wp: Vector3 = f["position"]
+	var fs: Vector3 = f["size"]
+	var rc := _room_bounds.get_center()
+	var away := Vector2(wp.x - rc.x, wp.z - rc.y)
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var clearance := maxf(fs.x, fs.z) * 0.5 + 0.45
+	return to_local(Vector3(wp.x + away.x * clearance, y, wp.z + away.y * clearance))

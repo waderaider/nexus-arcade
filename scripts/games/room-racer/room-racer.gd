@@ -31,6 +31,47 @@ var _msg_label: Label3D
 var _track_center := CENTER
 var _anchor_timer := 0.0
 
+# v0.7.0 RoomKit: the oval fits inside the real room. Cached; the default
+# layout is untouched without XR room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _trx := RX
+var _trz := RZ
+var _track_root: Node3D = null
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_fit_track_to_room()
+	# v0.7.0 MORPH: chairs become pit-crew race seats lining the track.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_chairs := RoomKit.get_anchors("CHAIR")
+		if not _morph_chairs.is_empty():
+			RoomKit.morph(_morph_chairs[0], "scifi")
+
+
+## Center the oval on the real room and scale it to fit inside.
+func _fit_track_to_room() -> void:
+	var c := _room_bounds.get_center()
+	_track_center = Vector3(c.x, 0.0, c.y)
+	var fit := minf(_room_bounds.size.x, _room_bounds.size.y)
+	_trx = clampf(fit * 0.38, 1.2, RX)
+	_trz = clampf(fit * 0.25, 0.8, RZ)
+	if _track_root != null:
+		for ch in _track_root.get_children():
+			ch.queue_free()
+		_build_track()
+	_reset_race()
+
 
 func _ready() -> void:
 	_ensure_camera()
@@ -44,6 +85,7 @@ func _ready() -> void:
 	# AR: restore the saved room anchor in XR sessions.
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.apply_anchor(self, "room-racer_main")
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -121,6 +163,10 @@ func _build_light_and_floor() -> void:
 
 
 func _build_track() -> void:
+	if _track_root == null:
+		_track_root = Node3D.new()
+		_track_root.name = "TrackRoot"
+		add_child(_track_root)
 	var torus := MeshInstance3D.new()
 	var tm := TorusMesh.new()
 	tm.inner_radius = 1.72
@@ -128,14 +174,15 @@ func _build_track() -> void:
 	tm.rings = 64
 	tm.ring_segments = 12
 	torus.mesh = tm
-	torus.scale = Vector3(1.2, 0.1, 0.8)
+	# Scale the visual oval to match the room-fitted _trx/_trz radii.
+	torus.scale = Vector3(1.2 * _trx / RX, 0.1, 0.8 * _trz / RZ)
 	torus.position = _track_center + Vector3(0, 0.02, 0)
 	var tmat := GraphicsPolish.pbr(Color(0.16, 0.17, 0.22), 0.3, 0.4)
 	tmat.emission_enabled = true
 	tmat.emission = Color(0.05, 0.12, 0.18)
 	tmat.emission_energy_multiplier = 0.6
 	torus.material_override = tmat
-	add_child(torus)
+	_track_root.add_child(torus)
 	# Start/finish line across the track at angle 0.
 	var line := MeshInstance3D.new()
 	var lm := BoxMesh.new()
@@ -143,7 +190,7 @@ func _build_track() -> void:
 	line.mesh = lm
 	line.material_override = GraphicsPolish.glow(Color(0.95, 0.95, 0.95), 0.8)
 	line.position = _track_point(0.0, 0.0) + Vector3(0, 0.02, 0)
-	add_child(line)
+	_track_root.add_child(line)
 
 
 func _make_car(color: Color, tag: String) -> Dictionary:
@@ -209,15 +256,15 @@ func _build_labels() -> void:
 # ---------------------------------------------------------------- racing ---
 
 func _track_point(a: float, lat: float) -> Vector3:
-	var p := _track_center + Vector3(RX * cos(a), 0.07, RZ * sin(a))
-	var n := Vector3(cos(a) / RX, 0.0, sin(a) / RZ)
+	var p := _track_center + Vector3(_trx * cos(a), 0.07, _trz * sin(a))
+	var n := Vector3(cos(a) / _trx, 0.0, sin(a) / _trz)
 	if n.length() > 0.0001:
 		p += n.normalized() * lat * LAT_WIDTH
 	return p
 
 
 func _track_tangent(a: float) -> Vector3:
-	var t := Vector3(-RX * sin(a), 0.0, RZ * cos(a))
+	var t := Vector3(-_trx * sin(a), 0.0, _trz * cos(a))
 	return t.normalized()
 
 

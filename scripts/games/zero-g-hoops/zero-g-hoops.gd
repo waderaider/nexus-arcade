@@ -44,6 +44,13 @@ var grab_point := Vector3.ZERO
 var xr_prev := Vector3.ZERO
 var xr_vel := Vector3.ZERO
 var bob_t := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _hoop_base: Vector3 = HOOP_POS
+var _hoop_face := 1.0 # +1: hoop front faces +Z (default); -1: faces -Z
 
 
 func _ready() -> void:
@@ -55,6 +62,7 @@ func _ready() -> void:
 	_build_hud()
 	_new_round()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 3.0, 40)
+	_apply_room_layout() # v0.7.0: hoop on real walls, room-bounded volume
 
 
 func _ensure_camera() -> void:
@@ -130,7 +138,11 @@ func _spawn_ball() -> void:
 	sphere.height = BALL_R * 2.0
 	ball.mesh = sphere
 	ball.material_override = GraphicsPolish.glow(Color(1.0, 0.55, 0.15), 1.4)
-	ball.position = Vector3(randf_range(-1.2, 1.2), randf_range(1.2, 1.9), 1.2)
+	# v0.7.0: drift near the room center when the room is scanned.
+	var bc := Vector2(0.0, 1.2)
+	if not _room_walls.is_empty():
+		bc = _room_bounds.get_center()
+	ball.position = Vector3(bc.x + randf_range(-0.8, 0.8), randf_range(1.2, 1.9), bc.y + randf_range(-0.8, 0.8))
 	ball.add_child(GraphicsPolish.make_trail(Color(1.0, 0.6, 0.2), 0.04))
 	add_child(ball)
 	ball_vel = Vector3(randf_range(-0.4, 0.4), randf_range(-0.2, 0.2), randf_range(-0.5, -0.1))
@@ -174,6 +186,7 @@ func _set_msg(text: String, hold: float) -> void:
 
 func _new_round() -> void:
 	clock = SHOT_CLOCK
+	_place_hoop() # v0.7.0: each round mounts the hoop on a (different) wall
 	_spawn_ball()
 	_set_msg("Round %d — shoot!" % round_num, 1.5)
 
@@ -236,7 +249,7 @@ func _process(delta: float) -> void:
 	if rim_mat != null:
 		GraphicsPolish.pulse_glow(rim_mat, 2.4, 0.8, pulse_t, 2.0)
 	if hoop != null:
-		hoop.position.y = HOOP_POS.y + sin(bob_t * 1.3) * 0.08
+		hoop.global_position.y = _hoop_base.y + sin(bob_t * 1.3) * 0.08
 	if msg_t > 0.0:
 		msg_t -= delta
 		if msg_t <= 0.0:
@@ -301,25 +314,54 @@ func _move_ball(delta: float) -> void:
 		pos.x = hp.x + n.x * (HOOP_R + (BALL_R + 0.05) * signf(d2 - HOOP_R))
 		pos.y = hp.y + n.y * (HOOP_R + (BALL_R + 0.05) * signf(d2 - HOOP_R))
 		GraphicsPolish.spawn_sparks(self, pos, Color(1.0, 0.6, 0.2), 6)
-	# Walls bounce.
-	if pos.x > BOUNDS_X - BALL_R:
-		pos.x = BOUNDS_X - BALL_R
-		ball_vel.x = -absf(ball_vel.x) * 0.8
-	elif pos.x < -BOUNDS_X + BALL_R:
-		pos.x = -BOUNDS_X + BALL_R
-		ball_vel.x = absf(ball_vel.x) * 0.8
-	if pos.y > BOUNDS_Y_HI - BALL_R:
-		pos.y = BOUNDS_Y_HI - BALL_R
-		ball_vel.y = -absf(ball_vel.y) * 0.8
-	elif pos.y < BOUNDS_Y_LO + BALL_R:
-		pos.y = BOUNDS_Y_LO + BALL_R
-		ball_vel.y = absf(ball_vel.y) * 0.8
-	if pos.z > BOUNDS_Z_HI - BALL_R:
-		pos.z = BOUNDS_Z_HI - BALL_R
-		ball_vel.z = -absf(ball_vel.z) * 0.8
-	elif pos.z < BOUNDS_Z_LO + BALL_R:
-		pos.z = BOUNDS_Z_LO + BALL_R
-		ball_vel.z = absf(ball_vel.z) * 0.8
+	# Walls bounce (v0.7.0: real wall planes + room bounds when scanned).
+	if _room_walls.is_empty():
+		if pos.x > BOUNDS_X - BALL_R:
+			pos.x = BOUNDS_X - BALL_R
+			ball_vel.x = -absf(ball_vel.x) * 0.8
+		elif pos.x < -BOUNDS_X + BALL_R:
+			pos.x = -BOUNDS_X + BALL_R
+			ball_vel.x = absf(ball_vel.x) * 0.8
+		if pos.y > BOUNDS_Y_HI - BALL_R:
+			pos.y = BOUNDS_Y_HI - BALL_R
+			ball_vel.y = -absf(ball_vel.y) * 0.8
+		elif pos.y < BOUNDS_Y_LO + BALL_R:
+			pos.y = BOUNDS_Y_LO + BALL_R
+			ball_vel.y = absf(ball_vel.y) * 0.8
+		if pos.z > BOUNDS_Z_HI - BALL_R:
+			pos.z = BOUNDS_Z_HI - BALL_R
+			ball_vel.z = -absf(ball_vel.z) * 0.8
+		elif pos.z < BOUNDS_Z_LO + BALL_R:
+			pos.z = BOUNDS_Z_LO + BALL_R
+			ball_vel.z = absf(ball_vel.z) * 0.8
+	else:
+		var wv: Vector3 = global_transform.basis * ball_vel
+		wv = _bounce_walls(pos, wv, BALL_R)
+		wv = _bounce_furniture(pos, wv, BALL_R)
+		ball_vel = global_transform.basis.inverse() * wv
+		var r := _room_bounds
+		var x0 := r.position.x + BALL_R
+		var x1 := r.end.x - BALL_R
+		var z0 := r.position.y + BALL_R
+		var z1 := r.end.y - BALL_R
+		if pos.x < x0:
+			pos.x = x0
+			ball_vel.x = absf(ball_vel.x) * 0.8
+		elif pos.x > x1:
+			pos.x = x1
+			ball_vel.x = -absf(ball_vel.x) * 0.8
+		if pos.z < z0:
+			pos.z = z0
+			ball_vel.z = absf(ball_vel.z) * 0.8
+		elif pos.z > z1:
+			pos.z = z1
+			ball_vel.z = -absf(ball_vel.z) * 0.8
+		if pos.y > BOUNDS_Y_HI - BALL_R:
+			pos.y = BOUNDS_Y_HI - BALL_R
+			ball_vel.y = -absf(ball_vel.y) * 0.8
+		elif pos.y < BOUNDS_Y_LO + BALL_R:
+			pos.y = BOUNDS_Y_LO + BALL_R
+			ball_vel.y = absf(ball_vel.y) * 0.8
 	ball.global_position = pos
 	_check_basket(pos)
 	prev_ball_z = pos.z
@@ -327,8 +369,8 @@ func _move_ball(delta: float) -> void:
 
 func _check_basket(pos: Vector3) -> void:
 	var hp: Vector3 = hoop.global_position
-	# Crossing the hoop plane from the front.
-	if prev_ball_z > hp.z and pos.z <= hp.z:
+	# Crossing the hoop plane from the front (v0.7.0: front follows _hoop_face).
+	if (prev_ball_z - hp.z) * _hoop_face > 0.0 and (pos.z - hp.z) * _hoop_face <= 0.0:
 		var d2 := Vector2(pos.x - hp.x, pos.y - hp.y).length()
 		if d2 < HOOP_R - BALL_R * 0.4:
 			if rim_touched:
@@ -370,3 +412,76 @@ func _restart() -> void:
 	state = "playing"
 	_new_round()
 	_update_hud()
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_place_hoop()
+	# v0.7.0 MORPH: windows become space-vista portals around the zero-G court.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_wins := RoomKit.get_anchors("WINDOW")
+		if not _morph_wins.is_empty():
+			RoomKit.morph(_morph_wins[0], "scifi")
+
+
+## Mount the hoop on a real wall face (cycles walls each round), facing the room.
+func _place_hoop() -> void:
+	_hoop_face = 1.0
+	_hoop_base = HOOP_POS
+	if not _room_walls.is_empty():
+		var cands: Array = []
+		for w_v in _room_walls:
+			var w: Dictionary = w_v
+			if absf((w["normal"] as Vector3).normalized().z) > 0.7:
+				cands.append(w)
+		if not cands.is_empty():
+			var w: Dictionary = cands[round_num % cands.size()]
+			var wp: Vector3 = w["position"]
+			var wn: Vector3 = (w["normal"] as Vector3).normalized()
+			_hoop_face = signf(wn.z) if absf(wn.z) > 0.01 else 1.0
+			_hoop_base = Vector3(wp.x, 1.7, wp.z) + Vector3(0.0, 0.0, _hoop_face * 0.9)
+			_hoop_base.x = clampf(_hoop_base.x, _room_bounds.position.x + 0.5, _room_bounds.end.x - 0.5)
+			_hoop_base.z = clampf(_hoop_base.z, _room_bounds.position.y + 0.5, _room_bounds.end.y - 0.5)
+	if hoop != null:
+		var nrm := Vector3(0.0, 0.0, _hoop_face)
+		hoop.global_transform = Transform3D(Basis.looking_at(-nrm, Vector3.UP), _hoop_base)
+
+
+## Normal-sign agnostic wall reflection (world space).
+func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for w in _room_walls:
+		var n: Vector3 = w["normal"]
+		var d: float = (pos - w["position"]).dot(n)
+		if absf(d) < radius and vel.dot(n) * signf(d) < 0.0:
+			vel = vel - 2.0 * vel.dot(n) * n
+	return vel
+
+
+## Furniture cuboids are solid: reflect the least-penetration axis (world space).
+func _bounce_furniture(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
+	for f_v in _room_furniture:
+		var f: Dictionary = f_v
+		var c: Vector3 = f["position"]
+		var s: Vector3 = f["size"]
+		var d: Vector3 = pos - c
+		var px := s.x * 0.5 + radius - absf(d.x)
+		var py := s.y * 0.5 + radius - absf(d.y)
+		var pz := s.z * 0.5 + radius - absf(d.z)
+		if px > 0.0 and py > 0.0 and pz > 0.0:
+			if px <= py and px <= pz and signf(vel.x) == signf(d.x):
+				vel.x = -vel.x
+			elif py <= px and py <= pz and signf(vel.y) == signf(d.y):
+				vel.y = -vel.y
+			elif pz <= px and pz <= py and signf(vel.z) == signf(d.z):
+				vel.z = -vel.z
+	return vel

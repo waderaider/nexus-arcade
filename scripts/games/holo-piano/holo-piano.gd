@@ -27,6 +27,15 @@ var _sustain_btn_collider: StaticBody3D = null
 var _key_prev := {}
 var _anchor_timer := 0.0
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _room_anchored := false
+var _fake_table: MeshInstance3D = null
+var _help_label: Label3D = null
+
 
 func _ready() -> void:
 	_ensure_camera()
@@ -39,9 +48,11 @@ func _ready() -> void:
 		_key_prev[k] = false
 	# AR: restore the saved anchor in XR; first run lands the piano on a table.
 	if ARUpgradeKit.is_xr_active():
-		if not ARUpgradeKit.apply_anchor(self, "holo-piano_main"):
+		_room_anchored = ARUpgradeKit.apply_anchor(self, "holo-piano_main")
+		if not _room_anchored:
 			ARUpgradeKit.place_on_table(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.5, 0.4), 4.0, 40)
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -104,6 +115,7 @@ func _build_table() -> void:
 	table.material_override = GraphicsPolish.pbr(Color(0.23, 0.16, 0.11), 0.05, 0.7)
 	table.position = Vector3(0, -0.35, 0.4)
 	add_child(table)
+	_fake_table = table
 
 
 func _build_keys() -> void:
@@ -196,6 +208,7 @@ func _build_hud() -> void:
 	help.pixel_size = 0.009
 	help.modulate = Color(0.8, 0.85, 1.0)
 	add_child(help)
+	_help_label = help
 
 
 # ---------------------------------------------------------------- audio
@@ -335,3 +348,72 @@ func _update_key_animations(delta: float) -> void:
 			var node := k["node"] as Node3D
 			var y0 := float(k["y0"])
 			node.position.y = y0 - 0.09 * (press / 0.22)
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table docks the holo keyboard with a scifi skin; the rug is the neon performance stage.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "scifi")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Seat the keyboard on the largest real table (skipped when the saved
+	# anchor was restored — the anchor already persists the seated pose).
+	if not _room_anchored and not _room_tables.is_empty():
+		var t: Dictionary = _room_largest_item(_room_tables)
+		var tp: Vector3 = t["position"]
+		var ts: Vector3 = t["size"]
+		global_position = tp + Vector3(0.0, ts.y * 0.5, 0.0)
+		if _fake_table != null:
+			_fake_table.visible = false
+	# Hang the HUD readout on the largest real wall, facing the room.
+	if not _room_walls.is_empty() and _last_note != null and _help_label != null:
+		var w: Dictionary = _room_largest_wall()
+		if not w.is_empty():
+			var wp: Vector3 = w["position"]
+			var n: Vector3 = w["normal"]
+			var yaw := atan2(-n.x, -n.z)
+			var face: Vector3 = wp + n * 0.35
+			_last_note.global_position = face + Vector3(0.0, 0.95, 0.0)
+			_last_note.global_rotation = Vector3(0.0, yaw, 0.0)
+			_help_label.global_position = face + Vector3(0.0, 0.40, 0.0)
+			_help_label.global_rotation = Vector3(0.0, yaw, 0.0)
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best
+
+
+## RoomKit: the table/furniture item with the largest footprint, or {}.
+func _room_largest_item(items: Array) -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for f_v in items:
+		var f: Dictionary = f_v
+		var sz: Vector3 = f["size"]
+		var a := sz.x * sz.z
+		if a > best_a:
+			best_a = a
+			best = f
+	return best

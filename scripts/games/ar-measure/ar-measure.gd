@@ -24,6 +24,12 @@ var _hud: Label3D = null
 var _markers: Array[Node3D] = []
 var _buttons := {} ## StaticBody3D -> String
 var _anchor_timer := 0.0
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _has_room := false
 
 
 func _ready() -> void:
@@ -35,6 +41,42 @@ func _ready() -> void:
 	_build_buttons()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.5, 0), 3.0, 40)
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> scifi measuring workbench
+	_morph_anchors("TABLE", "scifi", 1)
+	_has_room = true
+	_update_hud()
+
+
+## Snap a measure point onto the nearest real wall plane (within 0.5 m) so
+## wall-to-wall measurements land exactly on the wall surface.
+func _snap_to_walls(p: Vector3) -> Vector3:
+	if not _has_room:
+		return p
+	var best := p
+	var best_d := 0.5
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var n: Vector3 = w["normal"]
+		var signed_d: float = (p - w["position"]).dot(n)
+		if absf(signed_d) < best_d:
+			best_d = absf(signed_d)
+			best = p - n * signed_d
+	return best
 
 
 func _process(delta: float) -> void:
@@ -229,6 +271,8 @@ func _cancel_pending() -> void:
 func _add_measure_point(p: Vector3) -> void:
 	# AR: keep points inside the known room bounds.
 	p = ARUpgradeKit.clamp_to_room(p)
+	# ROOMKIT: snap endpoints onto real wall planes when close.
+	p = _snap_to_walls(p)
 	if _measurements.size() >= MAX_MEASUREMENTS:
 		_cancel_pending()
 		return
@@ -356,6 +400,8 @@ func _update_hud() -> void:
 	if _hud == null:
 		return
 	var lines: Array[String] = []
+	if _has_room:
+		lines.append("Real room: %.1f m x %.1f m | %d walls" % [_room_bounds.size.x, _room_bounds.size.y, _room_walls.size()])
 	if _mode == Mode.ROOM:
 		lines.append("[ROOM MODE] Click 4 floor corners (%d/4)" % _room_corners.size())
 	else:
@@ -363,3 +409,11 @@ func _update_hud() -> void:
 	for i in _measurements.size():
 		lines.append("%d. %.2f m" % [i + 1, float((_measurements[i] as Dictionary)["dist"])])
 	_hud.text = "\n".join(lines)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

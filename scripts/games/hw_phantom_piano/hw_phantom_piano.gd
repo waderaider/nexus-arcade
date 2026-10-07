@@ -31,10 +31,26 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: the phantom pianist seated on the player's real chair.
+var _phantom: Node3D = null
+var _phantom_base := Vector3.ZERO
+# The piano sits on a stage so it can be centered/aligned in the real
+# room; key taps use global positions so nothing else changes.
+var piano_stage: Node3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
 	_ensure_fallback_camera()
+	piano_stage = Node3D.new()
+	piano_stage.name = "PianoStage"
+	add_child(piano_stage)
 	_build_piano()
 	_build_hud()
 	ARUpgradeKit.apply_anchor(self, ANCHOR_NAME)
@@ -42,6 +58,68 @@ func _ready() -> void:
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, -1.4), 2.2, 40)
 	_next_round()
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Center the piano in the room, running its long axis along the
+	# room's long axis so the keys never face a wall.
+	var rot := 0.0
+	if _room_bounds.size.y > _room_bounds.size.x * 1.3:
+		rot = PI * 0.5
+	piano_stage.rotation.y = rot
+	var c := _room_bounds.get_center()
+	var local_c := Vector3(0.0, 0.0, -1.4).rotated(Vector3.UP, rot)
+	piano_stage.position = Vector3(c.x - local_c.x, 0.0, c.y - local_c.z)
+	# v0.7.0 furniture morph: the real chair becomes the phantom's
+	# haunted throne — the invisible pianist takes a visible seat and
+	# sways with the music (see _process).
+	var chair_anchors := RoomKit.get_anchors("CHAIR")
+	if not chair_anchors.is_empty():
+		var canchor: Dictionary = chair_anchors[0]
+		RoomKit.morph(canchor, "haunted")
+		var seat: Vector3 = RoomKit.cuboid_top(canchor)
+		if _phantom == null:
+			_phantom = _make_phantom()
+		_phantom.position = seat + Vector3(0.0, 0.42, 0.0)
+		_phantom_base = _phantom.position
+		var face := piano_stage.position + local_c - seat
+		_phantom.rotation.y = atan2(face.x, face.z)
+
+
+func _make_phantom() -> Node3D:
+	# The invisible pianist, made visible: a translucent figure seated
+	# on the player's real chair, swaying with the music.
+	var root := Node3D.new()
+	root.name = "PhantomPianist"
+	var torso := MeshInstance3D.new()
+	var tm := CapsuleMesh.new()
+	tm.radius = 0.14
+	tm.height = 0.5
+	torso.mesh = tm
+	torso.position = Vector3(0.0, 0.25, 0.0)
+	torso.material_override = GraphicsPolish.glow(Color(0.7, 0.85, 1.0), 0.9)
+	root.add_child(torso)
+	var head := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = 0.11
+	hm.height = 0.22
+	head.mesh = hm
+	head.position = Vector3(0.0, 0.62, 0.0)
+	head.material_override = GraphicsPolish.glow(Color(0.8, 0.92, 1.0), 1.2)
+	root.add_child(head)
+	add_child(root)
+	return root
 
 
 func _add_light_rig() -> void:
@@ -85,7 +163,7 @@ func _build_piano() -> void:
 	body.mesh = bm
 	body.position = center + Vector3(0.0, 0.82, 0.0)
 	body.material_override = _mat(Color(0.05, 0.05, 0.07))
-	add_child(body)
+	piano_stage.add_child(body)
 	var lid := MeshInstance3D.new()
 	var lm := BoxMesh.new()
 	lm.size = Vector3(1.9, 0.05, 0.75)
@@ -93,7 +171,7 @@ func _build_piano() -> void:
 	lid.position = center + Vector3(0.0, 1.18, 0.18)
 	lid.rotation.x = -0.5
 	lid.material_override = _mat(Color(0.06, 0.06, 0.08))
-	add_child(lid)
+	piano_stage.add_child(lid)
 	for lx in [-0.8, 0.8]:
 		for lz in [-0.28, 0.28]:
 			var leg := MeshInstance3D.new()
@@ -102,7 +180,7 @@ func _build_piano() -> void:
 			leg.mesh = lgm
 			leg.position = center + Vector3(lx, 0.36, lz)
 			leg.material_override = _mat(Color(0.05, 0.05, 0.07))
-			add_child(leg)
+			piano_stage.add_child(leg)
 	# Candles on the piano for spooky light.
 	for cx in [-0.7, 0.7]:
 		var candle := MeshInstance3D.new()
@@ -113,7 +191,7 @@ func _build_piano() -> void:
 		candle.mesh = cm
 		candle.position = center + Vector3(cx, 1.05, -0.22)
 		candle.material_override = _mat(Color(0.9, 0.85, 0.7))
-		add_child(candle)
+		piano_stage.add_child(candle)
 		var flame := MeshInstance3D.new()
 		var fm := SphereMesh.new()
 		fm.radius = 0.025
@@ -122,7 +200,7 @@ func _build_piano() -> void:
 		flame.position = center + Vector3(cx, 1.20, -0.22)
 		flame.material_override = GraphicsPolish.glow(Color(1.0, 0.6, 0.15), 2.4)
 		add_child(flame)
-	GraphicsPolish.make_point_light(self, center + Vector3(0.0, 1.7, 0.0), Color(1.0, 0.65, 0.3), 0.8, 5.0)
+	GraphicsPolish.make_point_light(piano_stage, center + Vector3(0.0, 1.7, 0.0), Color(1.0, 0.65, 0.3), 0.8, 5.0)
 	# 8 haunted keys, each with its own material so it can light up.
 	var key_w := 0.20
 	var start_x := -key_w * float(NUM_KEYS - 1) * 0.5
@@ -135,7 +213,7 @@ func _build_piano() -> void:
 		var kx := start_x + float(i) * key_w
 		key.position = center + Vector3(kx, 0.97, 0.12)
 		key.material_override = kmat
-		add_child(key)
+		piano_stage.add_child(key)
 		keys.append({"node": key, "mat": kmat, "base_y": key.position.y, "dip": 0.0})
 
 
@@ -200,6 +278,10 @@ func _process(delta: float) -> void:
 			dip = maxf(dip - delta * 5.0, 0.0)
 			k["dip"] = dip
 		node.position.y = float(k["base_y"]) - 0.035 * dip
+	# The phantom pianist sways on the player's real chair with the music.
+	if _phantom != null:
+		_phantom.position.y = _phantom_base.y + sin(elapsed * 2.2) * 0.035
+		_phantom.rotation.z = sin(elapsed * 1.1) * 0.08
 	if msg_timer > 0.0:
 		msg_timer -= delta
 		if msg_timer <= 0.0 and msg_label != null:

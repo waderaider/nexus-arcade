@@ -29,10 +29,26 @@ var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 var players := {}
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+# v0.7.0: morphed door gate the ghostly visitors drift in from (game-local coords).
+var _room_door_pos := Vector3.ZERO
+var _room_door_known := false
+# The barrel (and its apples) sit on a stage so it can be served on a
+# real table; apple drift math stays in stage-local coordinates.
+var barrel_stage: Node3D = null
+
 
 func _ready() -> void:
 	_add_light_rig()
 	_ensure_fallback_camera()
+	barrel_stage = Node3D.new()
+	barrel_stage.name = "BarrelStage"
+	add_child(barrel_stage)
 	_build_barrel()
 	_build_hud()
 	for i in range(NUM_APPLES):
@@ -41,6 +57,47 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.2, -1.4), 2.0, 36)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Bob for apples on the player's real table when one is known;
+	# otherwise center the barrel in the room.
+	var bc := Vector3(0.0, 0.0, -1.4) # desired barrel-center position (world)
+	if not _room_tables.is_empty():
+		var t: Dictionary = _room_tables[0]
+		var tp: Vector3 = t["position"]
+		var ts: Vector3 = t["size"]
+		bc = Vector3(tp.x, tp.y + ts.y * 0.5, tp.z)
+	else:
+		var c := _room_bounds.get_center()
+		bc = Vector3(c.x, 0.0, c.y)
+	if _room_bounds.size.x > 1.8:
+		bc.x = clampf(bc.x, _room_bounds.position.x + 0.9, _room_bounds.end.x - 0.9)
+	if _room_bounds.size.y > 1.8:
+		bc.z = clampf(bc.z, _room_bounds.position.y + 0.9, _room_bounds.end.y - 0.9)
+	barrel_stage.position = bc - Vector3(0.0, 0.0, -1.4)
+	# v0.7.0 furniture morphs: the real table becomes the haunted
+	# bobbing altar the barrel rides on, and the door becomes a dungeon
+	# gate the ghostly visitors drift in through (see _catch).
+	var table_anchors := RoomKit.get_anchors("TABLE")
+	if not table_anchors.is_empty():
+		RoomKit.morph(table_anchors[0], "haunted")
+	var door_anchors := RoomKit.get_anchors("DOOR")
+	if not door_anchors.is_empty():
+		RoomKit.morph(door_anchors[0], "haunted")
+		_room_door_pos = door_anchors[0]["position"]
+		_room_door_known = true
 
 
 func _add_light_rig() -> void:
@@ -86,7 +143,7 @@ func _build_barrel() -> void:
 	barrel.mesh = bm
 	barrel.position = center + Vector3(0.0, 0.375, 0.0)
 	barrel.material_override = _mat(Color(0.30, 0.19, 0.10))
-	add_child(barrel)
+	barrel_stage.add_child(barrel)
 	# Metal hoops.
 	for hy in [0.18, 0.58]:
 		var hoop := MeshInstance3D.new()
@@ -97,7 +154,7 @@ func _build_barrel() -> void:
 		hoop.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		hoop.position = center + Vector3(0.0, hy, 0.0)
 		hoop.material_override = GraphicsPolish.pbr_preset(Color(0.25, 0.25, 0.28), "metal")
-		add_child(hoop)
+		barrel_stage.add_child(hoop)
 	# Water surface.
 	water_mat = GraphicsPolish.pbr_preset(Color(0.15, 0.45, 0.85), "glass")
 	var water := MeshInstance3D.new()
@@ -108,8 +165,8 @@ func _build_barrel() -> void:
 	water.mesh = wm
 	water.position = center + Vector3(0.0, WATER_Y, 0.0)
 	water.material_override = water_mat
-	add_child(water)
-	GraphicsPolish.make_point_light(self, center + Vector3(0.0, 1.6, 0.0), Color(0.5, 0.8, 1.0), 0.7, 5.0)
+	barrel_stage.add_child(water)
+	GraphicsPolish.make_point_light(barrel_stage, center + Vector3(0.0, 1.6, 0.0), Color(0.5, 0.8, 1.0), 0.7, 5.0)
 
 
 func _build_hud() -> void:
@@ -236,6 +293,9 @@ func _catch(idx: int) -> void:
 	var node: Node3D = a["node"]
 	if is_instance_valid(node):
 		GraphicsPolish.spawn_sparks(self, node.global_position, Color(0.45, 0.8, 1.0), 22)
+		# A ghostly visitor drifts in from the dungeon gate to watch.
+		if _room_door_known:
+			GraphicsPolish.spawn_sparks(self, _room_door_pos + Vector3(0.0, 1.2, 0.0), Color(0.75, 0.9, 1.0), 12)
 	score += APPLE_POINTS
 	caught += 1
 	_sfx("splash", 700.0, 0.14, 0.5)
@@ -256,7 +316,7 @@ func _spawn_apple() -> void:
 	var ang := randf() * TAU
 	var r := randf_range(0.05, BARREL_R - 0.14)
 	root.position = Vector3(cos(ang) * r, WATER_Y + 0.03, -1.4 + sin(ang) * r)
-	add_child(root)
+	barrel_stage.add_child(root)
 	var body := MeshInstance3D.new()
 	var bm := SphereMesh.new()
 	bm.radius = 0.095

@@ -111,12 +111,70 @@ var cam_base := Vector3.ZERO
 static var _model_cache := {}
 
 
+# v0.7.0 RoomKit: enemy waves breach in from real wall directions (flash at
+# the wall face), the kraken breaches from a wall, and ship wreckage drifts
+# down to the floor. Cached; the sky layout is untouched without room data.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): storage -> pirate treasure vault (the plunder chest)
+	_morph_anchors("STORAGE", "candy", 1)
+
+
+## Pick a real wall and return [wall center (world), outward dir (flat)].
+## Also plays a breach flash at the wall face.
+func _room_breach() -> Array:
+	var w: Dictionary = _room_walls[randi() % _room_walls.size()]
+	var n: Vector3 = w["normal"]
+	var c := Vector3(_room_bounds.get_center().x, 1.5, _room_bounds.get_center().y)
+	var side := signf((c - w["position"]).dot(n))
+	if side == 0.0:
+		side = 1.0
+	var out := -n * side
+	out.y = 0.0
+	if out.length() < 0.01:
+		out = Vector3.FORWARD
+	out = out.normalized()
+	GraphicsPolish.spawn_sparks(self, w["position"] + n * side * 0.3, Color(0.6, 0.3, 1.0), 24)
+	return [w["position"] + n * side * 0.3, out]
+
+
+## Wreck chunk that drifts down to the floor where a ship died.
+func _room_wreckage(pos: Vector3) -> void:
+	if _room_walls.is_empty():
+		return
+	var wreck := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.5, 0.12, 0.35)
+	wreck.mesh = bm
+	wreck.material_override = GraphicsPolish.pbr_preset(Color(0.16, 0.12, 0.14), "metal")
+	add_child(wreck)
+	wreck.global_position = pos
+	wreck.rotation = Vector3(randf() * 0.6, randf() * TAU, randf() * 0.6)
+	var floor_local: Vector3 = to_local(Vector3(pos.x, 0.05, pos.z))
+	var tw := wreck.create_tween().set_parallel(true)
+	tw.tween_property(wreck, "position", floor_local, 2.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(wreck, "rotation:y", wreck.rotation.y + 2.0, 2.2)
+
+
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "sky_pirates_main")
 	xr_mode = ARUpgradeKit.is_xr_active()
 	_ensure_camera()
 	_ensure_environment()
 	_ensure_light()
+	_apply_room_layout()
 	_load_progress()
 	_build_sky()
 	_build_player_ship()
@@ -633,7 +691,13 @@ func _spawn_enemy(etype: String) -> void:
 	var root := Node3D.new()
 	var ang := randf() * TAU
 	var dist := randf_range(38.0, 52.0)
-	root.position = ship.position + Vector3(cos(ang) * dist, randf_range(-2.0, 4.0), sin(ang) * dist)
+	var dir := Vector3(cos(ang), 0.0, sin(ang))
+	if not _room_walls.is_empty():
+		# v0.7.0: waves breach in from a real wall direction instead of a
+		# random compass bearing.
+		var br := _room_breach()
+		dir = br[1]
+	root.position = ship.position + dir * dist + Vector3(0, randf_range(-2.0, 4.0), 0)
 	add_child(root)
 	var hull := _load_model(MODELS + str(def["model"]))
 	if hull != null:
@@ -797,6 +861,8 @@ func _kill_enemy(i: int) -> void:
 	Haptics.thump()
 	GraphicsPolish.spawn_sparks(self, n.global_position + Vector3(0, 2, 0), Color(1.0, 0.6, 0.2), 40)
 	GraphicsPolish.spawn_sparks(self, n.global_position, Color(0.4, 0.4, 0.45), 24)
+	# v0.7.0 RoomKit: wreckage drifts down to the floor.
+	_room_wreckage(n.global_position)
 	_set_msg("%s destroyed! +%d gold" % [str(e["type"]).capitalize(), int(e["gold"])], 2.5)
 	# Gold coins arc out, then fly to the player.
 	for k in 4:
@@ -1117,7 +1183,11 @@ func _end_boarding(fled: bool) -> void:
 
 func _spawn_kraken() -> void:
 	kraken = Node3D.new()
-	kraken.position = ship.global_position + _ship_forward() * 30.0 + Vector3(0, 2.0, 0)
+	var kdir := _ship_forward()
+	if not _room_walls.is_empty():
+		# v0.7.0: the kraken breaches in from a real wall direction.
+		kdir = (_room_breach()[1] as Vector3)
+	kraken.position = ship.global_position + kdir * 30.0 + Vector3(0, 2.0, 0)
 	add_child(kraken)
 	var flesh := GraphicsPolish.pbr(Color(0.28, 0.12, 0.38), 0.1, 0.55)
 	var body := MeshInstance3D.new()
@@ -1519,3 +1589,11 @@ func _process(delta: float) -> void:
 		if msg_t <= 0.0 and msg_label != null:
 			msg_label.text = ""
 	_update_hud()
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

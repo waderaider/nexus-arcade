@@ -171,6 +171,13 @@ var holo_mats: Array = []
 var scan_rings: Array = []
 var lamp_light: SpotLight3D = null
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_has := false
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "ar_detective_main")
@@ -182,6 +189,7 @@ func _ready() -> void:
 	_build_chalk_outline()
 	_build_police_tape()
 	_build_lamp()
+	_build_office()
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, SCENE_C + Vector3(0, 1.2, 0), 2.2, 40)
 	if solved_count >= CASES.size():
@@ -189,6 +197,74 @@ func _ready() -> void:
 	else:
 		case_idx = solved_count
 		_start_case(case_idx)
+	_apply_room_layout()
+
+
+## v0.7.0: tape 5 clues to real walls (facing into the room) and hide the
+## 6th behind the biggest real furniture piece. Guarded; fallback keeps the
+## default crime-scene spots.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> holographic evidence board
+	_morph_anchors("TABLE", "scifi", 1)
+	_room_has = true
+	_layout_clues_room()
+
+
+func _layout_clues_room() -> void:
+	if not _room_has or clue_nodes.is_empty() or _room_walls.is_empty():
+		return
+	for i in clue_nodes.size():
+		var holder := clue_nodes[i] as Node3D
+		if not is_instance_valid(holder):
+			continue
+		holder.top_level = true
+		if i < 5:
+			var w: Dictionary = _room_walls[i % _room_walls.size()]
+			var n: Vector3 = w["normal"]
+			n.y = 0.0
+			n = n.normalized() if n.length() > 0.01 else Vector3(0, 0, 1)
+			var fw: Vector3 = (w["position"] as Vector3) + n * 0.07
+			fw.y = 1.25 + float(i % 3) * 0.22
+			holder.global_position = fw
+			var c := _room_bounds.get_center()
+			var d := Vector2(c.x - fw.x, c.y - fw.z)
+			holder.rotation.y = atan2(d.x, d.y) if d.length() > 0.05 else 0.0
+		else:
+			var f := _largest_cuboid(_room_furniture)
+			if f.is_empty():
+				f = _largest_cuboid(_room_tables)
+			if f.is_empty():
+				continue
+			var fp: Vector3 = f["position"]
+			var fs: Vector3 = f["size"]
+			var c2 := _room_bounds.get_center()
+			var away := Vector2(fp.x - c2.x, fp.z - c2.y)
+			away = away.normalized() if away.length() > 0.05 else Vector2(0, 1)
+			var dist := maxf(fs.x, fs.z) * 0.5 + 0.4
+			holder.global_position = Vector3(fp.x + away.x * dist, 0.32, fp.z + away.y * dist)
+			holder.rotation.y = 0.0
+
+
+func _largest_cuboid(items: Array) -> Dictionary:
+	var best := {}
+	var best_v := 0.0
+	for f_v in items:
+		var f: Dictionary = f_v
+		var s: Vector3 = f["size"]
+		var v := s.x * s.y * s.z
+		if v > best_v:
+			best_v = v
+			best = f
+	return best
 
 
 func _ensure_camera() -> void:
@@ -482,6 +558,26 @@ func _build_lamp() -> void:
 	rim.basis = Basis.looking_at((rim_target - rim.global_position).normalized(), Vector3.UP)
 
 
+## v0.7.0 KayKit: the detective's office corner — desk, chair and evidence
+## cabinet with case files, built from CC0 furniture models. Pure dressing;
+## all clue/case logic is untouched.
+func _build_office() -> void:
+	var dir := "res://assets/models/ar_detective/"
+	var desk := ModelLib.spawn(dir + "table_small.gltf", self, Vector3(-2.7, 0, -1.0))
+	var chair := ModelLib.spawn(dir + "chair_A.gltf", self, Vector3(-2.7, 0, -0.15))
+	if chair != null:
+		chair.rotation.y = PI # face the desk
+	var cabinet := ModelLib.spawn(dir + "cabinet_medium.gltf", self, Vector3(-3.1, 0, -2.5))
+	if cabinet != null:
+		cabinet.rotation.y = PI * 0.5
+		# Case files stacked on the cabinet.
+		var books := ModelLib.spawn(dir + "book_set.gltf", cabinet, Vector3(0.3, 1.25, 0))
+		if books != null:
+			books.rotation.y = 0.4
+	if desk == null and chair == null and cabinet == null:
+		return # models missing: office stays unbuilt, game unaffected
+
+
 func _build_hud() -> void:
 	hud_title = GraphicsPolish.make_label("", 52, Color(1.0, 0.85, 0.55))
 	hud_title.position = Vector3(-2.75, 2.75, -1.2)
@@ -646,6 +742,7 @@ func _start_case(idx: int) -> void:
 	_build_board(case)
 	_build_suspects(case)
 	_set_msg("SCAN: tap the 6 glowing clues", 6.0)
+	_layout_clues_room() # v0.7.0: re-seat clues when room data is already cached
 
 
 func _spawn_clues(case: Dictionary) -> void:
@@ -1393,3 +1490,11 @@ func _move_token_to_xr(ti: int) -> void:
 	local.z = 0.09
 	# XR: allow dragging tokens from the top row down; clamp generous.
 	(tokens[ti] as Node3D).position = local
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

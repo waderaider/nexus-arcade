@@ -63,14 +63,32 @@ var _results_node: Node3D = null
 
 var _blip: AudioStreamPlayer = null
 
+## RoomKit v0.7.0: cached room layout + wall-mounted lyric screen rig.
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+var _screen_rig: Node3D = null
+
 
 func _ready() -> void:
 	# Restore the persisted stage placement (no-op when no anchor was saved).
 	ARUpgradeKit.apply_anchor(self, "ar-karaoke_main")
+	# Wall-mounted screen rig (stays at identity until room data arrives).
+	_screen_rig = Node3D.new()
+	_screen_rig.name = "RoomScreenRig"
+	add_child(_screen_rig)
 	_songs = _build_songs()
 	_build_environment()
 	_build_song_cards()
+	# The song-select cards live on the screen rig (they move with the wall).
+	for child in get_children():
+		if child is MeshInstance3D and child.has_meta("song_idx"):
+			child.reparent(_screen_rig, false)
+		elif child is Label3D and child.has_meta("card_idx"):
+			child.reparent(_screen_rig, false)
 	_build_ui()
+	_popup.reparent(_screen_rig, false)
 	_blip = AudioStreamPlayer.new()
 	add_child(_blip)
 	# Stage dust motes.
@@ -82,6 +100,7 @@ func _ready() -> void:
 			_has_dir = true
 	if not _has_dir:
 		GraphicsPolish.make_light_rig(self, 1.0)
+	_apply_room_layout()
 
 
 # ------------------------------------------------------------------ songs
@@ -275,7 +294,7 @@ func _build_song_cards() -> void:
 func _hide_cards() -> void:
 	for c in _cards:
 		(c as MeshInstance3D).visible = false
-	for child in get_children():
+	for child in _screen_rig.get_children():
 		if child is Label3D and child.has_meta("card_idx"):
 			child.visible = false
 
@@ -283,7 +302,7 @@ func _hide_cards() -> void:
 func _show_cards() -> void:
 	for c in _cards:
 		(c as MeshInstance3D).visible = true
-	for child in get_children():
+	for child in _screen_rig.get_children():
 		if child is Label3D and child.has_meta("card_idx"):
 			child.visible = true
 
@@ -382,7 +401,7 @@ func _build_lyric_nodes() -> void:
 			l.modulate = COL_FUTURE
 			l.outline_size = 10
 			l.set_meta("word", true)
-			add_child(l)
+			_screen_rig.add_child(l)
 			w["label"] = l
 			var ww := _word_width(text)
 			w["cx"] = x + ww / 2.0
@@ -391,7 +410,7 @@ func _build_lyric_nodes() -> void:
 
 
 func _clear_lyrics() -> void:
-	for child in get_children():
+	for child in _screen_rig.get_children():
 		if child is Label3D and child.has_meta("word"):
 			child.queue_free()
 	_words.clear()
@@ -696,3 +715,49 @@ func _update_hud() -> void:
 		]
 	else:
 		_hud.text = "AR KARAOKE\nPick a song: 1 / 2 / 3\nor click a card"
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the rug becomes the neon karaoke stage; lamps become neon stage lights.
+	var _morph0_rug := RoomKit.get_anchors("RUG")
+	if not _morph0_rug.is_empty():
+		RoomKit.morph(_morph0_rug[0], "neon")
+	var _morph1_lamp := RoomKit.get_anchors("LAMP")
+	if not _morph1_lamp.is_empty():
+		RoomKit.morph(_morph1_lamp[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_walls.is_empty() or _screen_rig == null:
+		return
+	# Hang the lyric screen (lyrics + song cards + popups) on the largest
+	# real wall, facing the room.
+	var w := _room_largest_wall()
+	if w.is_empty():
+		return
+	var wp: Vector3 = w["position"]
+	var n: Vector3 = w["normal"]
+	var yaw := atan2(-n.x, -n.z)
+	_screen_rig.global_position = Vector3(wp.x, 0.0, wp.z) + n * 0.45
+	_screen_rig.global_rotation = Vector3(0.0, yaw, 0.0)
+
+
+## RoomKit: the wall with the largest face area, or {} when none.
+func _room_largest_wall() -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var sz: Vector2 = w["size"]
+		var a := sz.x * sz.y
+		if a > best_a:
+			best_a = a
+			best = w
+	return best

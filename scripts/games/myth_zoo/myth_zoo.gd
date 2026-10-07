@@ -72,6 +72,13 @@ var toast_label: Label3D = null
 var toast_t := 0.0
 var xr_prev_pinch := false
 
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -86,6 +93,7 @@ func _ready() -> void:
 	_build_log_board()
 	_build_hud()
 	_toast("Welcome to the Myth Zoo! Tap a mystery egg.", 3.5)
+	_apply_room_layout() # v0.7.0: map enclosures to room quadrants (no-op w/o room data).
 
 
 func _ensure_camera() -> void:
@@ -121,6 +129,31 @@ func _ensure_light() -> void:
 		if c is DirectionalLight3D:
 			return
 	GraphicsPolish.make_light_rig(self, 0.9)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): plants -> habitat enrichment inside the creature enclosures
+	_morph_anchors("PLANT", "nature", 2)
+	_room_ready = true
+	# Enclosures map to room quadrants: a 2x3 grid across the real floor,
+	# inset from the edges so habitats never clip the walls.
+	if habitats.size() == 6 and _room_bounds.size.x >= 2.6 and _room_bounds.size.y >= 2.6:
+		for i in habitats.size():
+			var col := i % 3
+			var row := i / 3
+			var wx := lerpf(_room_bounds.position.x + 1.0, _room_bounds.position.x + _room_bounds.size.x - 1.0, float(col) / 2.0)
+			var wz := lerpf(_room_bounds.position.y + 1.0, _room_bounds.position.y + _room_bounds.size.y - 1.0, float(row))
+			var rec: Dictionary = habitats[i]
+			(rec["node"] as Node3D).position = to_local(Vector3(wx, 0.0, wz))
 
 
 # ---------------------------------------------------------------- helpers ---
@@ -715,6 +748,10 @@ func _play_process(delta: float) -> void:
 	play_t -= delta
 	var t := 12.0 - play_t
 	var orb_pos := play_center + Vector3(sin(t * 1.4) * 0.55, sin(t * 2.3) * 0.18, cos(t * 1.1) * 0.55)
+	if _room_ready:
+		# Keep the orb (and the chasing creature) off the real walls.
+		orb_pos.x = clampf(orb_pos.x, _room_bounds.position.x + 0.3, _room_bounds.position.x + _room_bounds.size.x - 0.3)
+		orb_pos.z = clampf(orb_pos.z, _room_bounds.position.y + 0.3, _room_bounds.position.y + _room_bounds.size.y - 0.3)
 	if play_orb != null and is_instance_valid(play_orb):
 		play_orb.global_position = orb_pos
 	var pp := _pointer_world()
@@ -728,10 +765,8 @@ func _play_process(delta: float) -> void:
 		var n: Node3D = rec["node"]
 		var want: Vector3 = n.to_local(orb_pos)
 		want.y = c.position.y
-		var to: Vector3 = (want - c.position)
-		if to.length() > 0.35:
-			to = to.normalized() * 0.35
-		c.position = c.position.lerp(c.position + to * 0.6, 0.1)
+		# AILib: curious approach with arrival slowdown instead of hand-rolled lerp.
+		c.position += AILib.investigate(c, want, delta, 0.9)
 		c.position.y += absf(sin(t * 8.0)) * 0.02
 	if play_t <= 0.0:
 		var frac := clampf(play_score / 8.0, 0.0, 1.0)
@@ -986,3 +1021,11 @@ func _day_color(t: float) -> Color:
 	var i := int(seg) % 4
 	var f := seg - floorf(seg)
 	return keys[i].lerp(keys[(i + 1) % 4], f)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

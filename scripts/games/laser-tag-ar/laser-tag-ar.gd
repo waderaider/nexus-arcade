@@ -18,6 +18,8 @@ const SHOT_COOLDOWN := 0.25
 const BOT_SPEED := 1.4
 const BOT_TAG_CHANCE := 0.45
 const PLAYER_REACH := 14.0
+# v0.7.0 KayKit: adventurer bodies for the bots (cycled per spawn).
+const BOT_MODELS := ["Rogue.glb", "Rogue_Hooded.glb"]
 
 var camera: Camera3D = null
 var state := "play" # play | win | lose
@@ -41,6 +43,15 @@ var end_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _click_consumed := false
 
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
+var _barriers: Array = []
+var _wall_spawn_idx := 0
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -56,6 +67,7 @@ func _ready() -> void:
 	end_player = _make_player(_make_tone(392.0, 0.5, 0.5))
 	ARUpgradeKit.apply_anchor(self, "laser-tag-ar_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, 0.0), 4.0)
+	_apply_room_layout() # v0.7.0: arena follows real room layout (no-op w/o room data).
 
 
 func _process(delta: float) -> void:
@@ -91,7 +103,14 @@ func _process(delta: float) -> void:
 		if to.length() < 0.3:
 			bd["target"] = _random_room_point()
 		else:
-			node.position += to.normalized() * float(bd["speed"]) * delta
+			# AILib: seek the waypoint with a wander drift (bots stay floor-level).
+			var step_v := AILib.follow(node, target, delta, float(bd["speed"]))
+			step_v.y = 0.0
+			node.position += step_v + AILib.wander(node, delta, 0.35)
+			if _room_ready:
+				# Keep bots inside the real room bounds.
+				node.position.x = clampf(node.position.x, _room_bounds.position.x + 0.3, _room_bounds.position.x + _room_bounds.size.x - 0.3)
+				node.position.z = clampf(node.position.z, _room_bounds.position.y + 0.3, _room_bounds.position.y + _room_bounds.size.y - 0.3)
 		node.rotation.y = lerp_angle(node.rotation.y, atan2(to.x, to.z) + PI, delta * 4.0)
 		var st := float(bd["shoot_timer"]) - delta
 		if st <= 0.0:
@@ -179,6 +198,53 @@ func _attach_flash() -> void:
 	camera.add_child(quad)
 
 
+func _room_center3() -> Vector3:
+	var c := _room_bounds.get_center()
+	return Vector3(c.x, 0.0, c.y)
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_ready = true
+	# Barriers line the real walls instead of the default 5m box.
+	if not _room_walls.is_empty():
+		for b_v in _barriers:
+			(b_v as Node).queue_free()
+		_barriers.clear()
+		var mat := GraphicsPolish.glow(Color(0.2, 0.9, 1.0), 0.8)
+		mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(0.2, 0.9, 1.0, 0.22)
+		for w_v in _room_walls:
+			var w: Dictionary = w_v
+			var n: Vector3 = (w["normal"] as Vector3).normalized()
+			var wall := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3((w["size"] as Vector2).x, 3.0, 0.15)
+			wall.mesh = box
+			wall.position = to_local(w["position"] as Vector3)
+			wall.rotation.y = atan2(n.x, n.z)
+			wall.material_override = mat
+			add_child(wall)
+			_barriers.append(wall)
+	# v0.7.0 MORPH: TV becomes the match scoreboard; storage becomes the ammo cache vault.
+	if not has_meta("_morphs_applied"):
+		set_meta("_morphs_applied", true)
+		var _morph_tvs := RoomKit.get_anchors("TV")
+		if not _morph_tvs.is_empty():
+			RoomKit.morph(_morph_tvs[0], "scifi")
+		var _morph_storage := RoomKit.get_anchors("STORAGE")
+		if not _morph_storage.is_empty():
+			RoomKit.morph(_morph_storage[0], "scifi")
+
+
 func _add_light_rig() -> void:
 	# Three-point light rig; skipped if a directional light already exists.
 	for child in get_children():
@@ -215,9 +281,16 @@ func _build_barriers() -> void:
 		wall.position = d[0]
 		wall.material_override = mat
 		add_child(wall)
+		_barriers.append(wall) # v0.7.0: tracked so room walls can replace them
 
 
 func _random_room_point() -> Vector3:
+	if _room_ready:
+		# Arena bounded by the real room floor extents.
+		var m := 1.0
+		var x := randf_range(_room_bounds.position.x + m, _room_bounds.position.x + _room_bounds.size.x - m)
+		var z := randf_range(_room_bounds.position.y + m, _room_bounds.position.y + _room_bounds.size.y - m)
+		return ARUpgradeKit.clamp_to_room(Vector3(x, 0.0, z))
 	return ARUpgradeKit.clamp_to_room(Vector3(randf_range(-ROOM_HALF + 1.0, ROOM_HALF - 1.0), 0.0, randf_range(-ROOM_HALF + 1.0, ROOM_HALF - 1.0)))
 
 
@@ -236,9 +309,24 @@ func _spawn_bot() -> void:
 	visor.material_override = vmat
 	visor.position = Vector3(0.0, 0.25, 0.24)
 	body.add_child(visor)
-	var p := _random_room_point()
-	if camera != null and p.distance_to(camera.global_position) < 3.0:
-		p = -p
+	# v0.7.0 KayKit: real adventurer body rides on the bot node so the AILib
+	# steering, hit detection and tagging logic keep working untouched.
+	var mfile: String = BOT_MODELS[bots.size() % BOT_MODELS.size()]
+	if ModelLib.spawn("res://assets/models/laser-tag-ar/" + mfile, body, Vector3(0, -0.9, 0)) != null:
+		body.mesh = null # hide the procedural box; the model is the visual now
+		visor.position = Vector3(0.0, 0.62, 0.18) # sit on the model's face
+	var p: Vector3
+	if not _room_walls.is_empty():
+		# Bots spawn at opposite real walls, cycling through them.
+		var w: Dictionary = _room_walls[_wall_spawn_idx % _room_walls.size()]
+		_wall_spawn_idx += 1
+		var inward: Vector3 = _room_center3() - (w["position"] as Vector3)
+		inward.y = 0.0
+		p = to_local((w["position"] as Vector3) + inward.normalized() * 0.7)
+	else:
+		p = _random_room_point()
+		if camera != null and p.distance_to(camera.global_position) < 3.0:
+			p = -p
 	p.y = 0.9
 	body.position = p
 	add_child(body)

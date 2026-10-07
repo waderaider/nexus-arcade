@@ -52,17 +52,72 @@ var press_t := 0.0
 var pressing := false
 var both_press := false
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _theater: Node3D = null # container for screen + frame + scenery (re-based to local)
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "shadow-puppet_main")
 	_ensure_camera()
 	_ensure_environment()
 	_ensure_light()
+	_theater = Node3D.new()
+	_theater.name = "Theater"
+	add_child(_theater)
 	_build_theater()
 	_build_puppet()
+	# Re-base theater pieces to container-local coords so the whole theater
+	# can be mounted on a real wall as one rigid group (v0.7.0 RoomKit).
+	for n in _theater.get_children():
+		(n as Node3D).position -= SCREEN_POS
+	_theater.position = SCREEN_POS
 	_build_hud()
 	_show_prompt()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.0), 2.0, 25)
+	_apply_room_layout()
+
+
+## Screen center in world space (follows the wall-mounted theater).
+func _screen_pos() -> Vector3:
+	return _theater.global_position if _theater != null else SCREEN_POS
+
+
+## v0.7.0: mount the projection screen on the largest real wall, facing
+## into the room. Guarded; fallback keeps the default floating theater.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): lamps -> spooky theater footlights around the puppet stage
+	_morph_anchors("LAMP", "haunted", 2)
+	var best := {}
+	var best_a := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var a: float = (w["size"] as Vector2).x * (w["size"] as Vector2).y
+		if a > best_a:
+			best_a = a
+			best = w
+	if best.is_empty() or _theater == null:
+		return
+	var n: Vector3 = best["normal"]
+	n.y = 0.0
+	n = n.normalized() if n.length() > 0.01 else Vector3(0, 0, 1)
+	var fw: Vector3 = (best["position"] as Vector3) + n * 0.10
+	var c := _room_bounds.get_center()
+	var d := Vector2(c.x - fw.x, c.y - fw.z)
+	_theater.global_position = Vector3(fw.x, 1.55, fw.z)
+	_theater.rotation.y = atan2(d.x, d.y) if d.length() > 0.05 else 0.0
 
 
 func _ensure_camera() -> void:
@@ -72,7 +127,7 @@ func _ensure_camera() -> void:
 	camera = Camera3D.new()
 	camera.position = Vector3(0.0, 1.55, 1.6)
 	add_child(camera)
-	camera.look_at(SCREEN_POS, Vector3.UP)
+	camera.look_at(_screen_pos(), Vector3.UP)
 	camera.current = true
 
 
@@ -114,7 +169,7 @@ func _build_theater() -> void:
 	frame.mesh = fbox
 	frame.material_override = GraphicsPolish.pbr_preset(Color(0.3, 0.18, 0.1), "matte")
 	frame.position = SCREEN_POS + Vector3(0, 0, -0.05)
-	add_child(frame)
+	_theater.add_child(frame)
 	# Backlit screen.
 	screen = MeshInstance3D.new()
 	var sbox := BoxMesh.new()
@@ -123,7 +178,7 @@ func _build_theater() -> void:
 	screen_mat = GraphicsPolish.glow(Color(1.0, 0.96, 0.88), 1.1)
 	screen.material_override = screen_mat
 	screen.position = SCREEN_POS
-	add_child(screen)
+	_theater.add_child(screen)
 	# Curtains on the sides.
 	for side in [-1.0, 1.0]:
 		var curtain := MeshInstance3D.new()
@@ -132,7 +187,7 @@ func _build_theater() -> void:
 		curtain.mesh = cbox
 		curtain.material_override = GraphicsPolish.pbr_preset(Color(0.5, 0.08, 0.12), "matte")
 		curtain.position = SCREEN_POS + Vector3(side * (SCREEN_W * 0.5 + 0.28), 0.1, 0.1)
-		add_child(curtain)
+		_theater.add_child(curtain)
 	# Scenery silhouettes pasted on the screen: mountain, lake, nest, flowers.
 	var mountain := MeshInstance3D.new()
 	var cone := CylinderMesh.new()
@@ -143,7 +198,7 @@ func _build_theater() -> void:
 	mountain.material_override = GraphicsPolish.pbr(Color(0.12, 0.14, 0.22), 0.0, 0.9)
 	mountain.position = SCREEN_POS + Vector3(0.75, -0.35, 0.045)
 	mountain.scale.z = 0.3
-	add_child(mountain)
+	_theater.add_child(mountain)
 	var lake := MeshInstance3D.new()
 	var lcyl := CylinderMesh.new()
 	lcyl.top_radius = 0.4
@@ -154,7 +209,7 @@ func _build_theater() -> void:
 	lake.rotation_degrees.x = 90.0
 	lake.scale = Vector3(1.0, 0.55, 1.0)
 	lake.position = SCREEN_POS + Vector3(-0.7, -0.62, 0.045)
-	add_child(lake)
+	_theater.add_child(lake)
 	var nest := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.14
@@ -162,7 +217,7 @@ func _build_theater() -> void:
 	nest.mesh = torus
 	nest.material_override = GraphicsPolish.pbr(Color(0.35, 0.2, 0.1), 0.0, 0.9)
 	nest.position = SCREEN_POS + Vector3(-0.85, 0.05, 0.045)
-	add_child(nest)
+	_theater.add_child(nest)
 	for fx in [-0.15, 0.15, 0.35]:
 		var flower := MeshInstance3D.new()
 		var fs := SphereMesh.new()
@@ -171,7 +226,7 @@ func _build_theater() -> void:
 		flower.mesh = fs
 		flower.material_override = GraphicsPolish.glow(Color(1.0, 0.4, 0.6), 0.8)
 		flower.position = SCREEN_POS + Vector3(fx, -0.5, 0.045)
-		add_child(flower)
+		_theater.add_child(flower)
 	# Target ring showing where the shadow should go.
 	target_ring = MeshInstance3D.new()
 	var tring := TorusMesh.new()
@@ -180,9 +235,9 @@ func _build_theater() -> void:
 	target_ring.mesh = tring
 	target_mat = GraphicsPolish.glow(Color(1.0, 0.85, 0.2), 2.4)
 	target_ring.material_override = target_mat
-	add_child(target_ring)
+	_theater.add_child(target_ring)
 	# Footlight.
-	GraphicsPolish.make_point_light(self, SCREEN_POS + Vector3(0, -1.2, 0.6), Color(1.0, 0.8, 0.55), 1.0, 4.0)
+	GraphicsPolish.make_point_light(_theater, Vector3(0, -1.2, 0.6), Color(1.0, 0.8, 0.55), 1.0, 4.0)
 
 
 func _build_puppet() -> void:
@@ -235,14 +290,14 @@ func _build_puppet() -> void:
 	applause_bar.mesh = abar
 	applause_bar.material_override = GraphicsPolish.glow(Color(1.0, 0.8, 0.2), 1.8)
 	applause_bar.position = SCREEN_POS + Vector3(-1.0, SCREEN_H * 0.5 + 0.35, 0.2)
-	add_child(applause_bar)
+	_theater.add_child(applause_bar)
 	var bar_frame := MeshInstance3D.new()
 	var bf := BoxMesh.new()
 	bf.size = Vector3(2.1, 0.12, 0.06)
 	bar_frame.mesh = bf
 	bar_frame.material_override = GraphicsPolish.pbr(Color(0.2, 0.2, 0.25), 0.3, 0.5)
 	bar_frame.position = SCREEN_POS + Vector3(0, SCREEN_H * 0.5 + 0.35, 0.2)
-	add_child(bar_frame)
+	_theater.add_child(bar_frame)
 
 
 func _build_hud() -> void:
@@ -285,7 +340,7 @@ func _show_prompt() -> void:
 	var p: Dictionary = PROMPTS[prompt_idx]
 	_set_msg(str(p["text"]), 999.0)
 	var zone: Vector2 = p["zone"]
-	target_ring.position = SCREEN_POS + Vector3(zone.x, zone.y, 0.06)
+	target_ring.position = Vector3(zone.x, zone.y, 0.06) # v0.7.0: theater-local
 	hold_t = 0.0
 
 
@@ -312,11 +367,11 @@ func _screen_point() -> Vector2:
 	var dir := camera.project_ray_normal(mp)
 	if absf(dir.z) < 0.0001:
 		return shadow_pos
-	var t := (SCREEN_POS.z - origin.z) / dir.z
+	var t := (_screen_pos().z - origin.z) / dir.z
 	if t < 0.0:
 		return shadow_pos
 	var p: Vector3 = origin + dir * t
-	var local: Vector3 = p - SCREEN_POS
+	var local: Vector3 = p - _screen_pos()
 	return Vector2(clampf(local.x, -SCREEN_W * 0.5, SCREEN_W * 0.5), clampf(local.y, -SCREEN_H * 0.5, SCREEN_H * 0.5))
 
 
@@ -378,11 +433,11 @@ func _move_puppet(delta: float) -> void:
 	var xr := ARUpgradeKit.is_xr_active()
 	if xr:
 		var pp := ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT)
-		var rel: Vector3 = pp - SCREEN_POS
+		var rel: Vector3 = pp - _screen_pos()
 		shadow_pos = Vector2(clampf(rel.x, -SCREEN_W * 0.5, SCREEN_W * 0.5), clampf(rel.y, -SCREEN_H * 0.5, SCREEN_H * 0.5))
 	else:
 		shadow_pos = _screen_point()
-	var base := SCREEN_POS + Vector3(shadow_pos.x, shadow_pos.y, 0.06)
+	var base := _screen_pos() + Vector3(shadow_pos.x, shadow_pos.y, 0.06)
 	puppet.position = base
 	flap_t += delta * (10.0 if flapping else 3.0)
 	var flap := sin(flap_t) * (0.7 if flapping else 0.15)
@@ -425,8 +480,8 @@ func _score_prompt(delta: float) -> void:
 		var need_hold: float = float(p["hold"])
 		if hold_t >= need_hold:
 			applause = mini(applause + 25, 100)
-			GraphicsPolish.spawn_confetti(self, SCREEN_POS + Vector3(zone.x, zone.y, 0.4), 40)
-			GraphicsPolish.spawn_sparks(self, SCREEN_POS + Vector3(zone.x, zone.y, 0.3), Color(1.0, 0.85, 0.3), 16)
+			GraphicsPolish.spawn_confetti(self, _screen_pos() + Vector3(zone.x, zone.y, 0.4), 40)
+			GraphicsPolish.spawn_sparks(self, _screen_pos() + Vector3(zone.x, zone.y, 0.3), Color(1.0, 0.85, 0.3), 16)
 			prompt_idx += 1
 			_set_msg("Bravo! The audience applauds!", 1.6)
 			msg_t = 1.6
@@ -440,13 +495,13 @@ func _update_applause_bar() -> void:
 	if applause_bar != null:
 		var frac := float(applause) / 100.0
 		applause_bar.scale.x = maxf(frac, 0.01)
-		applause_bar.position.x = SCREEN_POS.x - 1.0 + frac * 1.0
+		applause_bar.position.x = -1.0 + frac * 1.0 # v0.7.0: theater-local
 
 
 func _game_over() -> void:
 	state = "gameover"
 	target_ring.visible = false
-	GraphicsPolish.spawn_confetti(self, SCREEN_POS + Vector3(0, 0.8, 0.5), 80)
+	GraphicsPolish.spawn_confetti(self, _screen_pos() + Vector3(0, 0.8, 0.5), 80)
 	_set_msg("Curtain call! Final applause: %d/100 — R to play again" % applause, 999.0)
 	_update_hud()
 
@@ -460,3 +515,11 @@ func _restart() -> void:
 	_update_applause_bar()
 	_show_prompt()
 	_update_hud()
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

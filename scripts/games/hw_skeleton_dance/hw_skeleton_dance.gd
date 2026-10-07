@@ -15,6 +15,10 @@ const ORB_Z := -1.9
 const ST_PLAY := 0
 const ST_OVER := 1
 
+# v0.7.0 KayKit: animated skeleton dancer (CC0, KayKit Character Pack Skeletons).
+const MODEL_DIR := "res://assets/models/hw_skeleton_dance/"
+const DANCER_MODEL_SCALE := 0.85 # model is 2.17m tall; stage dancer ~1.85m
+
 var camera: Camera3D = null
 var state := ST_PLAY
 var time_left := ROUND_TIME
@@ -51,6 +55,12 @@ var win_player: AudioStreamPlayer = null
 var _anchor_timer := 0.0
 var _pinch_hold := 0.0
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	_add_light_rig()
@@ -74,6 +84,7 @@ func _ready() -> void:
 		ARUpgradeKit.snap_to_floor(self)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -2.0), 2.2, 30)
 	_next_beat()
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -102,6 +113,66 @@ func _build_skeleton() -> void:
 	skel = Node3D.new()
 	skel.position = Vector3(0.0, 0.0, -2.2)
 	add_child(skel)
+	# v0.7.0 KayKit: real animated skeleton takes the stage; the procedural
+	# bones stay as fallback. Shoulders/hands/orbs are always built - the
+	# pose game logic drives them either way.
+	var dancer := ModelLib.spawn(MODEL_DIR + "Skeleton_Warrior.glb", skel, Vector3.ZERO)
+	if dancer != null:
+		dancer.scale = Vector3.ONE * DANCER_MODEL_SCALE
+		_play_model_anim(dancer, "Idle")
+	else:
+		_build_procedural_bones()
+	# Shoulders, hands, stretchy arms (pose-game rig, always procedural).
+	var bone := _bone_mat()
+	for side in [-1.0, 1.0]:
+		var shoulder := Node3D.new()
+		shoulder.position = Vector3(side * 0.30, 1.52, 0.0)
+		skel.add_child(shoulder)
+		var hand := Node3D.new()
+		hand.position = Vector3(side * 0.70, 0.60, 0.0)
+		skel.add_child(hand)
+		var palm := MeshInstance3D.new()
+		var ps := SphereMesh.new()
+		ps.radius = 0.07
+		ps.height = 0.14
+		palm.mesh = ps
+		palm.material_override = bone
+		hand.add_child(palm)
+		var arm := MeshInstance3D.new()
+		var ab := BoxMesh.new()
+		ab.size = Vector3(0.09, 0.09, 1.0)
+		arm.mesh = ab
+		arm.material_override = bone
+		skel.add_child(arm)
+		if side < 0.0:
+			shoulder_l = shoulder
+			hand_l = hand
+			arm_l = arm
+		else:
+			shoulder_r = shoulder
+			hand_r = hand
+			arm_r = arm
+	# Target orbs (glowing pose targets).
+	orb_mat_l = GraphicsPolish.glow(Color(0.3, 1.0, 0.5), 2.0)
+	orb_mat_r = GraphicsPolish.glow(Color(0.3, 1.0, 0.5), 2.0)
+	orb_l = _make_orb(orb_mat_l)
+	orb_r = _make_orb(orb_mat_r)
+	skel.add_child(orb_l)
+	skel.add_child(orb_r)
+
+
+## v0.7.0 KayKit: play a named animation on a spawned model, guarded.
+func _play_model_anim(inst: Node, anim_name: String) -> void:
+	var players := inst.find_children("*", "AnimationPlayer", true, false)
+	if players.is_empty():
+		return
+	var ap := players[0] as AnimationPlayer
+	if ap != null and ap.has_animation(anim_name):
+		ap.play(anim_name)
+
+
+## Fallback body when the KayKit dancer model is unavailable.
+func _build_procedural_bones() -> void:
 	var bone := _bone_mat()
 	# Pelvis + spine.
 	var pelvis := MeshInstance3D.new()
@@ -167,42 +238,6 @@ func _build_skeleton() -> void:
 		leg.position = Vector3(lx, 0.50, 0.0)
 		leg.material_override = bone
 		skel.add_child(leg)
-	# Shoulders, hands, stretchy arms.
-	for side in [-1.0, 1.0]:
-		var shoulder := Node3D.new()
-		shoulder.position = Vector3(side * 0.30, 1.52, 0.0)
-		skel.add_child(shoulder)
-		var hand := Node3D.new()
-		hand.position = Vector3(side * 0.70, 0.60, 0.0)
-		skel.add_child(hand)
-		var palm := MeshInstance3D.new()
-		var ps := SphereMesh.new()
-		ps.radius = 0.07
-		ps.height = 0.14
-		palm.mesh = ps
-		palm.material_override = bone
-		hand.add_child(palm)
-		var arm := MeshInstance3D.new()
-		var ab := BoxMesh.new()
-		ab.size = Vector3(0.09, 0.09, 1.0)
-		arm.mesh = ab
-		arm.material_override = bone
-		skel.add_child(arm)
-		if side < 0.0:
-			shoulder_l = shoulder
-			hand_l = hand
-			arm_l = arm
-		else:
-			shoulder_r = shoulder
-			hand_r = hand
-			arm_r = arm
-	# Target orbs (glowing pose targets).
-	orb_mat_l = GraphicsPolish.glow(Color(0.3, 1.0, 0.5), 2.0)
-	orb_mat_r = GraphicsPolish.glow(Color(0.3, 1.0, 0.5), 2.0)
-	orb_l = _make_orb(orb_mat_l)
-	orb_r = _make_orb(orb_mat_r)
-	skel.add_child(orb_l)
-	skel.add_child(orb_r)
 
 
 func _make_orb(mat: StandardMaterial3D) -> MeshInstance3D:
@@ -451,3 +486,34 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the rug is the arcane magic-circle dance stage; the TV is the neon scoreboard.
+	var _morph0_rug := RoomKit.get_anchors("RUG")
+	if not _morph0_rug.is_empty():
+		RoomKit.morph(_morph0_rug[0], "arcane")
+	var _morph1_tv := RoomKit.get_anchors("TV")
+	if not _morph1_tv.is_empty():
+		RoomKit.morph(_morph1_tv[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# Face the performer (local +z) toward the room center, then center the
+	# stage disc on the real room floor. Match logic uses global positions.
+	var rc := _room_bounds.get_center()
+	var to_c := Vector3(rc.x, 0.0, rc.y) - global_position
+	to_c.y = 0.0
+	if to_c.length() > 0.2:
+		var g := global_rotation
+		g.y = atan2(to_c.x, to_c.z)
+		global_rotation = g
+	var cur: Vector3 = global_transform * Vector3(0.0, 0.0, -2.2)
+	global_position += Vector3(rc.x - cur.x, 0.0, rc.y - cur.z)

@@ -45,6 +45,12 @@ var _poll_inflight := false
 var _aircraft := {} ## hex -> Dictionary record
 var _selected_hex := ""
 var _missed := {} ## hex -> missed poll count
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _has_room := false
 
 
 func _ready() -> void:
@@ -61,6 +67,56 @@ func _ready() -> void:
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 6.0, 0), 12.0, 30)
 	_update_status("Connecting to sky data...")
 	_poll() ## first poll immediately
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): windows -> air-traffic observation windows
+	_morph_anchors("WINDOW", "scifi", 2)
+	_has_room = true
+	# ROOMKIT: center the sky dome on the real room's floor center so the
+	# viewing area is framed on the play space, not a fixed origin.
+	var c := _room_bounds.get_center()
+	_dome.position = Vector3(c.x, 0.0, c.y)
+	_build_room_frame(c)
+
+
+## Thin glowing rectangle on the floor marking the room's real bounds.
+func _build_room_frame(center: Vector2) -> void:
+	var frame := Node3D.new()
+	frame.name = "RoomFrame"
+	add_child(frame)
+	var w := _room_bounds.size.x
+	var d := _room_bounds.size.y
+	var mat := GraphicsPolish.glow(Color(0.3, 0.8, 1.0), 1.2)
+	for seg in [
+		[Vector3(-w * 0.5, 0, -d * 0.5), Vector3(w * 0.5, 0, -d * 0.5)],
+		[Vector3(w * 0.5, 0, -d * 0.5), Vector3(w * 0.5, 0, d * 0.5)],
+		[Vector3(w * 0.5, 0, d * 0.5), Vector3(-w * 0.5, 0, d * 0.5)],
+		[Vector3(-w * 0.5, 0, d * 0.5), Vector3(-w * 0.5, 0, -d * 0.5)],
+	]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var length: float = (seg[0] as Vector3).distance_to(seg[1])
+		bm.size = Vector3(0.04, 0.02, maxf(length, 0.01))
+		mi.mesh = bm
+		mi.material_override = mat
+		mi.position = ((seg[0] as Vector3) + (seg[1] as Vector3)) * 0.5
+		var dir3: Vector3 = (seg[1] as Vector3) - (seg[0] as Vector3)
+		mi.rotation.y = atan2(dir3.x, dir3.z)
+		frame.add_child(mi)
+	frame.position = Vector3(center.x, 0.03, center.y)
 
 
 func _process(delta: float) -> void:
@@ -661,3 +717,11 @@ func _save_config() -> void:
 	cfg.set_value("sky_traffic", "city", _city)
 	cfg.set_value("sky_traffic", "night", _night)
 	cfg.save(CONFIG_FILE)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

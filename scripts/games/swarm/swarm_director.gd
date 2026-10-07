@@ -58,11 +58,13 @@ func skip_build_phase() -> void:
 func on_enemy_killed(_enemy: SwarmEnemy) -> void:
 	score += 10 + wave * 2
 	energy = minf(MAX_ENERGY, energy + 6.0)
+	AILib.report_win()  # difficulty_scale() eases up as the player dominates
 
 
 ## Called by SwarmEnemy when it reaches the Core.
 func on_enemy_reached_core(_enemy: SwarmEnemy) -> void:
 	difficulty = minf(1.0, difficulty + 0.02)
+	AILib.report_death()  # difficulty_scale() eases down as the player struggles
 
 
 func _process(delta: float) -> void:

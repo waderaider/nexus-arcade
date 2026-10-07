@@ -42,6 +42,12 @@ var brew_player: AudioStreamPlayer = null
 var end_player: AudioStreamPlayer = null
 var rng := RandomNumberGenerator.new()
 
+## RoomKit v0.7.0: cached room layout (world space; converted to local at use).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -58,6 +64,7 @@ func _ready() -> void:
 	fizz_player = _make_player(_make_tone(160.0, 0.25, 0.55))
 	brew_player = _make_player(_make_tone(840.0, 0.35, 0.55))
 	end_player = _make_player(_make_tone(660.0, 0.5, 0.5))
+	_apply_room_layout()
 
 
 func _add_light_rig() -> void:
@@ -80,6 +87,7 @@ func _ensure_fallback_camera() -> void:
 
 func _build_table() -> void:
 	var top := MeshInstance3D.new()
+	top.name = "FakeTableTop"
 	var top_box := BoxMesh.new()
 	top_box.size = Vector3(2.4, 0.08, 1.0)
 	top.mesh = top_box
@@ -90,6 +98,7 @@ func _build_table() -> void:
 	for lx in [-1.1, 1.1]:
 		for lz in [-0.42, 0.42]:
 			var leg := MeshInstance3D.new()
+			leg.name = "FakeTableLeg"
 			var leg_box := BoxMesh.new()
 			leg_box.size = Vector3(0.08, 0.72, 0.08)
 			leg.mesh = leg_box
@@ -486,3 +495,58 @@ func _make_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+# ---------------------------------------------------------- RoomKit v0.7.0
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the table is the arcane brewing altar; plants overgrow with the nature skin as harvestable herbs.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "arcane")
+	var _morph1_plant := RoomKit.get_anchors("PLANT")
+	if not _morph1_plant.is_empty():
+		RoomKit.morph(_morph1_plant[0], "nature")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_tables.is_empty():
+		return
+	# Face the player side (local +z) toward the room center first.
+	var rc := _room_bounds.get_center()
+	var to_c := Vector3(rc.x, 0.0, rc.y) - global_position
+	to_c.y = 0.0
+	if to_c.length() > 0.2:
+		var g := global_rotation
+		g.y = atan2(to_c.x, to_c.z)
+		global_rotation = g
+	# Seat the brewing table on the largest real tabletop.
+	var t := _room_largest_item(_room_tables)
+	var tp: Vector3 = t["position"]
+	var ts: Vector3 = t["size"]
+	var top_world := tp + Vector3(0.0, ts.y * 0.5, 0.0)
+	var top_local := TABLE_POS + Vector3(0.0, 0.76, 0.0)
+	global_position += top_world - global_transform * top_local
+	# The real table is the table now: hide the fake one.
+	for child in get_children():
+		if child.name.begins_with("FakeTable"):
+			child.visible = false
+
+
+## RoomKit: the table/furniture item with the largest footprint, or {}.
+func _room_largest_item(items: Array) -> Dictionary:
+	var best := {}
+	var best_a := 0.0
+	for f_v in items:
+		var f: Dictionary = f_v
+		var sz: Vector3 = f["size"]
+		var a := sz.x * sz.z
+		if a > best_a:
+			best_a = a
+			best = f
+	return best

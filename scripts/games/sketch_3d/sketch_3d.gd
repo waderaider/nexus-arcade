@@ -62,6 +62,11 @@ var _gallery_empty_label: Label3D = null
 var _anchor_timer := 0.0
 var _sparkle_timer := 0.0
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 
 func _ready() -> void:
 	# AR: restore this game's persisted spatial anchor, if one was saved.
@@ -81,6 +86,63 @@ func _ready() -> void:
 	_load_gallery()
 	_rebuild_gallery_wall()
 	_set_state(State.INPUT)
+	_apply_room_layout()
+
+
+func _largest_wall(walls: Array) -> Dictionary:
+	var best: Dictionary = walls[0]
+	var best_area := 0.0
+	for w in walls:
+		var s: Vector2 = w["size"]
+		var area := s.x * s.y
+		if area > best_area:
+			best_area = area
+			best = w
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the desk becomes a scifi holo workbench where 2D sketches lift into 3D.
+	var _morph_table := RoomKit.get_anchors("TABLE")
+	if not _morph_table.is_empty():
+		RoomKit.morph(_morph_table[0], "scifi")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	if _room_walls.is_empty() or _easel == null:
+		return
+	# Pin the drawing easel (the "reference blueprint") to the face of the
+	# largest real wall, tilted slightly back like a drafting board.
+	var w := _largest_wall(_room_walls)
+	var wpos: Vector3 = w["position"]
+	var n: Vector3 = (w["normal"] as Vector3).normalized()
+	if absf(n.y) > 0.5:
+		return
+	var face: Vector3 = wpos + n * 0.10
+	var face_basis := Basis.looking_at(-n, Vector3.UP)
+	var local_basis: Basis = global_transform.basis.inverse() * face_basis
+	var local_face: Vector3 = to_local(face)
+	_easel.position = Vector3(local_face.x, 1.35, local_face.z)
+	_easel.basis = local_basis * Basis.from_euler(Vector3(deg_to_rad(-6.0), 0.0, 0.0))
+	# Float the button row in front of the easel wall, facing the user.
+	var tangent: Vector3 = n.cross(Vector3.UP).normalized()
+	for action in _button_roots:
+		var root: Node3D = _button_roots[action]
+		var old: Vector3 = root.position
+		var world_new: Vector3 = face + tangent * (old.x * 0.45) \
+			+ Vector3(0.0, old.y - 1.0, 0.0) + n * 0.9
+		root.position = to_local(world_new)
+		root.basis = local_basis
+	# Hang the gallery panels on the same wall, off to one side.
+	if _gallery_root != null:
+		_gallery_root.basis = local_basis
+		var target: Vector3 = face + tangent * 1.4 + n * 0.06
+		_gallery_root.position = to_local(target) - local_basis * Vector3(2.4, 1.5, -2.2)
 
 
 func _process(delta: float) -> void:

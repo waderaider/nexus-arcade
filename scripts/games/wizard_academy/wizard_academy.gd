@@ -24,6 +24,12 @@ var camera: Camera3D = null
 var elapsed := 0.0
 var _model_cache := {}
 
+# --- v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds) ---
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+
 # --- persistence ---
 var house := 0
 var house_points := [0, 0, 0, 0]
@@ -139,6 +145,55 @@ func _ready() -> void:
 	_build_hud()
 	_set_mode("menu")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 2.2, -1.5), 3.5, 50)
+	_apply_room_layout()
+
+
+## v0.7.0: potion station rests on the largest real table; the spell chart
+## (recipe board) is pinned to the largest real wall. Guarded; fallback keeps
+## the default great-hall layout.
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): table -> arcane potion altar (potions brew on the big table)
+	_morph_anchors("TABLE", "arcane", 1)
+	var best := {}
+	var best_a := 0.0
+	for t_v in _room_tables:
+		var t: Dictionary = t_v
+		var a: float = (t["size"] as Vector3).x * (t["size"] as Vector3).z
+		if a > best_a:
+			best_a = a
+			best = t
+	if not best.is_empty():
+		var tp: Vector3 = best["position"]
+		var top_y: float = tp.y + (best["size"] as Vector3).y * 0.5
+		potions_root.position = to_local(Vector3(tp.x, top_y, tp.z))
+	var bw := {}
+	var ba := 0.0
+	for w_v in _room_walls:
+		var w: Dictionary = w_v
+		var wa: float = (w["size"] as Vector2).x * (w["size"] as Vector2).y
+		if wa > ba:
+			ba = wa
+			bw = w
+	if not bw.is_empty() and recipe_label != null:
+		var n: Vector3 = bw["normal"]
+		n.y = 0.0
+		n = n.normalized() if n.length() > 0.01 else Vector3(0, 0, 1)
+		var fw: Vector3 = (bw["position"] as Vector3) + n * 0.06
+		fw.y = 1.9
+		recipe_label.top_level = true
+		recipe_label.global_position = fw
+		var c := _room_bounds.get_center()
+		var d := Vector2(c.x - fw.x, c.y - fw.z)
+		recipe_label.rotation.y = atan2(d.x, d.y) if d.length() > 0.05 else 0.0
 
 
 func _ensure_camera() -> void:
@@ -428,6 +483,19 @@ func _build_hall() -> void:
 		star.position = Vector3(randf_range(-5.5, 5.5), randf_range(4.2, 5.8), randf_range(-5.5, 3.5))
 		hall.add_child(star)
 		candle_flames.append({"node": star, "base_y": star.position.y, "phase": randf() * 6.0, "star": true})
+	# v0.7.0 KayKit: academy set dressing - shield banners on the side
+	# walls, a trophy sword-and-shield on the back wall, a treasure chest,
+	# and lit wall torches flanking the stairs. All spawns guarded: a null
+	# return from ModelLib.spawn skips that prop, never crashes.
+	var kdir := "res://assets/models/wizard_academy/"
+	for bx in [-5.8, 5.8]:
+		var kb := ModelLib.spawn(kdir + "banner_shield_blue.glb", hall, Vector3(bx, 2.2, -3.0))
+		if kb != null:
+			kb.rotation.y = signf(bx) * PI * 0.5
+	ModelLib.spawn(kdir + "sword_shield.glb", hall, Vector3(4.6, 1.9, -5.85))
+	ModelLib.spawn(kdir + "chest_gold.glb", hall, Vector3(3.6, 0.0, 1.6))
+	for tx in [-1.3, 1.3]:
+		ModelLib.spawn(kdir + "torch_mounted.glb", hall, Vector3(tx, 1.5, -5.90))
 
 
 # ------------------------------------------------------------- persistence ---
@@ -991,7 +1059,7 @@ func _update_recipe_label() -> void:
 
 func _potions_process(delta: float, press: bool, just_pressed: bool, just_released: bool) -> void:
 	var pp := _pointer_pos()
-	var mouth := cauldron_pos + Vector3(0.0, 1.0, 0.0)
+	var mouth := potions_root.to_global(cauldron_pos + Vector3(0.0, 1.0, 0.0)) # v0.7.0: follows the room-placed potion station
 	if just_pressed and held_bottle < 0:
 		for i in bottles.size():
 			var bn: Node3D = (bottles[i] as Dictionary)["node"]
@@ -1034,7 +1102,7 @@ func _return_bottle(i: int) -> void:
 func _pour_bottle(i: int) -> void:
 	var want := str(recipe[recipe_idx])
 	var got: String = BOTTLE_NAMES[i]
-	var mouth := cauldron_pos + Vector3(0.0, 1.0, 0.0)
+	var mouth := potions_root.to_global(cauldron_pos + Vector3(0.0, 1.0, 0.0)) # v0.7.0: follows the room-placed potion station
 	if got == want:
 		GraphicsPolish.spawn_sparks(self, mouth, BOTTLE_COLORS[i], 30)
 		Haptics.pulse(0.7, 0.12)
@@ -1833,3 +1901,11 @@ func _restart_mode() -> void:
 			_click_button("exams")
 		"duels":
 			_click_button("duels")
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

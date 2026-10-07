@@ -34,6 +34,16 @@ var msg_timer := 0.0
 var anchor_timer := 0.0
 var restart_hold := 0.0
 
+# RoomKit v0.7.0: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_known := false
+var _ped_node: MeshInstance3D = null
+var _ring_node: MeshInstance3D = null
+var _mummy_light: OmniLight3D = null
+
 
 func _ready() -> void:
 	GraphicsPolish.make_light_rig(self)
@@ -45,6 +55,64 @@ func _ready() -> void:
 	win_player = _make_player(_make_tone(880.0, 0.6, 0.5))
 	ARUpgradeKit.apply_anchor(self, "hw_mummy_wrap_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -1.8), 2.5, 50)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the bed becomes the haunted sarcophagus lair the mummy is wrapped in; the rug is the arcane wrapping circle.
+	var _morph0_bed := RoomKit.get_anchors("BED")
+	if not _morph0_bed.is_empty():
+		RoomKit.morph(_morph0_bed[0], "haunted")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "arcane")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	_room_known = true
+	# Center the pedestal in the room, keeping the winding circle
+	# (WIND_RADIUS) inside the walls and clear of furniture.
+	var c := _room_bounds.get_center()
+	var target := Vector3(c.x, 0.0, c.y)
+	var m := WIND_RADIUS + 0.3
+	if _room_bounds.size.x > m * 2.0:
+		target.x = clampf(target.x, _room_bounds.position.x + m, _room_bounds.end.x - m)
+	if _room_bounds.size.y > m * 2.0:
+		target.z = clampf(target.z, _room_bounds.position.y + m, _room_bounds.end.y - m)
+	target = _clear_of_furniture(target, 1.0)
+	var delta := Vector3(target.x - mummy_pos.x, 0.0, target.z - mummy_pos.z)
+	if _ped_node != null:
+		_ped_node.position += delta
+	if _ring_node != null:
+		_ring_node.position += delta
+	if mummy != null:
+		mummy.position += delta
+	if _mummy_light != null:
+		_mummy_light.position += delta
+	mummy_pos = Vector3(target.x, mummy_pos.y, target.z)
+
+
+func _clear_of_furniture(p: Vector3, clearance: float) -> Vector3:
+	for f_v in _room_tables + _room_furniture:
+		var f: Dictionary = f_v
+		var fp: Vector3 = f["position"]
+		var fs: Vector3 = f["size"]
+		if absf(p.x - fp.x) < fs.x * 0.5 + clearance and absf(p.z - fp.z) < fs.z * 0.5 + clearance:
+			var dx := p.x - fp.x
+			var dz := p.z - fp.z
+			if absf(dx) > absf(dz):
+				var s := signf(dx)
+				p.x = fp.x + (s if s != 0.0 else 1.0) * (fs.x * 0.5 + clearance)
+			else:
+				var s2 := signf(dz)
+				p.z = fp.z + (s2 if s2 != 0.0 else 1.0) * (fs.z * 0.5 + clearance)
+	return p
 
 
 func _ensure_fallback_camera() -> void:
@@ -69,6 +137,7 @@ func _build_scene() -> void:
 	ped.position = Vector3(mummy_pos.x, 0.4, mummy_pos.z)
 	ped.material_override = GraphicsPolish.pbr(Color(0.30, 0.28, 0.34), 0.2, 0.6)
 	add_child(ped)
+	_ped_node = ped
 	# Pedestal glow ring.
 	var gring := MeshInstance3D.new()
 	var tor := TorusMesh.new()
@@ -79,6 +148,7 @@ func _build_scene() -> void:
 	gring.position = Vector3(mummy_pos.x, 0.82, mummy_pos.z)
 	gring.rotation.x = PI * 0.5
 	add_child(gring)
+	_ring_node = gring
 	# Mummy group (spins).
 	mummy = Node3D.new()
 	mummy.position = mummy_pos
@@ -110,7 +180,7 @@ func _build_scene() -> void:
 		eye.position = Vector3(side * 0.08, 1.36, 0.17)
 		mummy.add_child(eye)
 	bandage_mat = GraphicsPolish.glow(Color(0.95, 0.92, 0.80), 0.9)
-	GraphicsPolish.make_point_light(self, Vector3(0.0, 2.2, -1.0), Color(0.7, 0.5, 1.0), 0.8, 5.0)
+	_mummy_light = GraphicsPolish.make_point_light(self, Vector3(0.0, 2.2, -1.0), Color(0.7, 0.5, 1.0), 0.8, 5.0)
 
 
 func GraphicsPurpleGlow() -> StandardMaterial3D:

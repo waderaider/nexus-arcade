@@ -65,6 +65,12 @@ var _toggle_collider: StaticBody3D = null
 var _toggle_label: Label3D = null
 var _rng := RandomNumberGenerator.new()
 var _anchor_timer := 0.0
+# v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _has_room := false
 
 
 func _ready() -> void:
@@ -84,6 +90,34 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.apply_anchor(_sky, "star-map_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 6.0, 0), 8.0, 60)
+	_apply_room_layout()
+
+
+# ---------------------------------------------------------------- room layout
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional fallback: default behavior unchanged
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): windows -> deep-space vistas; ceiling -> sky under the star dome
+	_morph_anchors("WINDOW", "scifi", 2)
+	_morph_anchors("CEILING", "scifi", 1)
+	_has_room = true
+	# ROOMKIT: center the star dome on the real room's floor center so the
+	# sky surrounds the play space instead of a fixed origin.
+	var c := _room_bounds.get_center()
+	_sky.position = Vector3(c.x, 0.0, c.y)
+	# ROOMKIT: keep the dome radius generous but bounded by the room's
+	# diagonal so walls never swallow the stars on very small rooms.
+	var fit := maxf(_room_bounds.size.x, _room_bounds.size.y) * 0.5
+	if fit > 0.0:
+		_sky.scale = Vector3.ONE * clampf(fit / 4.0, 0.6, 1.4)
 
 
 func _process(delta: float) -> void:
@@ -350,3 +384,11 @@ func _ray_sphere_t(origin: Vector3, dir: Vector3, center: Vector3, radius: float
 func _update_toggle_label() -> void:
 	if _toggle_label != null:
 		_toggle_label.text = "Lines: ON" if _lines_visible else "Lines: OFF"
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

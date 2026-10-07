@@ -38,6 +38,12 @@ var _anchor_timer := 0.0
 var hud_label: Label3D = null
 var help_label: Label3D = null
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _has_room_layout := false
+
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "light-painter_main")
@@ -48,6 +54,40 @@ func _ready() -> void:
 	_build_ui()
 	_load_strokes()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.3, -1), 2.0, 30)
+	_apply_room_layout()
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the work table becomes a neon light-bench and the rug becomes the neon light-stage arena.
+	var _morph0_table := RoomKit.get_anchors("TABLE")
+	if not _morph0_table.is_empty():
+		RoomKit.morph(_morph0_table[0], "neon")
+	var _morph1_rug := RoomKit.get_anchors("RUG")
+	if not _morph1_rug.is_empty():
+		RoomKit.morph(_morph1_rug[0], "neon")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	_has_room_layout = true
+	if _room_walls.is_empty():
+		return
+	# Pin the HUD panels to the face of the largest real wall.
+	var w := _largest_wall(_room_walls)
+	var wpos: Vector3 = w["position"]
+	var n: Vector3 = (w["normal"] as Vector3).normalized()
+	if absf(n.y) > 0.5:
+		return
+	var face: Vector3 = wpos + n * 0.06
+	var up := clampf(wpos.y + (w["size"] as Vector2).y * 0.5 - 0.55, 1.6, 2.6)
+	if hud_label != null:
+		hud_label.position = to_local(face + Vector3(0, up - wpos.y, 0))
+	if help_label != null:
+		help_label.position = to_local(face + Vector3(0, up - wpos.y - 0.55, 0))
 
 
 func _build_camera() -> void:
@@ -106,6 +146,18 @@ func _build_ui() -> void:
 	add_child(help_label)
 
 
+func _largest_wall(walls: Array) -> Dictionary:
+	var best: Dictionary = walls[0]
+	var best_area := 0.0
+	for w in walls:
+		var s: Vector2 = w["size"]
+		var area := s.x * s.y
+		if area > best_area:
+			best_area = area
+			best = w
+	return best
+
+
 func _process(delta: float) -> void:
 	_time += delta
 	_poll_keys()
@@ -134,14 +186,23 @@ func _key_edge(keycode: int, action: Callable) -> void:
 
 
 func _cursor_target() -> Vector3:
+	var p: Vector3
 	if ARUpgradeKit.is_xr_active():
-		return ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT, 1.2)
-	if cam == null:
-		return global_position + Vector3(0, 1.2, -1)
-	var mp := get_viewport().get_mouse_position()
-	var ro := cam.project_ray_origin(mp)
-	var rd := cam.project_ray_normal(mp)
-	return ro + rd * 1.2
+		p = ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT, 1.2)
+	elif cam == null:
+		p = global_position + Vector3(0, 1.2, -1)
+	else:
+		var mp := get_viewport().get_mouse_position()
+		var ro := cam.project_ray_origin(mp)
+		var rd := cam.project_ray_normal(mp)
+		p = ro + rd * 1.2
+	if _has_room_layout:
+		# Keep the paint volume inside the real room footprint.
+		var lp := to_local(p)
+		lp.x = clampf(lp.x, _room_bounds.position.x + 0.3, _room_bounds.position.x + _room_bounds.size.x - 0.3)
+		lp.z = clampf(lp.z, _room_bounds.position.y + 0.3, _room_bounds.position.y + _room_bounds.size.y - 0.3)
+		p = to_global(lp)
+	return p
 
 
 func _update_cursor() -> void:

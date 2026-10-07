@@ -90,6 +90,14 @@ var help_label: Label3D = null
 var bar_happy: MeshInstance3D = null
 var bar_hunger: MeshInstance3D = null
 var bar_energy: MeshInstance3D = null
+var offering_stone: Node3D = null
+
+# v0.7.0 RoomKit: cached room layout (walls/tables/furniture/bounds).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _room_ready := false
 
 
 func _ready() -> void:
@@ -113,6 +121,7 @@ func _ready() -> void:
 	_build_hud()
 	_set_msg("Welcome back to the ranch!", 2.5)
 	GraphicsPolish.spawn_ambient_motes(self, nest_center + Vector3(0, 0.8, 0), 2.2, 36)
+	_apply_room_layout() # v0.7.0: perch on furniture, feeding station on a table (no-op w/o room data).
 
 
 func _ensure_camera() -> void:
@@ -271,7 +280,7 @@ func _build_nest() -> void:
 
 func _build_offerings() -> void:
 	# Flat offering stone with today's meals.
-	_spawn_model("rock_smallFlatA", ranch, Vector3(-0.85, 0.02, 0.75), 2.2)
+	offering_stone = _spawn_model("rock_smallFlatA", ranch, Vector3(-0.85, 0.02, 0.75), 2.2)
 	for i in FOODS.size():
 		var slot := Node3D.new()
 		slot.position = Vector3(-1.15 + float(i) * 0.15, 0.10, 0.75)
@@ -290,6 +299,50 @@ func _respawn_food(i: int, instant: bool = false) -> void:
 		m.scale = Vector3.ONE * 0.01
 		var tw := create_tween()
 		tw.tween_property(m, "scale", Vector3.ONE * 0.85, 0.4).set_trans(Tween.TRANS_BACK)
+
+
+## Largest cuboid (by floor area) in the given RoomKit list, or {}.
+func _room_largest(list: Array) -> Dictionary:
+	var best: Dictionary = {}
+	var best_a := 0.0
+	for t_v in list:
+		var t: Dictionary = t_v
+		var s: Vector3 = t["size"]
+		if s.x * s.z > best_a:
+			best_a = s.x * s.z
+			best = t
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): bed -> dragon lair (haunted nest for Ember)
+	_morph_anchors("BED", "haunted", 1)
+	_room_ready = true
+	# Feeding station goes on the biggest real table top.
+	var table := _room_largest(_room_tables)
+	if not table.is_empty():
+		var top: Vector3 = (table["position"] as Vector3) + Vector3(0, (table["size"] as Vector3).y * 0.5, 0)
+		var sl := ranch.to_local(top)
+		if offering_stone != null:
+			offering_stone.position = sl + Vector3(0, -0.02, 0)
+		for i in food_items.size():
+			(food_items[i] as Node3D).position = sl + Vector3(-0.30 + float(i) * 0.15, 0.10, 0.0)
+	# Ember perches on the biggest furniture piece.
+	var furn := _room_largest(_room_furniture)
+	if not furn.is_empty() and dragon != null:
+		var perch: Vector3 = (furn["position"] as Vector3) + Vector3(0, (furn["size"] as Vector3).y * 0.5 + 0.12, 0)
+		dragon_home = ranch.to_local(perch)
+		if state == "idle":
+			dragon.position = dragon_home
 
 
 # ------------------------------------------------------------------- dragon
@@ -844,6 +897,12 @@ func _ball_logic(delta: float) -> void:
 	lp.x = clampf(lp.x, -2.2, 2.2)
 	lp.z = clampf(lp.z, -2.6, 1.6)
 	ball.position = lp
+	if _room_ready and ball.get_parent() == ranch:
+		# Fence the ball inside the real room floor extents as well.
+		var bw := ranch.to_global(ball.position)
+		bw.x = clampf(bw.x, _room_bounds.position.x + 0.4, _room_bounds.position.x + _room_bounds.size.x - 0.4)
+		bw.z = clampf(bw.z, _room_bounds.position.y + 0.4, _room_bounds.position.y + _room_bounds.size.y - 0.4)
+		ball.position = ranch.to_local(bw)
 
 
 func _fetch_go() -> void:
@@ -1117,3 +1176,11 @@ func _reset_ranch() -> void:
 	_apply_stage(false)
 	_save()
 	_set_msg("Ranch reset.", 1.5)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

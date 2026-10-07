@@ -58,6 +58,11 @@ var _trophy_anim := 0.0
 var _trophy_mat: StandardMaterial3D = null
 var _t := 0.0
 var _anchor_timer := 0.0
+# v0.7.0 RoomKit: cached room layout (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_furniture: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
@@ -74,6 +79,7 @@ func _ready() -> void:
 	_update_hud()
 	# Ask Android for the camera permission up front (no-op on desktop).
 	ARCamera.request_permission()
+	_apply_room_layout() # v0.7.0: demo clues taped to real walls / furniture
 
 
 func _process(delta: float) -> void:
@@ -505,3 +511,74 @@ func _animate_trophy(delta: float) -> void:
 	_trophy.scale = Vector3.ONE * maxf(s, 0.01)
 	GraphicsPolish.pulse_glow(_trophy_mat, 0.8, 0.6, _t, 2.0)
 	_trophy.rotation.y = _t * 0.8
+
+
+# ------------------------------------------------- v0.7.0 RoomKit ----
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not is_inside_tree() or not RoomKit.has_room_data():
+		return
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_furniture = RoomKit.get_furniture()
+	_room_bounds = RoomKit.room_bounds()
+	# MORPH-B (v0.7.0): storage -> final-clue treasure vault
+	_morph_anchors("STORAGE", "candy", 1)
+	if _room_walls.is_empty():
+		return
+	# Tape the demo clue buttons to the real wall faces, spread across walls.
+	var nw := _room_walls.size()
+	var per: int = int(ceil(float(MAX_CLUES) / float(nw)))
+	var slots: Array = []
+	for i in MAX_CLUES:
+		var w: Dictionary = _room_walls[i % nw]
+		var wp: Vector3 = w["position"]
+		var wn: Vector3 = (w["normal"] as Vector3).normalized()
+		var wsize: Vector2 = w["size"]
+		var flat_n := Vector3(wn.x, 0.0, wn.z)
+		flat_n = flat_n.normalized() if flat_n.length() > 0.01 else Vector3(0, 0, 1)
+		var tangent: Vector3 = flat_n.cross(Vector3.UP)
+		tangent = tangent.normalized() if tangent.length() > 0.01 else Vector3.RIGHT
+		var slot := i / nw
+		var along := 0.0
+		if per > 1:
+			along = lerpf(-wsize.x * 0.5 + 0.8, wsize.x * 0.5 - 0.8, float(slot) / float(maxi(per - 1, 1)))
+		var sp: Vector3 = wp + tangent * along + flat_n * 0.06
+		sp.y = clampf(1.4, wp.y - wsize.y * 0.5 + 0.3, wp.y + wsize.y * 0.5 - 0.3)
+		slots.append({"pos": sp, "normal": flat_n})
+	# The final clue hides on top of the biggest furniture piece instead.
+	if not _room_furniture.is_empty():
+		var bf: Dictionary = _room_furniture[0]
+		for f_v in _room_furniture:
+			var f: Dictionary = f_v
+			var fa: float = (f["size"] as Vector3).x * (f["size"] as Vector3).z
+			var ba: float = (bf["size"] as Vector3).x * (bf["size"] as Vector3).z
+			if fa > ba:
+				bf = f
+		var bc: Vector3 = bf["position"]
+		var bs: Vector3 = bf["size"]
+		slots[MAX_CLUES - 1] = {"pos": bc + Vector3(0, bs.y * 0.5 + 0.35, 0), "normal": Vector3(0, 0, 1)}
+	for sb in _buttons.keys():
+		var action: String = _buttons[sb]
+		if not action.begins_with("demo"):
+			continue
+		var idx := int(action.substr(4)) - 1
+		if idx < 0 or idx >= slots.size():
+			continue
+		var root := (sb as StaticBody3D).get_parent() as Node3D
+		if root == null:
+			continue
+		var sl: Dictionary = slots[idx]
+		var sp2: Vector3 = sl["pos"]
+		var fn: Vector3 = sl["normal"]
+		root.global_transform = Transform3D(Basis.looking_at(-fn, Vector3.UP), sp2)
+## MORPH-B (v0.7.0): morph up to `count` furniture anchors of a semantic
+## label with a MorphSkins theme skin. RoomKit parents the skin node into
+## the scene itself; missing anchors are a silent no-op (fallback untouched).
+func _morph_anchors(label: String, skin: String, count: int = 1) -> void:
+	var anchors: Array = RoomKit.get_anchors(label)
+	var n := mini(count, anchors.size())
+	for i in n:
+		RoomKit.morph(anchors[i], skin)

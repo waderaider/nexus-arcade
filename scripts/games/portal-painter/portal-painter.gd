@@ -46,6 +46,12 @@ var _hud_label: Label3D
 var _help_label: Label3D
 var _anchor_timer := 0.0
 
+# v0.7.0 roomscale: room layout cache (never queried per-frame).
+var _room_walls: Array = []
+var _room_tables: Array = []
+var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
+var _palette_root: Node3D = null
+
 
 func _ready() -> void:
 	_ensure_camera()
@@ -56,6 +62,9 @@ func _ready() -> void:
 	_stroke_root = Node3D.new()
 	add_child(_stroke_root)
 	_build_cursor()
+	# Palette + CLEAR button live under one root so roomscale can move them.
+	_palette_root = Node3D.new()
+	add_child(_palette_root)
 	_build_palette()
 	_build_clear_button()
 	_build_labels()
@@ -65,6 +74,7 @@ func _ready() -> void:
 	if ARUpgradeKit.is_xr_active():
 		ARUpgradeKit.apply_anchor(self, "portal-painter_main")
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.4, -1.5), 2.5, 40)
+	_apply_room_layout()
 
 
 func _process(delta: float) -> void:
@@ -158,7 +168,7 @@ func _build_cursor() -> void:
 	add_child(_cursor)
 
 
-func _make_label(text: String, pos: Vector3, font_size: int = 48) -> Label3D:
+func _make_label(text: String, pos: Vector3, font_size: int = 48, parent: Node = null) -> Label3D:
 	var label := Label3D.new()
 	label.text = text
 	label.font_size = font_size
@@ -168,12 +178,12 @@ func _make_label(text: String, pos: Vector3, font_size: int = 48) -> Label3D:
 	label.outline_size = 12
 	label.outline_modulate = Color(0, 0, 0, 0.9)
 	label.position = pos
-	add_child(label)
+	(parent if parent != null else self).add_child(label)
 	return label
 
 
 func _build_palette() -> void:
-	_make_label("COLORS", Vector3(-1.6, 2.15, -1.5), 56)
+	_make_label("COLORS", Vector3(-1.6, 2.15, -1.5), 56, _palette_root)
 	for i in range(PALETTE.size()):
 		var entry: Dictionary = PALETTE[i]
 		var center := ARUpgradeKit.clamp_to_room(Vector3(-1.6, 1.85 - i * 0.26, -1.5))
@@ -183,8 +193,8 @@ func _build_palette() -> void:
 		cube.mesh = bm
 		cube.material_override = _glow_material(entry["color"])
 		cube.position = center
-		add_child(cube)
-		_make_label(entry["name"], center + Vector3(0.32, 0.0, 0.0), 36)
+		_palette_root.add_child(cube)
+		_make_label(entry["name"], center + Vector3(0.32, 0.0, 0.0), 36, _palette_root)
 		_swatches.append({"node": cube, "center": center,
 				"color": entry["color"], "name": entry["name"]})
 
@@ -197,14 +207,14 @@ func _build_clear_button() -> void:
 	_clear_btn.mesh = bm
 	_clear_btn.material_override = GraphicsPolish.glow(Color(0.75, 0.2, 0.2), 0.9)
 	_clear_btn.position = _clear_center
-	add_child(_clear_btn)
+	_palette_root.add_child(_clear_btn)
 	var label := Label3D.new()
 	label.text = "CLEAR"
 	label.font_size = 64
 	label.pixel_size = 0.006
 	label.no_depth_test = true
 	label.position = _clear_center + Vector3(0, 0, 0.06)
-	add_child(label)
+	_palette_root.add_child(label)
 
 
 func _build_labels() -> void:
@@ -212,6 +222,47 @@ func _build_labels() -> void:
 	_help_label = _make_label(
 			"Portal Painter - hold LEFT MOUSE and move to paint in 3D.\nClick a color cube to change color. Click CLEAR to wipe.\nStrokes auto-save and reload next visit.",
 			Vector3(0.0, 0.55, -1.9), 40)
+
+
+# ---------------------------------------------------------------- roomscale ---
+
+func _largest_table(tables: Array) -> Dictionary:
+	var best: Dictionary = tables[0]
+	var best_area := 0.0
+	for t in tables:
+		var s: Vector3 = t["size"]
+		var area := s.x * s.z
+		if area > best_area:
+			best_area = area
+			best = t
+	return best
+
+
+func _apply_room_layout() -> void:
+	if not RoomKit.is_available():
+		return  # intentional floating-space fallback: keep default layout
+	await RoomKit.refresh()
+	if not RoomKit.has_room_data():
+		return
+	# v0.7.0 MORPH-C: the largest table becomes an arcane painting altar — the artist paints beside the morphed palette station.
+	var _morph_table := RoomKit.get_anchors("TABLE")
+	if not _morph_table.is_empty():
+		RoomKit.morph(_morph_table[0], "arcane")
+	_room_walls = RoomKit.get_walls()
+	_room_tables = RoomKit.get_tables()
+	_room_bounds = RoomKit.room_bounds()
+	if _palette_root == null or _room_tables.is_empty():
+		return
+	# Float the palette + CLEAR cluster beside the largest detected table,
+	# at standing height above its tabletop.
+	var t := _largest_table(_room_tables)
+	var tpos: Vector3 = t["position"]
+	var tsize: Vector3 = t["size"]
+	var top_y := tpos.y + tsize.y * 0.5
+	_palette_root.global_position = Vector3(
+		tpos.x + tsize.x * 0.5 + 0.55 + 1.6,
+		maxf(top_y - 0.4, 0.7),
+		tpos.z + 1.5)
 
 
 # ---------------------------------------------------------------- painting ---
@@ -248,14 +299,16 @@ func _handle_press(screen_pos: Vector2) -> void:
 
 func _press_ray(origin: Vector3, dir: Vector3) -> void:
 	for sw in _swatches:
-		if _ray_hit(origin, dir, sw["center"], 0.16):
+		# Live node position: the palette cluster may have been relocated.
+		var sc: Vector3 = (sw["node"] as MeshInstance3D).global_position
+		if _ray_hit(origin, dir, sc, 0.16):
 			_brush_color = sw["color"]
 			_brush_name = sw["name"]
 			_cursor_mat.albedo_color = _brush_color
 			_cursor_mat.emission = _brush_color
 			_refresh_hud()
 			return
-	if _ray_hit(origin, dir, _clear_center, 0.3):
+	if _ray_hit(origin, dir, _clear_btn.global_position, 0.3):
 		_clear_all()
 		return
 	_painting = true

@@ -139,6 +139,11 @@ var _current_game: Node = null
 var _page := 0
 var _tab := 0  # 0 = GAMES, 1 = UTILITIES, 2 = CREATE, 3 = THEMES
 
+# v0.9.2: current game identity for Next/Prev nav + telemetry.
+var _current_game_name := ""
+var _current_game_index := -1
+var _master_games: Array = []  # CAT_GAMES + CAT_UTILITIES + CAT_CREATE + CAT_THEMES
+
 var _panel_root: Node3D = null
 var _viewport: SubViewport = null
 var _quad: MeshInstance3D = null
@@ -1062,11 +1067,50 @@ func _input_status_text() -> String:
 
 # --------------------------------------------------------- game load ---
 
-func _load_game(scene_path: String, game_name: String) -> void:
+## Canonical ordered list of ALL experiences (same order as the Spotlight
+## rotation): CAT_GAMES + CAT_UTILITIES + CAT_CREATE + CAT_THEMES. This is
+## the Next/Previous order in the pause menu — all 75, simple, no
+## favorites/search interplay.
+func _master_game_list() -> Array:
+	if _master_games.is_empty():
+		_master_games.append_array(CAT_GAMES)
+		_master_games.append_array(CAT_UTILITIES)
+		_master_games.append_array(CAT_CREATE)
+		_master_games.append_array(CAT_THEMES)
+	return _master_games
+
+
+func _master_index_of(scene_path: String) -> int:
+	var games := _master_game_list()
+	for i in games.size():
+		if str((games[i] as Dictionary).get("scene", "")) == scene_path:
+			return i
+	return -1
+
+
+## Switch to the adjacent game from the pause menu (delta -1 = prev,
+## +1 = next). Wraps around at the ends. Routes through _load_game so
+## autowiring, music, sessions and telemetry run identically to a launcher
+## launch.
+func _switch_game(delta: int) -> void:
+	var games := _master_game_list()
+	if games.is_empty() or _current_game_index < 0:
+		return
+	var n := games.size()
+	var next_idx := (_current_game_index + delta + n) % n
+	var g: Dictionary = games[next_idx]
+	_load_game(str(g["scene"]), str(g["name"]), "next" if delta > 0 else "prev")
+
+
+func _load_game(scene_path: String, game_name: String, via: String = "launcher") -> void:
 	BugReporter.session_start(game_name)
+	if get_node_or_null("/root/GameplayTelemetry") != null:
+		GameplayTelemetry.game_start(game_name, via, _master_index_of(scene_path))
 	if _current_game != null and is_instance_valid(_current_game):
 		_current_game.queue_free()
 		_current_game = null
+	_current_game_name = game_name
+	_current_game_index = _master_index_of(scene_path)
 	# Hide the whole panel (UI + lasers) while a game runs.
 	if is_instance_valid(_panel_root):
 		_panel_root.visible = false
@@ -1081,6 +1125,8 @@ func _load_game(scene_path: String, game_name: String) -> void:
 		print("[Hub] Loaded: ", game_name)
 	else:
 		push_error("[Hub] Failed to load: " + scene_path)
+		if get_node_or_null("/root/GameplayTelemetry") != null:
+			GameplayTelemetry.error(game_name, "scene load failed", scene_path)
 		if is_instance_valid(_panel_root):
 			_panel_root.visible = true
 
@@ -1116,7 +1162,14 @@ func _autowire_game(scene_path: String, game_name: String) -> void:
 	if get_node_or_null("/root/PauseExit") != null:
 		PauseExit.attach_to_game(
 			_current_game, _return_to_hub,
-			_load_game.bind(scene_path, game_name))
+			_load_game.bind(scene_path, game_name, "restart"),
+			game_name)
+		# v0.9.2: Next/Previous navigation in the pause menu — ordered game
+		# names + current index + the hub's wrap-around switch callable.
+		var nav_names := PackedStringArray()
+		for g in _master_game_list():
+			nav_names.append(str((g as Dictionary).get("name", "?")))
+		PauseExit.set_game_nav(nav_names, _current_game_index, _switch_game)
 		if not opted_out:
 			# controller_skins.gd by path: immune to stale class caches.
 			var skins_scr: GDScript = load("res://scripts/shared/controller_skins.gd")
@@ -1150,8 +1203,12 @@ func _game_desc(game_name: String) -> String:
 
 func _return_to_hub() -> void:
 	BugReporter.session_end()
+	if get_node_or_null("/root/GameplayTelemetry") != null:
+		GameplayTelemetry.game_end("quit_to_hub")
 	if get_node_or_null("/root/PauseExit") != null:
 		PauseExit.detach()
+	_current_game_name = ""
+	_current_game_index = -1
 	(load("res://scripts/shared/controller_skins.gd") as GDScript).clear()
 	if get_node_or_null("/root/JuiceFX") != null:
 		JuiceFX.dismiss_title_card()

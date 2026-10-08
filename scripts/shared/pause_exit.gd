@@ -35,6 +35,12 @@ var _on_restart_cb := Callable()
 var _paused := false
 var _pre_intensity := 0
 
+# v0.9.2: game identity + Next/Prev navigation context (set by the hub).
+var _game_name := ""
+var _nav_names: PackedStringArray = PackedStringArray()
+var _nav_index := -1
+var _on_switch_cb := Callable()
+
 var _xr_origin: Node3D = null
 var _controllers: Array[XRController3D] = []
 var _menu_prev := {}
@@ -72,11 +78,13 @@ func _ready() -> void:
 
 ## Attach to a launched game. Called by the hub auto-wirer (opt-out via
 ## no_auto_wire). `on_quit`/`on_restart` come from the hub so this file
-## never hard-codes launcher paths.
-func attach_to_game(game: Node, on_quit: Callable, on_restart: Callable) -> void:
+## never hard-codes launcher paths. `game_name` feeds telemetry + the
+## Next/Prev button labels.
+func attach_to_game(game: Node, on_quit: Callable, on_restart: Callable, game_name: String = "") -> void:
 	if _game != null and is_instance_valid(_game):
 		detach()
 	_game = game
+	_game_name = game_name
 	_on_quit_cb = on_quit
 	_on_restart_cb = on_restart
 	_paused = false
@@ -90,12 +98,26 @@ func attach_to_game(game: Node, on_quit: Callable, on_restart: Callable) -> void
 		_game.tree_exiting.connect(_on_game_exiting.bind(_game))
 
 
+## v0.9.2: ordered game names + current index + hub switch callable
+## (takes delta: -1 = prev, +1 = next; the hub wraps around). Called by the
+## hub right after attach_to_game. Display-only on this side; switching
+## logic lives in the hub so autowiring/music/telemetry all run identically
+## to a launcher launch.
+func set_game_nav(names: PackedStringArray, index: int, on_switch: Callable) -> void:
+	_nav_names = names
+	_nav_index = index
+	_on_switch_cb = on_switch
+
+
 func detach() -> void:
 	if _paused:
 		_set_paused(false)
 	_game = null
+	_game_name = ""
 	_on_quit_cb = Callable()
 	_on_restart_cb = Callable()
+	_on_switch_cb = Callable()
+	_nav_index = -1
 	if is_instance_valid(_exit_root):
 		_exit_root.visible = false
 	if is_instance_valid(_pause_root):
@@ -153,6 +175,10 @@ func _input(event: InputEvent) -> void:
 			return
 	# Desktop fallback: forward the real mouse into whichever quad is up.
 	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+			var gt := get_node_or_null("/root/GameplayTelemetry")
+			if gt != null:
+				gt.note_input_method("mouse")
 		if _paused and _pause_root.visible:
 			_forward_mouse(event, _pause_quad, _pause_vp)
 		elif not _paused and _exit_root.visible:
@@ -212,6 +238,10 @@ func _set_paused(p: bool) -> void:
 		_place_overlay()
 		if _pause_title != null:
 			_pause_title.text = "PAUSED"
+		# v0.9.2: gameplay telemetry — pause opens feed "where do players pause".
+		var gt := get_node_or_null("/root/GameplayTelemetry")
+		if gt != null and _game_name != "":
+			gt.event("pause_open", {"game": _game_name})
 	else:
 		if ak != null:
 			AudioKit.set_intensity(_pre_intensity)
@@ -364,7 +394,7 @@ func _build_overlay() -> void:
 	_make_pointers(_pause_vp, _pause_quad, _pause_pointers)
 
 
-## (Re)build the pause menu page: Resume | Controls | Restart | Quit.
+## (Re)build the pause menu page: Prev/Next | Resume | Controls | Restart | Quit.
 func _build_menu_page() -> void:
 	_overlay_page = "menu"
 	_clear_overlay_vbox()
@@ -380,11 +410,73 @@ func _build_menu_page() -> void:
 	hint.add_theme_font_size_override("font_size", 28)
 	hint.add_theme_color_override("font_color", Color(0.75, 0.82, 0.95))
 	_overlay_vbox.add_child(hint)
+	# v0.9.2: Next/Previous game row — flip through games without going
+	# back to the launcher grid. Same buttons/input paths as everything else
+	# (laser + pinch + gaze dwell all work: these are real 2D Buttons).
+	if _on_switch_cb.is_valid() and _nav_names.size() > 1 and _nav_index >= 0:
+		_overlay_vbox.add_child(_build_nav_row())
 	for spec in [["Resume", _on_resume, Color(0.0, 0.5, 0.3)],
 			["Controls", _on_controls, Color(0.1, 0.3, 0.55)],
 			["Restart Game", _on_restart, Color(0.5, 0.35, 0.1)],
 			["Quit to Hub", _on_quit, Color(0.5, 0.15, 0.15)]]:
 		_overlay_vbox.add_child(_overlay_button(spec[0], spec[1], spec[2]))
+
+
+## v0.9.2: "◀ Prev name" / "Next name ▶" row. Names wrap around the list.
+func _build_nav_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 20)
+	var n := _nav_names.size()
+	var prev_name := _nav_names[(_nav_index - 1 + n) % n]
+	var next_name := _nav_names[(_nav_index + 1) % n]
+	row.add_child(_nav_button("◀ " + _short_name(prev_name), _on_prev))
+	row.add_child(_nav_button(_short_name(next_name) + " ▶", _on_next))
+	return row
+
+
+func _short_name(full: String) -> String:
+	var s := full.strip_edges()
+	return s if s.length() <= 16 else s.left(15) + "…"
+
+
+func _nav_button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(320, 96)
+	b.add_theme_font_size_override("font_size", 34)
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(0.12, 0.28, 0.5)
+	bsb.set_corner_radius_all(14)
+	b.add_theme_stylebox_override("normal", bsb)
+	var bhov := bsb.duplicate() as StyleBoxFlat
+	bhov.bg_color = Color(0.2, 0.42, 0.72)
+	b.add_theme_stylebox_override("hover", bhov)
+	b.pressed.connect(cb)
+	return b
+
+
+func _on_prev() -> void:
+	_switch_game(-1)
+
+
+func _on_next() -> void:
+	_switch_game(1)
+
+
+## Route through the hub's switch path so autowiring, music, BugReporter
+## session, PauseExit re-attach and telemetry run exactly as a launcher
+## launch does. The hub wraps around at the ends.
+func _switch_game(delta: int) -> void:
+	var cb := _on_switch_cb
+	if not cb.is_valid():
+		return
+	var gt := get_node_or_null("/root/GameplayTelemetry")
+	if gt != null:
+		gt.event("nav_press", {"game": _game_name, "delta": delta})
+	_set_paused(false)
+	detach()
+	cb.call(delta)
 
 
 func _overlay_button(text: String, cb: Callable, color: Color) -> Button:
@@ -466,7 +558,7 @@ func _make_pointers(vp: SubViewport, quad: MeshInstance3D, arr: Array[XRUIPointe
 		var p := XRUIPointer.new()
 		p.controller = ctl
 		p.setup(vp, quad, _xr_origin)
-		p.xr_clicked.connect(_on_pointer_clicked.bind(vp))
+		p.xr_clicked.connect(_on_pointer_clicked.bind(vp, p))
 		p.xr_moved.connect(_on_pointer_moved.bind(vp))
 		p.visible = false
 		add_child(p)
@@ -475,14 +567,28 @@ func _make_pointers(vp: SubViewport, quad: MeshInstance3D, arr: Array[XRUIPointe
 		var hp := XRUIPointer.new()
 		hp.hand_side = side
 		hp.setup(vp, quad, _xr_origin)
-		hp.xr_clicked.connect(_on_pointer_clicked.bind(vp))
+		hp.xr_clicked.connect(_on_pointer_clicked.bind(vp, hp))
 		hp.xr_moved.connect(_on_pointer_moved.bind(vp))
 		hp.visible = false
 		add_child(hp)
 		arr.append(hp)
 
 
-func _on_pointer_clicked(viewport_pos: Vector2, vp: SubViewport) -> void:
+## v0.9.2: first click in a game session records the input method for
+## telemetry (hands vs controllers vs gaze). First method wins per session.
+func _note_input_from_pointer(p: XRUIPointer) -> void:
+	var gt := get_node_or_null("/root/GameplayTelemetry")
+	if gt == null:
+		return
+	if p.controller != null:
+		gt.note_input_method("controllers")
+	elif p.hand_side != 0:
+		gt.note_input_method("hands")
+
+
+func _on_pointer_clicked(viewport_pos: Vector2, vp: SubViewport, p: XRUIPointer = null) -> void:
+	if p != null:
+		_note_input_from_pointer(p)
 	_inject_click(vp, viewport_pos)
 
 
@@ -601,6 +707,10 @@ func _process_gaze(delta: float) -> void:
 		_gaze_dwell += delta
 		if _gaze_dwell >= GAZE_DWELL:
 			_gaze_dwell = 0.0
+			# v0.9.2: gaze dwell click counts as the gaze input method.
+			var gt := get_node_or_null("/root/GameplayTelemetry")
+			if gt != null:
+				gt.note_input_method("gaze")
 			_inject_click(vp, hit["pos"])
 	else:
 		_gaze_dwell = 0.0

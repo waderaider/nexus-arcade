@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="NEXUS ARCADE"
-config/version="0.9.1"
+config/version="0.9.2"
 config/description="NEXUS ARCADE: 75 mixed-reality games, utilities and creative tools for Meta Quest 3 with Check for Updates built in."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
@@ -28,6 +28,7 @@ JuiceFX="*res://scripts/shared/juice_fx.gd"
 PassthroughFX="*res://scripts/shared/passthrough_fx.gd"
 MoodLUT="*res://scripts/shared/mood_lut.gd"
 PauseExit="*res://scripts/shared/pause_exit.gd"
+GameplayTelemetry="*res://scripts/shared/gameplay_telemetry.gd"
 
 [display]
 

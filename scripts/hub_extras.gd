@@ -122,17 +122,21 @@ const GAMES := [
 	{"n": "Midnight Survival", "s": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "t": 3, "d": "Survive until dawn in the haunted house."},
 ]
 
+## AURORA_SHADER: v0.9.2 fix — was `void FRAGMENT()` (Godot 3 syntax;
+## never compiled under Godot 4, so the aurora never rendered) and a
+## reversed smoothstep() (undefined behavior on Adreno/Quest 3 GPUs).
+## Verified compiling under Godot 4.7.2 (gl_compatibility, real GL driver).
 const AURORA_SHADER := """
 shader_type canvas_item;
 uniform vec4 tint_a : source_color = vec4(0.0, 0.85, 1.0, 1.0);
 uniform vec4 tint_b : source_color = vec4(1.0, 0.2, 0.85, 1.0);
-void FRAGMENT() {
+void fragment() {
 	vec2 uv = UV;
 	float t = TIME * 0.06;
 	float w1 = sin(uv.x * 6.28318 + t * 6.28318 + 1.7 * sin(uv.y * 4.0 + t * 2.0)) * 0.5 + 0.5;
 	float w2 = sin((uv.y + uv.x * 0.6) * 5.0 - t * 4.0) * 0.5 + 0.5;
 	vec3 col = mix(tint_a.rgb, tint_b.rgb, clamp(w1 * 0.45 + w2 * 0.35, 0.0, 1.0));
-	float vig = smoothstep(0.9, 0.3, distance(uv, vec2(0.5, 0.45)));
+	float vig = 1.0 - smoothstep(0.3, 0.9, distance(uv, vec2(0.5, 0.45)));
 	vec3 final_col = col * (0.25 + 0.75 * vig) * 0.35;
 	COLOR = vec4(final_col, 0.5);
 }

@@ -290,6 +290,41 @@ func _build_tank() -> void:
 		add_child(br)
 
 
+# v0.9.1: animated Quaternius FBX fish (CC0) — same drop-in pattern as
+# deep_dive. FBX fish are ~3.2 m long facing -Z; scaled to tank size here.
+# The FBX "swim" animation replaces the procedural tail wag.
+const FISH_FILES := ["Fish1", "Fish2", "Fish3"]
+
+var _model_cache := {}
+
+
+func _load_model(file_name: String) -> Node3D:
+	var path := "res://assets/models/holo-aquarium/" + file_name + ".fbx"
+	if _model_cache.has(path):
+		var cached: PackedScene = _model_cache[path]
+		if cached != null and is_instance_valid(cached):
+			return cached.instantiate() as Node3D
+		_model_cache.erase(path)
+	if not ResourceLoader.exists(path):
+		push_warning("[holo-aquarium] missing model: " + path)
+		return null
+	var ps := load(path) as PackedScene
+	if ps == null:
+		push_warning("[holo-aquarium] failed to load: " + path)
+		return null
+	_model_cache[path] = ps
+	return ps.instantiate() as Node3D
+
+
+func _make_fish_node(variant: int, size: float) -> Node3D:
+	var node := _load_model(FISH_FILES[clampi(variant, 0, FISH_FILES.size() - 1)])
+	if node == null:
+		return null
+	node.scale = Vector3.ONE * 0.11 * size
+	ArtKit.play_anim(node, ["swim"], randf_range(0.9, 1.15))
+	return node
+
+
 func _build_fish() -> void:
 	for i in FISH_COUNT:
 		var f := Fish.new()
@@ -302,41 +337,50 @@ func _build_fish() -> void:
 		add_child(f.root)
 
 		var col: Color = FISH_COLORS[i % FISH_COLORS.size()]
-
-		# Body: elongated sphere (head toward -Z so look_at faces travel dir).
-		var body := MeshInstance3D.new()
-		var bs := SphereMesh.new()
-		bs.radius = 0.11
-		bs.height = 0.22
-		body.mesh = bs
-		body.scale = Vector3(0.85, 0.85, 1.8)
-		body.material_override = GraphicsPolish.pbr(col, 0.25, 0.35)
-		f.root.add_child(body)
-
-		# Tail fin: flattened box wagged in _process.
-		f.tail = MeshInstance3D.new()
-		var tb := BoxMesh.new()
-		tb.size = Vector3(0.03, 0.17, 0.15)
-		f.tail.mesh = tb
-		f.tail.material_override = GraphicsPolish.pbr(col.darkened(0.15), 0.2, 0.4)
-		f.tail.position = Vector3(0.0, 0.0, 0.26)
-		f.root.add_child(f.tail)
-
-		# Eyes.
-		var es := SphereMesh.new()
-		es.radius = 0.022
-		es.height = 0.044
-		for ex in [-1.0, 1.0]:
-			var eye := MeshInstance3D.new()
-			eye.mesh = es
-			eye.material_override = GraphicsPolish.pbr(Color(0.05, 0.05, 0.07), 0.9, 0.2)
-			eye.position = Vector3(ex * 0.055, 0.045, -0.15)
-			f.root.add_child(eye)
+		var fbx := _make_fish_node(i % FISH_FILES.size(), randf_range(0.85, 1.2))
+		if fbx != null:
+			f.root.add_child(fbx)
+			f.tail = null  # FBX swim animation handles the tail
+		else:
+			_build_primitive_fish(f, col)
 
 		var a := randf() * TAU
 		f.vel = Vector3(cos(a), randf_range(-0.2, 0.2), sin(a)).normalized() * 0.8
 		f.wander_dir = f.vel.normalized()
 		fishes.append(f)
+
+
+## Fallback when the staged FBX is missing: the old procedural assembly.
+func _build_primitive_fish(f: Fish, col: Color) -> void:
+	# Body: elongated sphere (head toward -Z so look_at faces travel dir).
+	var body := MeshInstance3D.new()
+	var bs := SphereMesh.new()
+	bs.radius = 0.11
+	bs.height = 0.22
+	body.mesh = bs
+	body.scale = Vector3(0.85, 0.85, 1.8)
+	body.material_override = GraphicsPolish.pbr(col, 0.25, 0.35)
+	f.root.add_child(body)
+
+	# Tail fin: flattened box wagged in _process.
+	f.tail = MeshInstance3D.new()
+	var tb := BoxMesh.new()
+	tb.size = Vector3(0.03, 0.17, 0.15)
+	f.tail.mesh = tb
+	f.tail.material_override = GraphicsPolish.pbr(col.darkened(0.15), 0.2, 0.4)
+	f.tail.position = Vector3(0.0, 0.0, 0.26)
+	f.root.add_child(f.tail)
+
+	# Eyes.
+	var es := SphereMesh.new()
+	es.radius = 0.022
+	es.height = 0.044
+	for ex in [-1.0, 1.0]:
+		var eye := MeshInstance3D.new()
+		eye.mesh = es
+		eye.material_override = GraphicsPolish.pbr(Color(0.05, 0.05, 0.07), 0.9, 0.2)
+		eye.position = Vector3(ex * 0.055, 0.045, -0.15)
+		f.root.add_child(eye)
 
 
 func _build_bubbles() -> void:
@@ -553,8 +597,9 @@ func _update_fish(delta: float) -> void:
 		if fish.vel.length() > 0.05:
 			fish.root.look_at(pos + fish.vel, Vector3.UP)
 
-		# Tail wag.
-		fish.tail.rotation.y = sin(_time * 10.0 + fish.phase) * 0.55
+		# Tail wag (primitive fallback only; FBX fish swim via animation).
+		if fish.tail != null:
+			fish.tail.rotation.y = sin(_time * 10.0 + fish.phase) * 0.55
 
 
 func _update_pellets(delta: float) -> void:

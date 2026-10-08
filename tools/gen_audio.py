@@ -5,6 +5,7 @@ Synthesizes every SFX and music loop with numpy/scipy -- no licensed assets,
 zero legal risk. Outputs 16-bit mono WAV at 22050 Hz into assets/audio/.
 
   assets/audio/sfx/    30 procedural sound effects (0.2 - 1.5 s)
+                      + looping ambient SFX (engine_roar, 4 s seamless)
   assets/audio/music/  11 original genre loops (12 bars, seamless)
 
 Music loops are 12 bars (not 32) so the raw total stays under ~15 MB.
@@ -417,6 +418,33 @@ SFX = [
     ("chest", sfx_chest), ("bubble", sfx_bubble),
     ("zap", sfx_zap), ("fanfare", sfx_fanfare),
     ("notify", sfx_notify), ("error", sfx_error),
+]
+
+
+def sfx_engine_roar():
+    """Seamless 4 s jet-roar loop (v0.9.1, Sky Traffic): lowpassed noise +
+    low hum stack + slow prop wobble. Hum/LFO frequencies complete integer
+    cycles in the final 4.0 s; the noise tail is crossfaded into the head
+    for click-free looping. Played on a looping AudioStreamPlayer3D with
+    distance-mapped volume, so it is NOT in the one-shot SFX registry."""
+    dur, xf = 4.5, 0.5
+    n = n_samp(dur)
+    t = t_arr(n)
+    rumble = lowpass(noise(n), 240) * 0.9
+    hum = (osc("sine", 55.0, n) * 0.50 + osc("sine", 82.5, n) * 0.30
+           + osc("sine", 110.0, n) * 0.22)
+    wob = 0.75 + 0.25 * np.sin(2 * np.pi * 1.0 * t) * np.sin(2 * np.pi * 0.5 * t + 1.3)
+    x = (rumble + hum) * wob
+    k = int(xf * SR)
+    ramp = np.linspace(0.0, 1.0, k)
+    head = x[:k] * ramp + x[-k:] * (1.0 - ramp)
+    x = np.concatenate([head, x[k:-k]])
+    return finalize(x, 0.80)
+
+
+# Looping ambient SFX (exempt from the one-shot duration assert).
+LOOPS = [
+    ("engine_roar", sfx_engine_roar),
 ]
 
 
@@ -893,6 +921,12 @@ def main():
         total_sfx += (SFX_DIR / f"{name}.wav").stat().st_size
         assert 0.05 <= dur <= 1.6, f"{name}: odd duration {dur:.2f}s"
         print(f"  {name:12s} {dur:5.2f}s peak {peak:.2f}")
+    for name, fn in LOOPS:
+        x = np.asarray(fn(), dtype=np.float64)
+        assert x.ndim == 1 and x.size > 0, name
+        dur, peak = write_wav(SFX_DIR / f"{name}.wav", x)
+        total_sfx += (SFX_DIR / f"{name}.wav").stat().st_size
+        print(f"  {name:12s} {dur:5.2f}s peak {peak:.2f} (loop)")
     print(f"--- MUSIC ({len(GENRES)}, {BARS} bars) -> {MUS_DIR} ---")
     for i, (name, bpm, fn) in enumerate(GENRES):
         x = render_song(bpm, BARS, fn, seed=1000 + i)

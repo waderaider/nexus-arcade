@@ -180,6 +180,41 @@ func _build_scene() -> void:
 		eye.position = Vector3(side * 0.08, 1.36, 0.17)
 		mummy.add_child(eye)
 	bandage_mat = GraphicsPolish.glow(Color(0.95, 0.92, 0.80), 0.9)
+	# v0.9.1 geometry pass: the mummy was a bare capsule. Pre-wrap it with
+	# static bandage bands (hand-wrapped look: varied heights + slight tilts)
+	# so it reads as a mummy before the player winds anything. The dynamic
+	# wrap rings still land on top during play. Bands live under a sub-node
+	# so _reset_game's "keep the first 4 MeshInstance3D" rule stays valid.
+	var prewrap := Node3D.new()
+	prewrap.name = "PreWrap"
+	mummy.add_child(prewrap)
+	var band_specs := [
+		[0.20, 0.255, 0.315, 0.10], [0.38, 0.265, 0.325, -0.08],
+		[0.56, 0.265, 0.325, 0.12], [0.74, 0.265, 0.325, -0.10],
+		[0.90, 0.26, 0.32, 0.09], [1.06, 0.235, 0.295, -0.12],
+		[1.22, 0.19, 0.25, 0.10], [1.46, 0.15, 0.21, -0.08],
+	]
+	for spec in band_specs:
+		var band := MeshInstance3D.new()
+		var btor := TorusMesh.new()
+		btor.inner_radius = float(spec[1])
+		btor.outer_radius = float(spec[2])
+		band.mesh = btor
+		band.material_override = bandage_mat
+		band.position = Vector3(0.0, float(spec[0]), 0.0)
+		band.rotation.x = PI * 0.5 + float(spec[3])
+		prewrap.add_child(band)
+	# Two diagonal cross-bands over the torso for the wrapped look.
+	for tilt in [0.5, -0.5]:
+		var cross := MeshInstance3D.new()
+		var ctor := TorusMesh.new()
+		ctor.inner_radius = 0.265
+		ctor.outer_radius = 0.315
+		cross.mesh = ctor
+		cross.material_override = bandage_mat
+		cross.position = Vector3(0.0, 0.62, 0.0)
+		cross.rotation = Vector3(PI * 0.5 + 0.12, 0.0, tilt)
+		prewrap.add_child(cross)
 	_mummy_light = GraphicsPolish.make_point_light(self, Vector3(0.0, 2.2, -1.0), Color(0.7, 0.5, 1.0), 0.8, 5.0)
 
 

@@ -76,6 +76,7 @@ const CHARM_TARGET := Vector3(0.0, 1.75, 0.8)
 
 # --- potions ---
 var cauldron_liquid_mat: StandardMaterial3D = null
+var cauldron_liquid: MeshInstance3D = null
 var cauldron_pos := Vector3(0.0, 0.0, -0.4)
 var bottles: Array = []
 var recipe: Array = []
@@ -88,6 +89,10 @@ var potion_t0 := 0.0
 const BOTTLE_NAMES := ["Moondew", "Firepepper", "Starshroom"]
 const BOTTLE_COLORS := [Color(0.25, 0.55, 1.0), Color(1.0, 0.30, 0.12), Color(0.65, 0.30, 1.0)]
 const BOTTLE_HOME := [Vector3(1.55, 1.02, -0.4), Vector3(2.20, 1.02, -0.4), Vector3(2.85, 1.02, -0.4)]
+# v0.9.1: real potion bottles from the Quaternius fantasyprops megakit (CC0),
+# staged in assets/models/wizard_academy/. Primitive build stays as fallback.
+const BOTTLE_MODELS := ["Potion_1", "Potion_2", "Potion_4"]
+const BOTTLE_MODEL_SCALE := 2.2
 
 # --- defense ---
 var shield_bubble: MeshInstance3D = null
@@ -956,6 +961,7 @@ func _build_potions() -> void:
 	liquid.material_override = cauldron_liquid_mat
 	liquid.position = cauldron_pos + Vector3(0.0, 0.80, 0.0)
 	potions_root.add_child(liquid)
+	cauldron_liquid = liquid
 	for a in [0.0, TAU * 0.33, TAU * 0.66]:
 		var leg := MeshInstance3D.new()
 		var legm := CylinderMesh.new()
@@ -996,37 +1002,48 @@ func _build_potions() -> void:
 		var b := Node3D.new()
 		b.position = BOTTLE_HOME[i]
 		potions_root.add_child(b)
-		var glass := MeshInstance3D.new()
-		var gcyl := CylinderMesh.new()
-		gcyl.top_radius = 0.085
-		gcyl.bottom_radius = 0.095
-		gcyl.height = 0.26
-		glass.mesh = gcyl
-		glass.material_override = GraphicsPolish.pbr_preset(Color(0.75, 0.80, 0.85), "glass")
-		b.add_child(glass)
-		var fill := MeshInstance3D.new()
-		var fcyl := CylinderMesh.new()
-		fcyl.top_radius = 0.070
-		fcyl.bottom_radius = 0.080
-		fcyl.height = 0.15
-		fill.mesh = fcyl
-		fill.material_override = GraphicsPolish.glow(BOTTLE_COLORS[i], 1.2)
-		fill.position = Vector3(0.0, -0.04, 0.0)
-		b.add_child(fill)
-		var cork := MeshInstance3D.new()
-		var ccyl := CylinderMesh.new()
-		ccyl.top_radius = 0.035
-		ccyl.bottom_radius = 0.035
-		ccyl.height = 0.06
-		cork.mesh = ccyl
-		cork.material_override = GraphicsPolish.pbr_preset(Color(0.55, 0.38, 0.20), "matte")
-		cork.position = Vector3(0.0, 0.16, 0.0)
-		b.add_child(cork)
+		# v0.9.1: real Quaternius potion bottle; primitive build is fallback.
+		var model := ModelLib.spawn(
+			"res://assets/models/wizard_academy/" + BOTTLE_MODELS[i] + ".gltf", b, Vector3.ZERO)
+		if model != null:
+			model.scale = Vector3.ONE * BOTTLE_MODEL_SCALE
+		else:
+			_build_primitive_bottle(b, i)
 		var nlabel := GraphicsPolish.make_label(BOTTLE_NAMES[i], 30, Color(1, 1, 1))
 		nlabel.pixel_size = 0.0028
-		nlabel.position = Vector3(0.0, 0.30, 0.0)
+		nlabel.position = Vector3(0.0, 0.34, 0.0)
 		b.add_child(nlabel)
 		bottles.append({"node": b, "home": BOTTLE_HOME[i]})
+
+
+## v0.9.1 fallback: the original procedural bottle when the glTF is missing.
+func _build_primitive_bottle(b: Node3D, i: int) -> void:
+	var glass := MeshInstance3D.new()
+	var gcyl := CylinderMesh.new()
+	gcyl.top_radius = 0.085
+	gcyl.bottom_radius = 0.095
+	gcyl.height = 0.26
+	glass.mesh = gcyl
+	glass.material_override = GraphicsPolish.pbr_preset(Color(0.75, 0.80, 0.85), "glass")
+	b.add_child(glass)
+	var fill := MeshInstance3D.new()
+	var fcyl := CylinderMesh.new()
+	fcyl.top_radius = 0.070
+	fcyl.bottom_radius = 0.080
+	fcyl.height = 0.15
+	fill.mesh = fcyl
+	fill.material_override = GraphicsPolish.glow(BOTTLE_COLORS[i], 1.2)
+	fill.position = Vector3(0.0, -0.04, 0.0)
+	b.add_child(fill)
+	var cork := MeshInstance3D.new()
+	var ccyl := CylinderMesh.new()
+	ccyl.top_radius = 0.035
+	ccyl.bottom_radius = 0.035
+	ccyl.height = 0.06
+	cork.mesh = ccyl
+	cork.material_override = GraphicsPolish.pbr_preset(Color(0.55, 0.38, 0.20), "matte")
+	cork.position = Vector3(0.0, 0.16, 0.0)
+	b.add_child(cork)
 	# Recipe board.
 	recipe_label = GraphicsPolish.make_label("", 40, Color(1.0, 0.95, 0.70))
 	recipe_label.position = Vector3(-2.3, 1.9, -0.4)
@@ -1068,6 +1085,7 @@ func _potions_process(delta: float, press: bool, just_pressed: bool, just_releas
 				pour_t = 0.0
 				_grab_depth = camera.global_position.distance_to(bn.global_position) if camera != null else 2.2
 				Haptics.tick()
+				ArtKit.pop(bn, 1.18, 0.2)  # v0.9.1 juice: grab pop
 				break
 	if just_released and held_bottle >= 0:
 		_return_bottle(held_bottle)
@@ -1097,6 +1115,18 @@ func _return_bottle(i: int) -> void:
 	var bn: Node3D = (bottles[i] as Dictionary)["node"]
 	bn.position = (bottles[i] as Dictionary)["home"]
 	bn.rotation = Vector3.ZERO
+	ArtKit.squash_land(bn)  # v0.9.1 juice: bottle settles onto the shelf
+
+
+## v0.9.1 juice: wrong-pour shake (follow-through after the bottle lands).
+func _juice_shake(node: Node3D) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	var tw := create_tween()
+	tw.tween_property(node, "rotation:z", 0.30, 0.06).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(node, "rotation:z", -0.30, 0.08).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(node, "rotation:z", 0.15, 0.07).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(node, "rotation:z", 0.0, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _pour_bottle(i: int) -> void:
@@ -1106,6 +1136,7 @@ func _pour_bottle(i: int) -> void:
 	if got == want:
 		GraphicsPolish.spawn_sparks(self, mouth, BOTTLE_COLORS[i], 30)
 		Haptics.pulse(0.7, 0.12)
+		ArtKit.pop(cauldron_liquid, 1.3, 0.3)  # v0.9.1 juice: brew splash pop
 		recipe_idx += 1
 		_set_msg("Added %s! (%d/%d)" % [got, recipe_idx, recipe.size()], 1.4)
 		_update_recipe_label()
@@ -1115,6 +1146,8 @@ func _pour_bottle(i: int) -> void:
 		Haptics.thump()
 		_set_msg("FIZZLE! Recipe wants %s next" % want, 1.8)
 	_return_bottle(i)
+	if got != want:
+		_juice_shake((bottles[i] as Dictionary)["node"] as Node3D)
 	_update_hud()
 	if recipe_idx >= recipe.size():
 		GraphicsPolish.spawn_confetti(self, mouth + Vector3(0, 0.4, 0), 50)

@@ -45,6 +45,10 @@ var _poll_inflight := false
 var _aircraft := {} ## hex -> Dictionary record
 var _selected_hex := ""
 var _missed := {} ## hex -> missed poll count
+# v0.9.1: engine-roar-by-distance (the deferred v0.9.0 wow) — the nearest
+# plane rumbles on a looping 3D player, volume/pitch mapped to real distance.
+const ROAR_MAX_KM := 20.0
+var _roar_player: AudioStreamPlayer3D = null
 # v0.7.0 ROOMKIT: cached room layout (never queried per-frame).
 var _room_walls: Array = []
 var _room_tables: Array = []
@@ -65,6 +69,7 @@ func _ready() -> void:
 	add_child(_http)
 	_http.request_completed.connect(_on_poll_done)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 6.0, 0), 12.0, 30)
+	_build_roar()
 	_update_status("Connecting to sky data...")
 	_poll() ## first poll immediately
 	_apply_room_layout()
@@ -134,6 +139,52 @@ func _process(delta: float) -> void:
 	var pinched := ARUpgradeKit.pinch_just_pressed(self, ARUpgradeKit.HAND_RIGHT)
 	if pinched and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		_on_pinch()
+	_update_roar()
+
+
+## v0.9.1: looping engine-roar player. The stream is duplicated so the
+## loop points don't leak into AudioKit's shared one-shot pool voice.
+func _build_roar() -> void:
+	var src := load("res://assets/audio/sfx/engine_roar.wav") as AudioStreamWAV
+	if src == null:
+		return
+	var stream := src.duplicate() as AudioStreamWAV
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = int(stream.get_length() * stream.mix_rate)
+	_roar_player = AudioStreamPlayer3D.new()
+	_roar_player.stream = stream
+	_roar_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+	_roar_player.max_distance = 60.0
+	add_child(_roar_player)
+
+
+## v0.9.1: point the roar at the nearest aircraft; volume and pitch follow
+## its real distance. Silent when the sky is empty or everything is far.
+func _update_roar() -> void:
+	if _roar_player == null:
+		return
+	var best: Dictionary = {}
+	var best_d := ROAR_MAX_KM
+	for hex in _aircraft.keys():
+		var rec: Dictionary = _aircraft[hex]
+		var d := float(rec.get("dist", 999.0))
+		if d < best_d:
+			best_d = d
+			best = rec
+	if best.is_empty():
+		if _roar_player.playing:
+			_roar_player.stop()
+		return
+	var node: Node3D = best.get("node")
+	if node == null or not is_instance_valid(node):
+		return
+	_roar_player.global_position = node.global_position
+	var t := clampf(best_d / ROAR_MAX_KM, 0.0, 1.0)
+	_roar_player.volume_db = lerpf(-8.0, -30.0, t)
+	_roar_player.pitch_scale = lerpf(0.92, 1.06, t)
+	if not _roar_player.playing:
+		_roar_player.play()
 
 
 func _unhandled_input(event: InputEvent) -> void:

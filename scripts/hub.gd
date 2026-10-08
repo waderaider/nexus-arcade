@@ -1100,26 +1100,30 @@ func _autowire_game(scene_path: String, game_name: String) -> void:
 	# dive/aquarium, natural everywhere else).
 	if get_node_or_null("/root/MoodLUT") != null:
 		MoodLUT.apply_for_game(stem, _tab)
-	# 3. Juice: title card + affordance pass.
+	# 3. Juice: title card + affordance pass. The no_auto_wire opt-out skips
+	# this and the controller-skin dressing — but NEVER the pause/exit below.
 	if _current_game == null or not is_instance_valid(_current_game):
 		return
-	if _game_opt_out():
-		return
-	if get_node_or_null("/root/JuiceFX") != null:
+	var opted_out := _game_opt_out()
+	if not opted_out and get_node_or_null("/root/JuiceFX") != null:
 		JuiceFX.title_card(game_name, _game_desc(game_name), _skin_accent(_tab))
 		JuiceFX.affordance_pass(_current_game)
 	# 4. Global pause/exit (ship-blocker) + controller skins + button legend.
-	# Same opt-out flag: no_auto_wire games own their own exit path.
+	# PauseExit attaches UNCONDITIONALLY, even for no_auto_wire games: the
+	# standing rule is every game exits to launcher. (v0.9.1 verification:
+	# the old early-return skipped this whole block for opt-out games, which
+	# would have silently dropped their exit path entirely.)
 	if get_node_or_null("/root/PauseExit") != null:
 		PauseExit.attach_to_game(
 			_current_game, _return_to_hub,
 			_load_game.bind(scene_path, game_name))
-		# controller_skins.gd by path: immune to stale class caches.
-		var skins_scr: GDScript = load("res://scripts/shared/controller_skins.gd")
-		var skin_cfg: Dictionary = skins_scr.config_for(_current_game, stem)
-		if bool(skin_cfg.get("uses_controllers", true)):
-			skins_scr.apply(_current_game, skin_cfg)
-			PauseExit.show_controls_intro(skin_cfg, game_name)
+		if not opted_out:
+			# controller_skins.gd by path: immune to stale class caches.
+			var skins_scr: GDScript = load("res://scripts/shared/controller_skins.gd")
+			var skin_cfg: Dictionary = skins_scr.config_for(_current_game, stem)
+			if bool(skin_cfg.get("uses_controllers", true)):
+				skins_scr.apply(_current_game, skin_cfg)
+				PauseExit.show_controls_intro(skin_cfg, game_name)
 
 
 ## Per-game opt-out: `static var no_auto_wire := true` in the game script.

@@ -112,3 +112,17 @@ Generated in-house with Blender 4.5.14 LTS (headless) 2026-10-08.
 | Game | Model file | Pack | License | Source |
 |---|---|---|---|---|
 | dragon_ranch | Dragon.fbx | Quaternius animatedmonster | CC0 | https://quaternius.com (Adult growth stage hero; 33-bone armature, 5 animations) |
+
+## Quaternius — v0.9.1 art fixes (CC0, no attribution legally required)
+
+| Game | Model file | Pack | License | Source |
+|---|---|---|---|---|
+| holo-aquarium | Fish1.fbx, Fish2.fbx, Fish3.fbx | Quaternius animatedfish | CC0 | https://quaternius.com (animated Swim) |
+| holo-pets | Pug.fbx | Quaternius farmanimal | CC0 | https://quaternius.com (animated Idle + Jump) |
+| wizard_academy | Potion_1.gltf, Potion_2.gltf, Potion_4.gltf (+ T_Trim_Props_* textures) | Quaternius fantasypropsmegakit | CC0 | https://quaternius.com (vertex-color trim material) |
+
+## CraftPix — v0.9.1 art fixes (royalty-free, no attribution required)
+
+| Game | Model file | Pack | License | Source |
+|---|---|---|---|---|
+| hw_werewolf_howl | wolf.fbx (+ wild_animals_map.png) | CraftPix Free Wild Animal 3D Low Poly Models | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ |

@@ -23,6 +23,7 @@ var blasts: Array = [] # dicts: node, mat, t, max_r
 var charge_ring: MeshInstance3D = null
 var charge_mat: StandardMaterial3D = null
 var wolf_head: MeshInstance3D = null
+var wolf_tilt: Node3D = null  # v0.9.1: model path — howl pivot tilted instead of the head
 var hud_label: Label3D = null
 var help_label: Label3D = null
 var msg_label: Label3D = null
@@ -186,6 +187,28 @@ func _build_wolf() -> void:
 	wolf.name = "Wolf"
 	wolf.position = Vector3(0.0, 0.0, -1.5)
 	add_child(wolf)
+	# v0.9.1: CraftPix wolf (royalty-free, no attribution required) replaces
+	# the primitive stack. FBX faces -X; turned toward the moon (-Z). The howl
+	# head-tilt becomes a whole-body rear-back tilt on a pivot at body height.
+	var wmodel := ModelLib.spawn("res://assets/models/hw_werewolf_howl/wolf.fbx", wolf, Vector3.ZERO)
+	if wmodel != null:
+		var pivot := Node3D.new()
+		pivot.name = "HowlPivot"
+		pivot.position = Vector3(0.0, 0.55, 0.0)
+		wolf.add_child(pivot)
+		wolf.remove_child(wmodel)
+		pivot.add_child(wmodel)
+		wmodel.position = Vector3(0.0, -0.55, 0.0)
+		wmodel.rotation.y = -PI * 0.5
+		wmodel.scale = Vector3.ONE * 0.8
+		wolf_tilt = pivot
+	else:
+		_build_primitive_wolf(wolf)
+	_build_charge_ring()
+
+
+## v0.9.1 fallback: the original procedural wolf when the staged FBX is missing.
+func _build_primitive_wolf(wolf: Node3D) -> void:
 	var fur := _mat(Color(0.22, 0.22, 0.28))
 	# Body.
 	var body := MeshInstance3D.new()
@@ -238,7 +261,10 @@ func _build_wolf() -> void:
 	tail.rotation_degrees = Vector3(-60.0, 0.0, 0.0)
 	tail.material_override = fur
 	wolf.add_child(tail)
-	# Charge ring (grows while charging).
+
+
+## Charge ring (grows while charging) — shared by the model and fallback wolf.
+func _build_charge_ring() -> void:
 	charge_mat = GraphicsPolish.glow(Color(0.6, 0.8, 1.0), 1.6)
 	charge_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
@@ -306,7 +332,10 @@ func _process(delta: float) -> void:
 	_step_villagers(delta)
 	_step_blasts(delta)
 	# Wolf head tilts up while charging; charge ring pulses.
-	if wolf_head != null:
+	# v0.9.1: the CraftPix wolf rears back on its howl pivot instead.
+	if wolf_tilt != null:
+		wolf_tilt.rotation.x = lerpf(wolf_tilt.rotation.x, 0.38 if charging else 0.0, 6.0 * delta)
+	elif wolf_head != null:
 		wolf_head.rotation.x = lerpf(wolf_head.rotation.x, -0.55 if charging else 0.0, 6.0 * delta)
 	if charge_ring != null:
 		charge_ring.visible = charging

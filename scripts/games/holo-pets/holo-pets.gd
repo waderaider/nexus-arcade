@@ -36,6 +36,11 @@ var body: MeshInstance3D = null
 var ear_l: MeshInstance3D = null
 var ear_r: MeshInstance3D = null
 var body_mat: StandardMaterial3D = null
+# v0.9.1: Quaternius Pug (CC0) replaces the primitive pet. The Pug FBX is
+# 2.66 m tall facing -Z; the pet logic faces +Z, so it gets a half-turn.
+var pet_model: Node3D = null
+var _pet_anim := ""
+const PUG_SCALE := 0.2
 
 # Stats 0..100.
 var hunger := 100.0
@@ -138,6 +143,21 @@ func _build_pet() -> void:
 	pet_root.position = Vector3(0.0, 0.0, -0.5)
 	add_child(pet_root)
 
+	# Real pet: Quaternius animated Pug (CC0). Idle when lounging, Jump when
+	# it hops around. The primitive blob below stays as a fallback.
+	var pug := ModelLib.spawn("res://assets/models/holo-pets/Pug.fbx", pet_root, Vector3.ZERO)
+	if pug != null:
+		pug.rotation.y = PI
+		pug.scale = Vector3.ONE * PUG_SCALE
+		pet_model = pug
+		ArtKit.play_anim(pug, ["idle"], 1.0)
+		_pet_anim = "idle"
+	else:
+		_build_primitive_pet()
+
+
+## v0.9.1 fallback: the original procedural pet when the staged FBX is missing.
+func _build_primitive_pet() -> void:
 	# Body.
 	var bs := SphereMesh.new()
 	bs.radius = 0.25
@@ -363,9 +383,21 @@ func _update_behaviour(delta: float) -> void:
 	# Ear droop: sad when any stat hits 0.
 	var sad := hunger <= 0.0 or happiness <= 0.0 or energy <= 0.0
 	ear_droop = lerpf(ear_droop, 1.0 if sad else 0.0, minf(1.0, 4.0 * delta))
-	ear_l.rotation.z = lerpf(0.15, 0.95, ear_droop)
-	ear_r.rotation.z = lerpf(-0.15, -0.95, ear_droop)
-	body_mat.albedo_color = Color(0.55, 0.85, 1.0).lerp(Color(0.45, 0.55, 0.65), ear_droop)
+	if ear_l != null:
+		ear_l.rotation.z = lerpf(0.15, 0.95, ear_droop)
+	if ear_r != null:
+		ear_r.rotation.z = lerpf(-0.15, -0.95, ear_droop)
+	if body_mat != null:
+		body_mat.albedo_color = Color(0.55, 0.85, 1.0).lerp(Color(0.45, 0.55, 0.65), ear_droop)
+	if pet_model != null:
+		# v0.9.1: the Pug droops its whole body instead of individual ears,
+		# and plays Idle while lounging / Jump while hopping around.
+		var ds := lerpf(1.0, 0.86, ear_droop)
+		pet_model.scale = Vector3.ONE * PUG_SCALE * Vector3(1.0 + (1.0 - ds) * 0.6, ds, 1.0 + (1.0 - ds) * 0.6)
+		var want := "jump" if moving else "idle"
+		if want != _pet_anim:
+			ArtKit.play_anim(pet_model, [want], 1.25 if want == "jump" else 1.0)
+			_pet_anim = want
 
 	# Feed flash on the bowl.
 	if feed_flash_t > 0.0:

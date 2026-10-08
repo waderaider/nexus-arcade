@@ -28,6 +28,13 @@ func _ready() -> void:
 	var vname: String = ProjectSettings.get_setting("application/config/version", "0.1.0")
 	if vname and vname != "":
 		current_version = vname
+	# Derive the version code from the minor component ("0.8.0" -> 8),
+	# matching the version.json convention. Falls back to the default.
+	var parts := current_version.split(".")
+	if parts.size() >= 2:
+		var minor := int(parts[1])
+		if minor > 0:
+			current_version_code = minor
 
 ## Check for updates. Emits check_completed.
 func check_for_updates(url: String = "") -> void:

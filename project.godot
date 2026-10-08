@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="NEXUS ARCADE"
-config/version="0.7.0"
+config/version="0.8.0"
 config/description="NEXUS ARCADE: 95 mixed-reality games, utilities and creative tools for Meta Quest 3 with Check for Updates built in."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
@@ -23,6 +23,7 @@ BugReporter="*res://scripts/shared/bug_reporter.gd"
 VisualFX="*res://scripts/shared/visual_fx.gd"
 AILib="*res://scripts/shared/ai_lib.gd"
 UIKit="*res://scripts/shared/ui_kit.gd"
+AudioKit="*res://scripts/shared/audio_kit.gd"
 
 [display]
 
@@ -41,6 +42,12 @@ environment/defaults/default_clear_color=Color(0, 0, 0, 0)
 [xr]
 
 openxr/enabled=true
+; v0.8.0: pin the Quest action map explicitly. The engine default already
+; points here, but an explicit entry survives engine-default changes.
+; WITHOUT a loaded map, is_button_pressed("trigger_click") /
+; get_float("trigger") / is_button_pressed("menu_button") never resolve on
+; device: lasers render from pose only and clicks never fire (stuck menu).
+openxr/default_action_map="res://openxr_action_map.tres"
 openxr/reference_space=2
 openxr/extensions/hand_tracking=true
 openxr/extensions/hand_interaction_profile=true

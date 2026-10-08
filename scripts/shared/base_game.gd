@@ -31,12 +31,25 @@ var _paused := false
 func _ready() -> void:
 	_apply_visual_defaults()
 	_build_canvas_hud()
+	_start_genre_music()
 	game_ready()
 
 
 ## Override this in your game instead of _ready().
 func game_ready() -> void:
 	pass
+
+
+## v0.8.0 AUDIOKIT: start the music genre mapped to this game's scene.
+func _start_genre_music() -> void:
+	if get_node_or_null("/root/AudioKit") == null:
+		return
+	var path := scene_file_path
+	if path.is_empty() and get_tree().current_scene != null:
+		path = get_tree().current_scene.scene_file_path
+	if path.is_empty():
+		return
+	AudioKit.play_music_for_scene(path.get_file().get_basename())
 
 
 func _apply_visual_defaults() -> void:

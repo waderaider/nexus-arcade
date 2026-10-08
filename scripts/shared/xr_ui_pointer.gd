@@ -9,12 +9,17 @@ class_name XRUIPointer
 ## the source tracker is active.
 ##
 ## Controllers: ray from the XRController3D origin along -Z; click on the
-## trigger press edge (get_float("trigger") > 0.7 or "trigger_click").
-## Hands: XRHandTracker looked up by tracker name; ray from the index-finger
-## proximal joint along -Z; click on thumb-tip/index-tip pinch (< 0.025 m).
-## NOTE: hand-tracker tracker names ("left_hand"/"right_hand") and the
-## joint-space convention are the one assumption that still needs a real
-## Quest 3 check — this has only been verified headless.
+## trigger press edge. Trigger detection is hardened (see trigger_pressed()):
+## the shipped action map types "trigger_click" as boolean and "trigger" as an
+## analog float axis, so all three reads are OR-ed — whichever typing the
+## active map uses, the press registers.
+## Hands: XRHandTracker found by iterating XRServer TRACKER_HAND trackers and
+## matching tracker.hand (XRPositionalTracker.TRACKER_HAND_LEFT/RIGHT). NEVER
+## by tracker name: "left_hand"/"right_hand" also name the CONTROLLER
+## trackers, so XRServer.get_tracker() returns the controller instead and the
+## "is XRHandTracker" check fails -> hands never activate.
+## Gaze: hub.gd drives a camera-center fallback (reticle + dwell) through
+## ray_to_viewport(); this script stays per-source only.
 
 signal xr_clicked(viewport_pos: Vector2)
 signal xr_moved(viewport_pos: Vector2)
@@ -41,6 +46,49 @@ var _was_pressed := false
 var _laser: MeshInstance3D = null
 var _dot: MeshInstance3D = null
 var _find_cooldown := 0.0
+
+
+## Hardened trigger-press test for a controller. Treats the trigger as
+## pressed if ANY of these read true:
+##   1. is_button_pressed("trigger_click") — boolean in the shipped map.
+##   2. get_float("trigger") > TRIGGER_THRESHOLD — "trigger" is an analog
+##      float axis in the shipped map (Godot's default OpenXR map).
+##   3. is_button_pressed("trigger") — covers maps that type "trigger" as a
+##      boolean instead.
+## Returns false immediately when there is no tracker (desktop/headless), so
+## these action reads never run off-device.
+static func trigger_pressed(controller: XRController3D) -> bool:
+	if controller == null or not is_instance_valid(controller):
+		return false
+	# NOTE: XRController3D.get_tracker() returns the configured tracker NAME
+	# (StringName, never null) — not the live tracker. Liveness MUST go
+	# through XRServer.get_tracker(name); a name check here would always pass
+	# and the action reads below would run off-device.
+	if XRServer.get_tracker(controller.tracker) == null:
+		return false
+	if controller.is_button_pressed("trigger_click"):
+		return true
+	if controller.get_float("trigger") > TRIGGER_THRESHOLD:
+		return true
+	return controller.is_button_pressed("trigger")
+
+
+## All live hand trackers, keyed "left"/"right", found by iterating
+## XRServer's TRACKER_HAND trackers and matching tracker.hand. This is the
+## ONLY supported hand lookup: the "left_hand"/"right_hand" tracker names
+## collide with the controller trackers, so a name lookup returns the
+## controller and hands silently never activate.
+static func find_hand_trackers() -> Dictionary:
+	var res := {"left": null, "right": null}
+	var trackers: Dictionary = XRServer.get_trackers(XRServer.TRACKER_HAND)
+	for t in trackers.values():
+		if t is XRHandTracker:
+			var h: int = (t as XRHandTracker).hand
+			if h == XRPositionalTracker.TRACKER_HAND_LEFT:
+				res["left"] = t
+			elif h == XRPositionalTracker.TRACKER_HAND_RIGHT:
+				res["right"] = t
+	return res
 
 
 func setup(p_viewport: SubViewport, p_quad: MeshInstance3D, p_origin: Node3D) -> void:
@@ -121,7 +169,8 @@ func is_source_live() -> bool:
 	if not xr_mode:
 		return false
 	if hand_side == 0:
-		return controller != null and is_instance_valid(controller) and controller.get_tracker() != null
+		return controller != null and is_instance_valid(controller) \
+			and XRServer.get_tracker(controller.tracker) != null
 	return _hand_tracker != null and _hand_tracker.has_tracking_data
 
 
@@ -134,16 +183,16 @@ func _controller_state() -> Dictionary:
 	}
 	if controller == null or not is_instance_valid(controller):
 		return res
-	# No tracker registered (desktop/headless) -> pointer stays hidden.
-	if controller.get_tracker() == null:
+	# No live tracker in XRServer (desktop/headless, or controller not
+	# tracked) -> pointer stays hidden. (controller.get_tracker() only
+	# returns the configured name StringName, so it can't be used here.)
+	if XRServer.get_tracker(controller.tracker) == null:
 		return res
 	res["active"] = true
 	var gt := controller.global_transform
 	res["origin"] = gt.origin
 	res["dir"] = -gt.basis.z.normalized()
-	var pressed: bool = controller.get_float("trigger") > TRIGGER_THRESHOLD \
-		or controller.is_button_pressed("trigger_click")
-	res["pressed"] = pressed
+	res["pressed"] = XRUIPointer.trigger_pressed(controller)
 	return res
 
 
@@ -189,13 +238,10 @@ func _hand_state(delta: float) -> Dictionary:
 
 
 func _lookup_hand_tracker() -> XRHandTracker:
-	var tname := &"left_hand"
-	if hand_side == XRPositionalTracker.TRACKER_HAND_RIGHT:
-		tname = &"right_hand"
-	var t: XRTracker = XRServer.get_tracker(tname)
-	if t is XRHandTracker:
-		return t as XRHandTracker
-	return null
+	var found := XRUIPointer.find_hand_trackers()
+	if hand_side == XRPositionalTracker.TRACKER_HAND_LEFT:
+		return found["left"] as XRHandTracker
+	return found["right"] as XRHandTracker
 
 
 func _set_visuals(laser_on: bool, dot_on: bool) -> void:

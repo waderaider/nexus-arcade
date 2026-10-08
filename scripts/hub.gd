@@ -1,12 +1,23 @@
 ## Hub.gd - NEXUS ARCADE game selection hub.
 ## Category screens: GAMES / UTILITIES / CREATE / THEMES, each paged (25 per page).
 ##
-## v0.7.0: the launcher is a 2D Control panel rendered into a SubViewport and
+## v0.8.0: the launcher is a 2D Control panel rendered into a SubViewport and
 ## shown on a 3D quad in front of the user. Input comes from XR laser pointers
 ## (see scripts/shared/xr_ui_pointer.gd): controller trigger clicks and hand
 ## pinches are raycast against the quad and injected into the SubViewport, so
 ## real 2D Buttons work on Quest 3. Desktop mouse is forwarded the same way
 ## when no XR tracker is live.
+##
+## v0.8.0 input hardening (this file):
+##  - project.godot pins xr/openxr/default_action_map to openxr_action_map.tres
+##    (the engine default already pointed there; now it's explicit);
+##  - trigger detection ORs trigger_click / analog trigger / boolean trigger;
+##  - hand trackers are found via XRServer TRACKER_HAND iteration (name
+##    lookups collide with controller trackers);
+##  - gaze fallback: camera-center reticle, trigger-press or 1.2s dwell
+##    select, auto-hint after 10s with no input;
+##  - live input-status line in the menu footer (never a silent dead menu);
+##  - the panel yaw-aligns to the user's view on every menu open.
 extends Node3D
 class_name NexusHub
 
@@ -124,6 +135,11 @@ const GRID_COLS := 5
 const VP_SIZE := Vector2(1600, 1000)
 const QUAD_SIZE := Vector2(2.4, 1.5)
 const QUAD_POS := Vector3(0, 1.6, -2.0)
+# v0.8.0 input hardening tuning.
+const GAZE_DWELL_TIME := 1.2  # seconds of gaze hover before dwell-select fires
+const GAZE_HINT_DELAY_MSEC := 10000  # no input this long -> show the gaze hint
+const PANEL_DISTANCE := 2.0  # panel recenter distance from the camera (m)
+const STATUS_REFRESH := 0.5  # input-status line refresh interval (s)
 const SETTINGS_PATH := "user://nexus_settings.cfg"
 const ROOM_KIT_PATH := "res://scripts/shared/room_kit.gd"
 const COSTUME_SCENE := "res://scenes/halloween/costume_picker.tscn"
@@ -162,13 +178,43 @@ var _pointers: Array[XRUIPointer] = []
 var _controllers: Array[XRController3D] = []
 var _xr_origin: Node3D = null
 var _menu_prev := {}
+# v0.8.0 input-hardening state.
+var _xr_camera: Camera3D = null
+var _gaze_reticle: MeshInstance3D = null
+var _gaze_reticle_mat: StandardMaterial3D = null
+var _input_status: Label = null
+var _input_hint: Label = null
+var _version_badge: Label = null
+var _menu_open_msec := 0
+var _last_input_msec := 0
+var _hint_shown := false
+var _gaze_hover: Control = null
+var _gaze_dwell := 0.0
+var _status_accum := 0.0
+var _trigger_prev := {}
+var _recenter_timer: Timer = null
 
 
 func _ready() -> void:
 	_build_panel()
 	_build_ui()
 	_build_pointers()
+	_cache_xr_camera()
+	_build_gaze_reticle()
+	_on_menu_open()
 	_setup_updater()
+	# One-shot re-settle: the HMD pose is often still identity during _ready,
+	# so re-align the panel once tracking has had a moment to come up.
+	_recenter_timer = Timer.new()
+	_recenter_timer.name = "RecenterSettle"
+	_recenter_timer.wait_time = 0.75
+	_recenter_timer.one_shot = true
+	_recenter_timer.timeout.connect(_recenter_panel)
+	add_child(_recenter_timer)
+	_recenter_timer.start()
+	# Deferred one frame so Main._ready has initialized OpenXR first (child
+	# _ready runs before the parent's) and trackers are registered.
+	call_deferred("_log_xr_input_inventory")
 	# Crash reporter: offer to send the previous session's log.
 	var crash: Dictionary = BugReporter.prompt_if_crash_pending()
 	if not crash.is_empty():
@@ -177,35 +223,31 @@ func _ready() -> void:
 	# Roomscale-first: walk through room capture on first run.
 	if not _room_setup_done():
 		_show_room_flow()
+	if get_node_or_null("/root/AudioKit") != null: AudioKit.play_music("menu_theme")
+	# Menu experience upgrades (aurora bg, descriptions, favorites, search):
+	# attach by path so a missing file degrades gracefully.
+	if ResourceLoader.exists("res://scripts/hub_extras.gd"):
+		var he = load("res://scripts/hub_extras.gd").new()
+		if he.has_method("attach"):
+			he.attach(self)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var xr := get_viewport().use_xr
 	for p in _pointers:
 		if is_instance_valid(p):
 			p.xr_mode = xr
+	if is_instance_valid(_gaze_reticle) and not xr:
+		_gaze_reticle.visible = false
+	_process_status(delta)
 	if not xr:
 		return
-	# Menu button on either controller returns to the hub from a game.
-	for ctl in _controllers:
-		if ctl == null or not is_instance_valid(ctl):
-			continue
-		var pressed := false
-		if ctl.get_tracker() != null:
-			pressed = ctl.is_button_pressed("menu_button")
-		var was: bool = _menu_prev.get(ctl.get_instance_id(), false)
-		if pressed and not was and _current_game != null:
-			_return_to_hub()
-		_menu_prev[ctl.get_instance_id()] = pressed
+	_poll_controller_buttons()
+	_process_gaze(delta)
+	_process_hint()
 
 
 func _input(event: InputEvent) -> void:
-	# Press H (desktop) or the controller menu button to return to hub.
-	if event is InputEventKey:
-		var k := event as InputEventKey
-		if k.pressed and not k.echo and k.keycode == KEY_H:
-			_return_to_hub()
-		return
 	if _panel_root == null or not _panel_root.visible:
 		return
 	# Desktop fallback: forward the real mouse into the panel viewport, but
@@ -218,6 +260,16 @@ func _input(event: InputEvent) -> void:
 			_forward_desktop_mouse(mb)
 	elif event is InputEventMouseMotion:
 		_forward_desktop_mouse(event as InputEventMouseMotion)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	# H (desktop) returns to the hub. Handled here — AFTER the GUI phase — so
+	# typing "h"/"H" in a text field (e.g. the launcher's search box) types
+	# the letter instead of kicking back to the hub. The controller menu
+	# button is polled separately in _poll_controller_buttons().
+	var k := event as InputEventKey
+	if k != null and k.pressed and not k.echo and k.keycode == KEY_H:
+		_return_to_hub()
 
 
 # ---------------------------------------------------------------- panel ---
@@ -246,7 +298,9 @@ func _build_panel() -> void:
 	_quad.name = "PanelQuad"
 	_quad.mesh = qm
 	_quad.material_override = mat
-	_quad.position = QUAD_POS
+	# Local origin: _recenter_panel() places the whole PanelRoot in world
+	# space (2m in front of the user, yaw-aligned), so the quad rides along.
+	_quad.position = Vector3.ZERO
 	_panel_root.add_child(_quad)
 
 
@@ -276,13 +330,41 @@ func _build_ui() -> void:
 	vbox.add_theme_constant_override("separation", 12)
 	margin.add_child(vbox)
 
+	var header := HBoxContainer.new()
+	header.name = "HeaderRow"
+	header.alignment = BoxContainer.ALIGNMENT_CENTER
+	header.add_theme_constant_override("separation", 28)
+	vbox.add_child(header)
+
 	var title := Label.new()
 	title.name = "TitleLabel"
 	title.text = "NEXUS ARCADE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 64)
 	title.add_theme_color_override("font_color", Color(0, 0.94, 1))
-	vbox.add_child(title)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	header.add_child(title)
+
+	# BIG build badge, top of the menu — readable on the headset at a glance.
+	_version_badge = Label.new()
+	_version_badge.name = "VersionBadge"
+	_version_badge.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.8.0"))
+	_version_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_version_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_version_badge.add_theme_font_size_override("font_size", 40)
+	_version_badge.add_theme_color_override("font_color", Color(1, 1, 1))
+	_version_badge.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_version_badge.add_theme_constant_override("shadow_offset_x", 2)
+	_version_badge.add_theme_constant_override("shadow_offset_y", 2)
+	var badge_bg := StyleBoxFlat.new()
+	badge_bg.bg_color = Color(0.0, 0.5, 0.8)
+	badge_bg.set_corner_radius_all(14)
+	badge_bg.content_margin_left = 22.0
+	badge_bg.content_margin_right = 22.0
+	badge_bg.content_margin_top = 8.0
+	badge_bg.content_margin_bottom = 8.0
+	_version_badge.add_theme_stylebox_override("normal", badge_bg)
+	header.add_child(_version_badge)
 
 	var tab_row := HBoxContainer.new()
 	tab_row.name = "TabRow"
@@ -322,25 +404,35 @@ func _build_ui() -> void:
 	_nav_next.pressed.connect(_on_nav.bind(1))
 	pager.add_child(_nav_next)
 
+	# Check-for-updates gets its own row: large, accent-colored, unmissable.
+	# Behavior is unchanged — it queries version.json and reports inline.
+	var update_row := HBoxContainer.new()
+	update_row.name = "UpdateRow"
+	update_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	update_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(update_row)
+	var update_btn := _make_button("CHECK FOR UPDATES", "UpdateButton", 30, Color(0.0, 0.5, 0.85))
+	update_btn.custom_minimum_size = Vector2(480, 72)
+	update_btn.pressed.connect(_on_update_button)
+	update_row.add_child(update_btn)
+	_update_status = Label.new()
+	_update_status.name = "UpdateStatus"
+	_update_status.add_theme_font_size_override("font_size", 22)
+	_update_status.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	_update_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	update_row.add_child(_update_status)
+
 	var footer := HBoxContainer.new()
 	footer.name = "FooterRow"
 	footer.alignment = BoxContainer.ALIGNMENT_CENTER
 	footer.add_theme_constant_override("separation", 20)
 	vbox.add_child(footer)
-	var update_btn := _make_button("Check for Updates", "UpdateButton", 24, Color(0.15, 0.35, 0.6))
-	update_btn.pressed.connect(_on_update_button)
-	footer.add_child(update_btn)
 	var room_btn := _make_button("Room setup", "RoomButton", 24, Color(0.2, 0.35, 0.25))
 	room_btn.pressed.connect(_show_room_flow)
 	footer.add_child(room_btn)
 	_costumes_button = _make_button("Costumes", "CostumesButton", 24, Color(0.5, 0.2, 0.6))
 	_costumes_button.pressed.connect(_on_costumes_pressed)
 	footer.add_child(_costumes_button)
-	_update_status = Label.new()
-	_update_status.name = "UpdateStatus"
-	_update_status.add_theme_font_size_override("font_size", 22)
-	_update_status.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	footer.add_child(_update_status)
 	_version_label = Label.new()
 	_version_label.name = "VersionLabel"
 	_version_label.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.1.0"))
@@ -355,6 +447,27 @@ func _build_ui() -> void:
 	hint.add_theme_font_size_override("font_size", 20)
 	hint.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
 	vbox.add_child(hint)
+
+	# Shown automatically if no controller/hand input happens within 10s of
+	# the menu opening. Hidden again on the first input event.
+	_input_hint = Label.new()
+	_input_hint.name = "InputHint"
+	_input_hint.text = "Look at a button and pull the trigger"
+	_input_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_input_hint.add_theme_font_size_override("font_size", 28)
+	_input_hint.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	_input_hint.visible = false
+	vbox.add_child(_input_hint)
+
+	# Live input-status line, bottom of the menu. Updated every STATUS_REFRESH
+	# seconds — the menu is never silently dead: this always says SOMETHING.
+	_input_status = Label.new()
+	_input_status.name = "InputStatus"
+	_input_status.text = "XR input: starting..."
+	_input_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_input_status.add_theme_font_size_override("font_size", 20)
+	_input_status.add_theme_color_override("font_color", Color(0.55, 0.78, 0.95))
+	vbox.add_child(_input_status)
 
 	_build_page()
 	_build_changelog_overlay(root)
@@ -483,10 +596,12 @@ func _build_pointers() -> void:
 
 
 func _on_pointer_moved(viewport_pos: Vector2) -> void:
+	_note_input_event()
 	inject_motion(viewport_pos)
 
 
 func _on_pointer_clicked(viewport_pos: Vector2) -> void:
+	_note_input_event()
 	inject_click(viewport_pos)
 
 
@@ -538,6 +653,272 @@ func _forward_desktop_mouse(event: InputEventMouse) -> void:
 	_viewport.push_input(ev2)
 
 
+# -------------------------------------------- v0.8.0 input hardening ---
+
+func _cache_xr_camera() -> void:
+	_xr_camera = null
+	if _xr_origin != null and is_instance_valid(_xr_origin):
+		_xr_camera = _xr_origin.get_node_or_null("XRCamera3D") as Camera3D
+
+
+func _panel_visible() -> bool:
+	return _panel_root != null and is_instance_valid(_panel_root) and _panel_root.visible
+
+
+## Called on every menu open: initial _ready and _return_to_hub. Resets the
+## input-event clock, hides the hint, and yaw-aligns the panel to the user.
+func _on_menu_open() -> void:
+	var now := Time.get_ticks_msec()
+	_menu_open_msec = now
+	_last_input_msec = now
+	_hint_shown = false
+	_gaze_dwell = 0.0
+	_gaze_hover = null
+	if is_instance_valid(_input_hint):
+		_input_hint.visible = false
+	_recenter_panel()
+	BugReporter.add_breadcrumb("menu_open")
+
+
+## Yaw-align the panel so it faces the user's current camera forward
+## direction at ~PANEL_DISTANCE, clamped to a comfortable height and kept out
+## of the floor. Falls back to the fixed QUAD_POS when no camera is found.
+func _recenter_panel() -> void:
+	if _panel_root == null or not is_instance_valid(_panel_root):
+		return
+	var cam := _xr_camera
+	if cam == null or not is_instance_valid(cam):
+		cam = get_viewport().get_camera_3d()
+	if cam == null:
+		_panel_root.position = QUAD_POS
+		_panel_root.rotation = Vector3.ZERO
+		return
+	var cam_pos := cam.global_position
+	var fwd := -cam.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.05:
+		fwd = Vector3(0, 0, -1)
+	fwd = fwd.normalized()
+	var target := cam_pos + fwd * PANEL_DISTANCE
+	# Comfortable reading height; never below the floor.
+	target.y = clampf(cam_pos.y, 1.1, 1.75)
+	_panel_root.global_position = target
+	# Rotate so the quad's +Z faces the user (yaw only, no pitch/roll).
+	var to_user := cam_pos - target
+	to_user.y = 0.0
+	if to_user.length() > 0.05:
+		_panel_root.rotation = Vector3(0.0, atan2(to_user.x, to_user.z), 0.0)
+
+
+## One-line XR input inventory for the crash-log relay: the next stuck-menu
+## report will carry exactly what input the device had.
+func _log_xr_input_inventory() -> void:
+	var use_xr: bool = get_viewport().use_xr
+	var action_map := str(ProjectSettings.get_setting("xr/openxr/default_action_map", ""))
+	var hands := XRUIPointer.find_hand_trackers()
+	var hl := hands["left"] != null and (hands["left"] as XRHandTracker).has_tracking_data
+	var hr := hands["right"] != null and (hands["right"] as XRHandTracker).has_tracking_data
+	BugReporter.log("XR input inventory: use_xr=%s action_map='%s' ctl_L=%s ctl_R=%s hand_L=%s hand_R=%s gaze=%s" % [
+		str(use_xr), action_map,
+		str(_controller_tracked("Left")), str(_controller_tracked("Right")),
+		str(hl), str(hr),
+		"ready" if use_xr else "off",
+	])
+
+
+func _controller_tracked(side_prefix: String) -> bool:
+	for ctl in _controllers:
+		if ctl == null or not is_instance_valid(ctl):
+			continue
+		if not String(ctl.name).begins_with(side_prefix):
+			continue
+		# NOTE: ctl.get_tracker() returns the configured NAME (StringName,
+		# never null) — liveness must be checked against XRServer.
+		if XRServer.get_tracker(ctl.tracker) != null:
+			return true
+	return false
+
+
+## Any real input event restarts the 10s hint clock and hides the hint.
+func _note_input_event() -> void:
+	_last_input_msec = Time.get_ticks_msec()
+	if is_instance_valid(_input_hint) and _input_hint.visible:
+		_input_hint.visible = false
+
+
+## Menu-button polling (was inline in _process) plus trigger edges, which
+## feed the gaze fallback and the input-event clock.
+func _poll_controller_buttons() -> void:
+	var panel_open := _panel_visible()
+	for ctl in _controllers:
+		if ctl == null or not is_instance_valid(ctl):
+			continue
+		# Skip controllers with no live tracker in XRServer. (get_tracker()
+		# returns the configured name StringName, never null — not liveness.)
+		if XRServer.get_tracker(ctl.tracker) == null:
+			continue
+		var id := ctl.get_instance_id()
+		var menu_now: bool = ctl.is_button_pressed("menu_button")
+		if menu_now and not bool(_menu_prev.get(id, false)) and _current_game != null:
+			_return_to_hub()
+		_menu_prev[id] = menu_now
+		var trig_now := XRUIPointer.trigger_pressed(ctl)
+		if trig_now and not bool(_trigger_prev.get(id, false)):
+			_note_input_event()
+			if panel_open:
+				_gaze_trigger_click()
+		_trigger_prev[id] = trig_now
+
+
+# ------------------------------------------------------- gaze fallback ---
+
+func _build_gaze_reticle() -> void:
+	if _xr_camera == null or not is_instance_valid(_xr_camera):
+		return
+	_gaze_reticle_mat = StandardMaterial3D.new()
+	_gaze_reticle_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_gaze_reticle_mat.emission_enabled = true
+	_gaze_reticle_mat.emission = Color(0.6, 0.95, 1.0)
+	_gaze_reticle_mat.emission_energy_multiplier = 2.5
+	_gaze_reticle_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_gaze_reticle_mat.albedo_color = Color(0.6, 0.95, 1.0, 0.9)
+	var sph := SphereMesh.new()
+	sph.radius = 0.008
+	sph.height = 0.016
+	_gaze_reticle = MeshInstance3D.new()
+	_gaze_reticle.name = "GazeReticle"
+	_gaze_reticle.mesh = sph
+	_gaze_reticle.material_override = _gaze_reticle_mat
+	# Pinned to the center of the view, just in front of the recentered panel.
+	_gaze_reticle.position = Vector3(0, 0, -(PANEL_DISTANCE - 0.4))
+	_gaze_reticle.visible = false
+	_xr_camera.add_child(_gaze_reticle)
+
+
+## The gaze fallback runs only when no controller/hand pointer is live, so it
+## never fights the lasers for hover.
+func _gaze_should_run() -> bool:
+	if not get_viewport().use_xr:
+		return false
+	return not _xr_pointer_live()
+
+
+func _process_gaze(delta: float) -> void:
+	var ret := _gaze_reticle
+	if ret == null or not is_instance_valid(ret):
+		return
+	var active := _gaze_should_run() and _panel_visible()
+	ret.visible = active
+	if not active:
+		_gaze_dwell = 0.0
+		_gaze_hover = null
+		return
+	if _xr_camera == null or not is_instance_valid(_xr_camera) or _quad == null:
+		return
+	var origin := _xr_camera.global_position
+	var dir := -_xr_camera.global_transform.basis.z.normalized()
+	var hit := XRUIPointer.ray_to_viewport(origin, dir, _quad, VP_SIZE)
+	if not bool(hit["hit"]):
+		_update_reticle_feedback(false, 0.0)
+		_gaze_dwell = 0.0
+		_gaze_hover = null
+		return
+	var pos: Vector2 = hit["pos"]
+	inject_motion(pos)
+	var hovered := _viewport.gui_get_hovered_control()
+	var hovering_button := hovered is Button
+	if hovering_button and hovered == _gaze_hover:
+		_gaze_dwell += delta
+		_update_reticle_feedback(true, _gaze_dwell / GAZE_DWELL_TIME)
+		if _gaze_dwell >= GAZE_DWELL_TIME:
+			_gaze_dwell = 0.0
+			_note_input_event()
+			inject_click(pos)
+	else:
+		_gaze_dwell = 0.0
+		_gaze_hover = hovered
+		_update_reticle_feedback(hovering_button, 0.0)
+
+
+## Trigger press while the gaze fallback is active: click whatever the
+## camera-center ray is on.
+func _gaze_trigger_click() -> void:
+	if not _gaze_should_run() or not _panel_visible():
+		return
+	if _xr_camera == null or not is_instance_valid(_xr_camera) or _quad == null:
+		return
+	var hit := XRUIPointer.ray_to_viewport(
+		_xr_camera.global_position,
+		-_xr_camera.global_transform.basis.z.normalized(),
+		_quad, VP_SIZE)
+	if bool(hit["hit"]):
+		inject_click(hit["pos"])
+
+
+func _update_reticle_feedback(hovering: bool, dwell_frac: float) -> void:
+	if _gaze_reticle_mat == null or _gaze_reticle == null:
+		return
+	var f := clampf(dwell_frac, 0.0, 1.0)
+	if hovering:
+		# Cyan -> green as the dwell fills, so "about to click" is readable.
+		_gaze_reticle_mat.emission = Color(0.6, 0.95, 1.0).lerp(Color(0.4, 1.0, 0.5), f)
+	else:
+		_gaze_reticle_mat.emission = Color(0.6, 0.95, 1.0)
+	_gaze_reticle.scale = Vector3.ONE * (1.0 + f * 0.9)
+
+
+# --------------------------------------------- hint + input status line ---
+
+func _process_hint() -> void:
+	if _hint_shown or not _panel_visible():
+		return
+	if not get_viewport().use_xr:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_input_msec >= GAZE_HINT_DELAY_MSEC and is_instance_valid(_input_hint):
+		_hint_shown = true
+		_input_hint.visible = true
+		BugReporter.add_breadcrumb("input_hint_shown")
+
+
+func _process_status(delta: float) -> void:
+	_status_accum += delta
+	if _status_accum < STATUS_REFRESH:
+		return
+	_status_accum = 0.0
+	if is_instance_valid(_input_status):
+		_input_status.text = _input_status_text()
+
+
+func _input_status_text() -> String:
+	var xr := get_viewport().use_xr
+	if not xr:
+		return "XR input: none detected — desktop mouse active"
+	var ctl_l := _controller_tracked("Left")
+	var ctl_r := _controller_tracked("Right")
+	var hands := XRUIPointer.find_hand_trackers()
+	var hl := hands["left"] != null and (hands["left"] as XRHandTracker).has_tracking_data
+	var hr := hands["right"] != null and (hands["right"] as XRHandTracker).has_tracking_data
+	if not ctl_l and not ctl_r and not hl and not hr:
+		return "XR input: none detected — desktop mouse active"
+	var ctl_txt := "none"
+	if ctl_l and ctl_r:
+		ctl_txt = "L+R tracked"
+	elif ctl_l:
+		ctl_txt = "L tracked"
+	elif ctl_r:
+		ctl_txt = "R tracked"
+	var hand_txt := "off"
+	if hl and hr:
+		hand_txt = "L+R"
+	elif hl:
+		hand_txt = "L"
+	elif hr:
+		hand_txt = "R"
+	var gaze_txt := "gaze ready" if _gaze_should_run() else "gaze standby"
+	return "Input: controllers %s · hands %s · %s" % [ctl_txt, hand_txt, gaze_txt]
+
+
 # --------------------------------------------------------- game load ---
 
 func _load_game(scene_path: String, game_name: String) -> void:
@@ -569,6 +950,7 @@ func _return_to_hub() -> void:
 	_current_game = null
 	if is_instance_valid(_panel_root):
 		_panel_root.visible = true
+	_on_menu_open()
 
 
 # ------------------------------------------------------- crash prompt ---

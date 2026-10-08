@@ -48,11 +48,15 @@
 <div class="hero">
   <h1>NEXUS ARCADE</h1>
   <p>75 cutting-edge mixed reality games and utilities for Meta Quest 3, organized into GAMES, UTILITIES, CREATE, and THEMES screens. Your room is the arcade. Hand tracking, spatial anchors, real 3D models, haptics, and PBR graphics throughout.</p>
-  <a href="https://github.com/waderaider/nexus-arcade/releases/download/v0.9.1/NexusArcade-v0.9.1.apk" class="download-btn">Download APK</a>
-  <div class="version">v0.9.1 &bull; 115MB &bull; <a href="https://github.com/waderaider/nexus-arcade/releases" style="color:#00ffff;">All releases</a></div>
+  <a href="https://github.com/waderaider/nexus-arcade/releases/download/v0.9.2/NexusArcade-v0.9.2.apk" class="download-btn">Download APK</a>
+  <div class="version">v0.9.2 &bull; ~120MB &bull; <a href="https://github.com/waderaider/nexus-arcade/releases" style="color:#00ffff;">All releases</a></div>
 </div>
 
 <div class="feature">
+<div class="banner">
+    <h3>&#9196; NEW in v0.9.2: Flip Through Games</h3>
+    <p>The pause menu now has <b>&#9664; Prev</b> and <b>Next &#9654;</b> buttons showing the next game's name — flip through all <b>75 experiences</b> without going back to the launcher grid (wraps around at the ends). Works with controller laser, hand pinch, gaze dwell, and mouse. <b>Fixed:</b> the launcher aurora background shader never compiled under Godot 4 (Godot 3 syntax) — it actually renders now. <b>New permanent system:</b> gameplay telemetry — the app now logs tiny batched gameplay events (game start/end, duration, quit point, pause opens, next/prev usage, input method) to the crash-log relay so play data drives automatic improvements. Gameplay events only, never personal data. <b>Not Quest-tested on real hardware — your headset pass is the validation.</b></p>
+  </div>
 <div class="banner">
     <h3>&#129516; NEW in v0.9.1: The Tidy Version (light cycle)</h3>
     <p>Verification pass: exit-to-launcher now attaches <b>unconditionally</b> on every game launch (a structural fix — no game can silently lose its exit path), and the gray-primitive CI audit is clean on all art-fix games. <b>Art fixes:</b> Holo Aquarium fish are now animated 3D fish, Holo Pets' Wisp is a real animated pug, Wizard Academy has real potion bottles plus grab/pour juice, the Mummy Wrap mummy ships pre-wrapped in bandages, and the Werewolf Howl werewolf is a real wolf model. <b>New:</b> Sky Traffic planes now rumble — engine roar follows each plane's real distance. No boring games found among the touched titles; 75 experiences remain. <b>Not Quest-tested on real hardware — your headset pass is the validation.</b></p>
@@ -156,7 +160,7 @@
 <div class="install">
   <h2>How to Install</h2>
   <div class="step"><h4>1. Enable Developer Mode</h4><p>Meta Horizon app &rarr; Menu &rarr; Devices &rarr; your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
-  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-v0.9.1.apk</code></p></div>
+  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-v0.9.2.apk</code></p></div>
   <div class="step"><h4>3. Launch</h4><p>Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
   <div class="step"><h4>4. Stay updated</h4><p>The in-app <b>Check for Updates</b> button in the hub notifies you when a new version drops.</p></div>
 </div>

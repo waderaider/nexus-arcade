@@ -12,7 +12,8 @@ extends RefCounted
 ##   (1) translucent glowing shell (BoxMesh, padding ~0.06 m, emissive)
 ##   (2) 4-8 themed prop meshes (simple primitives, each < 200 tris)
 ##   (3) one GPUParticles3D system (< 40 particles)
-##   (4) one OmniLight3D (small range, no shadows)
+##   (4) v0.9.0: one OmniLight3D ONLY when a pool slot is free (4-light
+##       global cap across all skins; exhausted pool = emissive-only skin)
 ## Total per skin ~12-16 nodes. Quest-3-performant: no shadows, unshaded
 ## particle quads, cheap materials, tween-driven animation (no _process).
 ##
@@ -249,6 +250,10 @@ static func _dot_texture() -> Texture2D:
 
 
 ## (4) Small-range omni light, shadows always off (Quest perf).
+## v0.9.0: lights are drawn from a 4-light pool (TECH_DEMO_PLAN §6a #3) —
+## whole-room morphs (8 anchors x 1 light) would blow the 6-light budget.
+## _acquire_light_slot() gates add_child(); when the pool is exhausted the
+## skin keeps its emissive shell/particles and skips the light.
 static func _light(color: Color, energy: float = 0.8, range_m: float = 3.0) -> OmniLight3D:
 	var l := OmniLight3D.new()
 	l.name = "SkinLight"
@@ -257,6 +262,36 @@ static func _light(color: Color, energy: float = 0.8, range_m: float = 3.0) -> O
 	l.omni_range = range_m
 	l.shadow_enabled = false
 	return l
+
+
+## Max simultaneous morph-skin omni lights (4 of the 6-light §6 budget;
+## 1 directional + game lights keep the rest).
+const MAX_SKIN_LIGHTS := 4
+static var _light_slots: Array = []  # Array of {owner: Node} while occupied
+
+
+## True when a pool slot was reserved for `owner`. Releases automatically
+## when the owner exits the tree.
+static func _acquire_light_slot(owner: Node) -> bool:
+	_prune_light_slots()
+	if _light_slots.size() >= MAX_SKIN_LIGHTS:
+		return false
+	var slot := {"owner": owner}
+	_light_slots.append(slot)
+	if owner != null and is_instance_valid(owner):
+		owner.tree_exiting.connect(_release_light_slot.bind(slot))
+	return true
+
+
+static func _release_light_slot(slot: Dictionary) -> void:
+	_light_slots.erase(slot)
+
+
+static func _prune_light_slots() -> void:
+	_light_slots = _light_slots.filter(
+		func(s: Dictionary) -> bool:
+			var o = s.get("owner")
+			return o != null and is_instance_valid(o))
 
 
 # ------------------------------------------------------- animation wiring
@@ -376,8 +411,12 @@ static func _build_scifi(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(cyan, 32, s, 0.45, 0.0, 2.2, 0.03)
 	root.add_child(parts)
 	var l := _light(cyan, 0.7, 3.0)
-	l.position = Vector3(0, hy + 0.6, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.6, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "arcane": purple/gold. Orbiting rune stones (octahedron-ish crystals),
@@ -423,8 +462,12 @@ static func _build_arcane(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(purple, 26, s, 0.30, -0.05, 2.8, 0.03)
 	root.add_child(parts)
 	var l := _light(purple, 0.8, 3.0)
-	l.position = Vector3(0, hy + 0.5, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.5, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "lava": orange/red. Emissive crack strips across the shell, ember
@@ -461,8 +504,12 @@ static func _build_lava(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(ember, 36, s, 0.55, 0.05, 2.0, 0.035)
 	root.add_child(parts)
 	var l := _light(Color(1.0, 0.45, 0.12), 1.0, 3.5)
-	l.position = Vector3(0, hy + 0.5, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.5, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "underwater": deep blue/teal. Rising bubbles, swaying seaweed strands,
@@ -503,8 +550,12 @@ static func _build_underwater(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(Color(0.65, 0.90, 1.0), 28, s, 0.40, -0.08, 3.0, 0.04)
 	root.add_child(parts)
 	var l := _light(Color(0.25, 0.60, 0.95), 0.7, 3.0)
-	l.position = Vector3(0, hy + 0.6, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.6, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "haunted": sickly green/gray. Crooked fence posts, bobbing spirit orbs,
@@ -541,10 +592,14 @@ static func _build_haunted(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(Color(0.70, 0.85, 0.65), 24, s, 0.12, 0.0, 4.0, 0.05)
 	root.add_child(parts)
 	var l := _light(Color(0.75, 0.90, 0.65), 0.55, 3.0)
-	l.position = Vector3(0, hy + 0.6, 0)
-	l.set_meta("anim", "flicker")
-	l.set_meta("base_energy", 0.55)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.6, 0)
+		l.set_meta("anim", "flicker")
+		l.set_meta("base_energy", 0.55)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "candy": pink/mint. Lollipops (stick + candy top), squashed gumdrops,
@@ -580,8 +635,12 @@ static func _build_candy(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(Color(1.0, 0.70, 0.85), 32, s, 0.25, -0.15, 2.6, 0.03)
 	root.add_child(parts)
 	var l := _light(Color(1.0, 0.55, 0.70), 0.8, 3.0)
-	l.position = Vector3(0, hy + 0.6, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.6, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "neon": magenta/cyan on a near-black shell. Emissive tube edges along
@@ -624,10 +683,14 @@ static func _build_neon(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(magenta, 30, s, 0.35, 0.0, 1.8, 0.025)
 	root.add_child(parts)
 	var l := _light(magenta, 0.9, 3.5)
-	l.position = Vector3(0, hy + 0.5, 0)
-	l.set_meta("anim", "pulse")
-	l.set_meta("base_energy", 0.9)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.5, 0)
+		l.set_meta("anim", "pulse")
+		l.set_meta("base_energy", 0.9)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+
 
 
 ## "nature": greens/browns. Vines climbing the corners, leaf clusters,
@@ -666,5 +729,9 @@ static func _build_nature(root: Node3D, s: Vector3) -> void:
 	var parts := _particles(Color(0.85, 1.0, 0.45), 24, s, 0.15, 0.0, 3.5, 0.03)
 	root.add_child(parts)
 	var l := _light(Color(0.55, 0.85, 0.45), 0.6, 3.0)
-	l.position = Vector3(0, hy + 0.6, 0)
-	root.add_child(l)
+	if _acquire_light_slot(root):
+		l.position = Vector3(0, hy + 0.6, 0)
+		root.add_child(l)
+	else:
+		l.free()  # light pool exhausted: skin stays emissive-only
+

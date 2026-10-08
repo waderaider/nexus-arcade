@@ -308,3 +308,146 @@ static func ray_to_viewport(
 	res["pos"] = Vector2(u * vp_size.x, v * vp_size.y)
 	res["world"] = world
 	return res
+
+
+# --------------------------------- v0.9.0 gesture vocabulary (grab/throw) ---
+
+## Hand sides for the gesture API (match XRPositionalTracker constants).
+const HAND_LEFT_SIDE := 1   # XRPositionalTracker.TRACKER_HAND_LEFT
+const HAND_RIGHT_SIDE := 2  # XRPositionalTracker.TRACKER_HAND_RIGHT
+
+## Release-velocity tracking: per-hand ring of recent pinch-midpoint samples.
+static var _grab_history: Dictionary = {}   # side -> Array of [time_s, Vector3]
+static var _grab_was_pinch: Dictionary = {}  # side -> bool
+static var _grab_release_vel: Dictionary = {}  # side -> Vector3 (last release)
+static var _grab_held: Dictionary = {}  # side -> Node3D (game-attached)
+static var _grab_just_released: Dictionary = {}  # side -> bool (edge, cleared on read)
+
+const _GRAB_WINDOW := 0.15  # seconds of history used for release velocity
+
+
+## Pinch midpoint of a hand in world space, or null when the hand isn't
+## tracked / not pinching. `origin` = XROrigin3D (auto-found when null).
+static func pinch_point(hand_side: int, origin: Node3D = null) -> Variant:
+	var tr := _hand_tracker_for(hand_side)
+	if tr == null or not tr.has_tracking_data:
+		return null
+	var thumb := tr.get_hand_joint_transform(XRHandTracker.HAND_JOINT_THUMB_TIP)
+	var index := tr.get_hand_joint_transform(XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP)
+	if not _joint_ok(tr, XRHandTracker.HAND_JOINT_THUMB_TIP) \
+			or not _joint_ok(tr, XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP):
+		return null
+	var o := _tracking_to_world(origin)
+	var tw: Vector3 = (o * thumb).origin
+	var iw: Vector3 = (o * index).origin
+	if tw.distance_to(iw) > PINCH_THRESHOLD * 1.6:
+		return null
+	return (tw + iw) * 0.5
+
+
+## Grab state for a hand. Call every frame; the helper tracks pinch history
+## internally. Returns {"active": bool (pinching now),
+## "grab_point": Vector3 (pinch midpoint, world), "held_node": Node3D|null}.
+## Attach a held object with set_held_node(); it follows grab_point while
+## active. On release, throw_release_velocity(hand) gives the fling vector.
+static func grab_state(hand_side: int, origin: Node3D = null) -> Dictionary:
+	var res := {"active": false, "grab_point": Vector3.ZERO, "held_node": null}
+	var pt: Variant = pinch_point(hand_side, origin)
+	var pinching := pt != null
+	var was: bool = bool(_grab_was_pinch.get(hand_side, false))
+	_grab_was_pinch[hand_side] = pinching
+	var now := Time.get_ticks_msec() / 1000.0
+	if pinching:
+		var hist: Array = _grab_history.get(hand_side, [])
+		hist.append([now, pt])
+		while not hist.is_empty() and now - float(hist[0][0]) > _GRAB_WINDOW:
+			hist.pop_front()
+		_grab_history[hand_side] = hist
+		res["active"] = true
+		res["grab_point"] = pt
+		var held = _grab_held.get(hand_side, null)
+		if held != null and is_instance_valid(held):
+			res["held_node"] = held
+			(held as Node3D).global_position = pt
+	elif was:
+		# Just released: compute velocity from the history window.
+		_grab_release_vel[hand_side] = _velocity_from_history(hand_side)
+		_grab_history[hand_side] = []
+		_grab_just_released[hand_side] = true
+	return res
+
+
+## True exactly once after a pinch release (edge-triggered; cleared on read).
+## Use with throw_release_velocity() to detect "just let go".
+static func was_released(hand_side: int) -> bool:
+	var r := bool(_grab_just_released.get(hand_side, false))
+	_grab_just_released[hand_side] = false
+	return r
+
+
+## Hand velocity at the moment of the last pinch release (world m/s).
+## Zero when the hand never grabbed. Kept until the next release.
+static func throw_release_velocity(hand_side: int) -> Vector3:
+	return _grab_release_vel.get(hand_side, Vector3.ZERO)
+
+
+## Attach a node to a hand's grab (it follows grab_point while pinching).
+static func set_held_node(hand_side: int, node: Node3D) -> void:
+	if node == null:
+		_grab_held.erase(hand_side)
+	else:
+		_grab_held[hand_side] = node
+
+
+## Detach without throwing.
+static func release_grab(hand_side: int) -> void:
+	_grab_held.erase(hand_side)
+	_grab_history[hand_side] = []
+	_grab_was_pinch[hand_side] = false
+
+
+## Distance between the two pinch points (world meters) for two-hand
+## scale gestures in CREATE apps. Returns -1.0 unless BOTH hands pinch.
+static func two_hand_pinch_distance(origin: Node3D = null) -> float:
+	var l: Variant = pinch_point(HAND_LEFT_SIDE, origin)
+	var r: Variant = pinch_point(HAND_RIGHT_SIDE, origin)
+	if l == null or r == null:
+		return -1.0
+	return (l as Vector3).distance_to(r as Vector3)
+
+
+static func _velocity_from_history(hand_side: int) -> Vector3:
+	var hist: Array = _grab_history.get(hand_side, [])
+	if hist.size() < 2:
+		return Vector3.ZERO
+	var first: Array = hist[0]
+	var last: Array = hist[hist.size() - 1]
+	var dt := float(last[0]) - float(first[0])
+	if dt < 0.02:
+		return Vector3.ZERO
+	return ((last[1] as Vector3) - (first[1] as Vector3)) / dt
+
+
+static func _hand_tracker_for(hand_side: int) -> XRHandTracker:
+	var found := XRUIPointer.find_hand_trackers()
+	if hand_side == HAND_LEFT_SIDE:
+		return found["left"] as XRHandTracker
+	return found["right"] as XRHandTracker
+
+
+static func _joint_ok(tr: XRHandTracker, joint: int) -> bool:
+	var flags: int = tr.get_hand_joint_flags(joint)
+	var need: int = XRHandTracker.HAND_JOINT_FLAG_POSITION_VALID \
+		| XRHandTracker.HAND_JOINT_FLAG_POSITION_TRACKED
+	return (flags & need) == need
+
+
+static func _tracking_to_world(origin: Node3D) -> Transform3D:
+	if origin != null and is_instance_valid(origin):
+		return origin.global_transform
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and tree.root != null:
+		var found := tree.root.find_children("*", "XROrigin3D", true, false)
+		if not found.is_empty():
+			return (found[0] as Node3D).global_transform
+	return Transform3D.IDENTITY

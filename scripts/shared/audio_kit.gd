@@ -9,9 +9,17 @@ const SFX_DIR := "res://assets/audio/sfx/"
 const MUSIC_DIR := "res://assets/audio/music/"
 const SETTINGS_PATH := "user://nexus_settings.cfg"
 const POOL_SIZE := 8
+const POOL_3D_SIZE := 4  # positional SFX voices (TECH_DEMO_PLAN §6 budget)
 const DUCK_DB := 5.0      # how far the music dips during an SFX burst
 const DUCK_WINDOW := 0.6  # >=3 SFX inside this window counts as a burst
 const DUCK_HOLD := 0.6    # seconds to hold the duck after a burst
+
+## Stinger kinds -> SFX names (play_stinger).
+const STINGERS := {
+	"success": "success", "fail": "fail", "levelup": "fanfare",
+	"boss": "buzzer", "notify": "notify", "unlock": "unlock",
+	"countdown": "countdown", "gameover": "fail",
+}
 
 const SFX_NAMES: Array[String] = [
 	"ui_click", "ui_hover", "ui_back", "success", "fail", "pop", "coin",
@@ -31,16 +39,9 @@ const GENRES: Array[String] = [
 const GENRE_FOR_SCENE := {
 	# -- CAT_GAMES --
 	"golf": "folk", "swarm": "scifi", "duel": "epic",
-	"beat-blades": "chiptune", "portal-ball": "scifi",
-	"laser-tag-ar": "scifi", "gravity-pong": "chiptune",
-	"ar-bowling": "folk", "time-pilot": "scifi", "room-racer": "scifi",
 	"ar-defender": "scifi", "sky-defender": "epic", "drone-racer": "scifi",
-	"tower-topple": "folk", "spell-duel": "epic", "rhythm-boxer": "chiptune",
-	"marble-run": "lofi", "ar-darts": "carnival", "zero-g-hoops": "scifi",
 	"ar-fishing": "underwater", "mirror-maze": "scifi",
-	"gravity-glove": "scifi", "time-freeze": "scifi", "portal-maze": "scifi",
 	"air-drums": "chiptune", "shadow-puppet": "carnival",
-	"holo-chess": "lofi", "starforge": "epic", "holo-dungeon": "horror",
 	"ar-escape-room": "horror", "ar-billiards": "lofi",
 	"holo_chef": "folk", "dragon_ranch": "epic",
 	"wizard_academy": "epic", "holo_farm": "folk", "mech_pilot": "scifi",
@@ -48,32 +49,21 @@ const GENRE_FOR_SCENE := {
 	"sky_pirates": "tropical", "monster_lab": "horror", "myth_zoo": "epic",
 	"qr_hunt": "western",
 	# -- CAT_UTILITIES --
-	"ar-measure": "lofi", "holo-notes": "lofi", "star-map": "scifi",
 	"sky_traffic": "lofi", "eye_spy": "lofi", "plant_doctor": "folk",
-	"ar-workout": "chiptune", "holo-pets": "folk", "mind-palace": "lofi",
-	"ar-dj": "lofi", "familiar": "epic", "couch_morph": "scifi",
+	"mano_magica": "folk",
 	# -- CAT_CREATE --
-	"portal-painter": "lofi", "light-painter": "chiptune",
 	"holo-piano": "lofi", "holo-theremin": "scifi",
 	"graffiti-wall": "chiptune", "ar-karaoke": "carnival",
 	"sand-shaper": "lofi", "clay-shaper": "folk", "sketch_3d": "lofi",
 	"holo-garden": "folk", "zero-g-sandbox": "scifi",
 	"holo-aquarium": "underwater",
 	# -- CAT_THEMES (halloween) --
-	"hw_pumpkin_smash": "horror", "hw_ghost_catch": "horror",
-	"hw_candy_run": "horror", "hw_haunted_maze": "horror",
 	"hw_web_slingshot": "horror", "hw_potion_mix": "horror",
-	"hw_zombie_defense": "horror", "hw_bat_catch": "horror",
-	"hw_door_dash": "horror", "hw_skeleton_dance": "horror",
-	"hw_eyeball_pong": "horror", "hw_broom_flight": "horror",
 	"hw_monster_mash": "horror", "hw_candy_stack": "horror",
 	"hw_mummy_wrap": "horror", "hw_bat_dodge": "horror",
 	"hw_pumpkin_carve": "horror", "hw_portrait_gallery": "horror",
-	"hw_spider_catch": "horror", "hw_werewolf_howl": "horror",
-	"hw_grave_digger": "horror", "hw_hayride_shooter": "horror",
 	"hw_apple_bobbing": "horror", "hw_phantom_piano": "horror",
 	"hw_goblin_archery": "horror", "hw_mirror_maze": "horror",
-	"hw_pumpkin_bowling": "horror", "hw_hat_toss": "horror",
 	"hw_monster_feed": "horror", "hw_midnight_survival": "horror",
 }
 
@@ -85,11 +75,18 @@ var music_enabled := true
 var _sfx: Dictionary = {}
 var _pool: Array[AudioStreamPlayer] = []
 var _pool_idx := 0
+var _pool3d: Array[AudioStreamPlayer3D] = []
+var _pool3d_idx := 0
 var _music: AudioStreamPlayer
 var _current_genre := ""
 var _sfx_times: Array[float] = []
 var _duck_until := 0.0
 var _duck_level := 0.0
+# v0.9.0: per-game SFX registration + intensity layer.
+var _game_sfx: Dictionary = {}  # scene_stem -> {name -> AudioStream}
+var _active_scene := ""
+var _intensity := 0
+var _drive: AudioStreamPlayer = null  # intensity overlay loop (synthesized)
 
 
 func _ready() -> void:
@@ -101,6 +98,13 @@ func _ready() -> void:
 		p.name = "AudioKitSFX%d" % i
 		add_child(p)
 		_pool.append(p)
+	for i in POOL_3D_SIZE:
+		var p3 := AudioStreamPlayer3D.new()
+		p3.name = "AudioKitSFX3D%d" % i
+		p3.max_distance = 12.0
+		p3.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_SQUARE_DISTANCE
+		add_child(p3)
+		_pool3d.append(p3)
 	_load_settings()
 	for n in SFX_NAMES:
 		var path := SFX_DIR + n + ".wav"
@@ -181,6 +185,157 @@ func current_genre() -> String:
 	return _current_genre
 
 
+# --------------------------------------- v0.9.0: per-game SFX + 3D + stingers ---
+
+## Tell AudioKit which game is active (the hub auto-wirer calls this on
+## every launch). Per-game SFX maps resolve against this stem.
+func set_active_scene(scene_stem: String) -> void:
+	_active_scene = scene_stem
+
+
+func active_scene() -> String:
+	return _active_scene
+
+
+## Register per-game SFX: games call this in _ready() with
+## {"hit": "res://.../hit.wav", ...}. Files are loaded once here.
+func register_game_sfx(scene_stem: String, map: Dictionary) -> void:
+	var loaded := {}
+	for sfx_name in map.keys():
+		var path := str(map[sfx_name])
+		if ResourceLoader.exists(path):
+			loaded[str(sfx_name)] = load(path)
+		else:
+			push_warning("AudioKit: game SFX missing " + path)
+	_game_sfx[scene_stem] = loaded
+
+
+## Play a game-registered SFX for the active scene (falls back to the
+## global SFX pool when the name isn't registered for this game).
+func play_game_sfx(sfx_name: String, pitch := 1.0, volume_db := 0.0) -> void:
+	var game_map: Dictionary = _game_sfx.get(_active_scene, {})
+	if game_map.has(sfx_name):
+		_play_stream(game_map[sfx_name], pitch, volume_db)
+		return
+	play_sfx(sfx_name, pitch, volume_db)
+
+
+func _play_stream(stream: AudioStream, pitch: float, volume_db: float) -> void:
+	if not sfx_enabled or stream == null:
+		return
+	var p := _pool[_pool_idx]
+	_pool_idx = (_pool_idx + 1) % POOL_SIZE
+	p.stream = stream
+	p.pitch_scale = pitch
+	p.volume_db = _vol_db(sfx_volume) + volume_db
+	p.play()
+	_note_sfx_burst()
+
+
+## Positional one-shot (splash on your floor, creature behind the couch).
+## Own 4-voice AudioStreamPlayer3D pool (TECH_DEMO_PLAN §6 budget).
+func play_sfx_3d(sfx_name: String, pos: Vector3, pitch := 1.0, volume_db := 0.0) -> void:
+	if not sfx_enabled:
+		return
+	var stream: AudioStream = null
+	var game_map: Dictionary = _game_sfx.get(_active_scene, {})
+	if game_map.has(sfx_name):
+		stream = game_map[sfx_name]
+	elif _sfx.has(sfx_name):
+		stream = _sfx[sfx_name]
+	if stream == null:
+		push_warning("AudioKit: unknown 3D SFX '" + sfx_name + "'")
+		return
+	var p := _pool3d[_pool3d_idx]
+	_pool3d_idx = (_pool3d_idx + 1) % POOL_3D_SIZE
+	p.stream = stream
+	p.pitch_scale = pitch
+	p.volume_db = _vol_db(sfx_volume) + volume_db
+	p.global_position = pos
+	p.play()
+	_note_sfx_burst()
+
+
+## Named one-shots: "success" / "fail" / "levelup" / "boss" / "notify" /
+## "unlock" / "countdown" / "gameover". Checks the active game's registered
+## SFX first, then the built-in stinger map.
+func play_stinger(kind: String, volume_db := 0.0) -> void:
+	var game_map: Dictionary = _game_sfx.get(_active_scene, {})
+	if game_map.has(kind):
+		_play_stream(game_map[kind], 1.0, volume_db)
+		return
+	var sfx_name: String = STINGERS.get(kind, "")
+	if sfx_name == "":
+		push_warning("AudioKit: unknown stinger '" + kind + "'")
+		return
+	play_sfx(sfx_name, 1.0, volume_db)
+
+
+## Music intensity 0-2 (explore -> tense -> combat). Implemented as a
+## synthesized percussive "drive" layer mixed under the current genre loop
+## (zero new audio assets; generated once at runtime, looped).
+func set_intensity(level: int) -> void:
+	_intensity = clampi(level, 0, 2)
+	if _intensity > 0 and _drive == null:
+		_drive = AudioStreamPlayer.new()
+		_drive.name = "AudioKitDrive"
+		_drive.stream = _make_drive_loop()
+		add_child(_drive)
+	if _drive == null:
+		return
+	if _intensity == 0 or not music_enabled:
+		_drive.stop()
+		return
+	if not _drive.playing:
+		_drive.play()
+	# Level 1: low pulse under the music. Level 2: driving.
+	_drive.volume_db = _vol_db(music_volume) + (-16.0 if _intensity == 1 else -9.0)
+
+
+func intensity() -> int:
+	return _intensity
+
+
+## 2-bar 132 BPM percussive drive loop, synthesized (kick + hats + bass
+## pulse). Mono 22050 Hz, seamless loop, ~3.6s / ~160KB in RAM.
+func _make_drive_loop() -> AudioStreamWAV:
+	var rate := 22050
+	var bpm := 132.0
+	var beats := 8.0
+	var n := int(rate * 60.0 / bpm * beats)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var beat_n := int(rate * 60.0 / bpm)
+	for i in range(n):
+		var t := float(i) / float(rate)
+		var v := 0.0
+		var in_beat := i % beat_n
+		var bt := float(in_beat) / float(rate)
+		# Kick on quarters: sine drop 120->40Hz, fast decay.
+		var f := 40.0 + 80.0 * exp(-bt * 30.0)
+		v += 0.65 * sin(TAU * f * bt) * exp(-bt * 9.0)
+		# Hats on 8ths: filtered noise tick.
+		var eighth := beat_n / 2
+		if i % eighth < int(rate * 0.03):
+			var ht := float(i % eighth) / float(rate)
+			v += 0.22 * (randf() * 2.0 - 1.0) * exp(-ht * 90.0)
+		# Bass pulse on off-beats.
+		var half := i % (beat_n * 2)
+		if half >= beat_n and half < beat_n + int(rate * 0.18):
+			var ot := float(half - beat_n) / float(rate)
+			v += 0.30 * sin(TAU * 55.0 * ot) * exp(-ot * 12.0)
+		data.encode_s16(i * 2, int(clampf(v, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = rate
+	wav.stereo = false
+	wav.data = data
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = n
+	return wav
+
+
 # -- volume API (persisted; wire these to the settings row) --
 func set_sfx_volume(v: float) -> void:
 	sfx_volume = clampf(v, 0.0, 1.0)
@@ -203,9 +358,12 @@ func set_music_enabled(b: bool) -> void:
 	music_enabled = b
 	if not b:
 		_music.stop()
+		if _drive != null:
+			_drive.stop()
 	elif _music.stream != null:
 		_music.volume_db = _vol_db(music_volume)
 		_music.play()
+		set_intensity(_intensity)  # re-apply the drive layer
 	_save_settings()
 
 

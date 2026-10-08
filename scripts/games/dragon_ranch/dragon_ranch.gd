@@ -60,6 +60,10 @@ var train_orb: MeshInstance3D = null
 var state := "idle"
 var state_t := 0.0
 var fly_tween: Tween = null
+# v0.9.0: Quaternius animated Dragon.fbx hero (Adult stage), flap shaping state.
+var dragon_hero: Node3D = null
+var _flap_lag := 0.0
+var _prev_yaw := 0.0
 # Stats.
 var dragon_name := "Ember"
 var stage_idx := 0
@@ -122,6 +126,13 @@ func _ready() -> void:
 	_set_msg("Welcome back to the ranch!", 2.5)
 	GraphicsPolish.spawn_ambient_motes(self, nest_center + Vector3(0, 0.8, 0), 2.2, 36)
 	_apply_room_layout() # v0.7.0: perch on furniture, feeding station on a table (no-op w/o room data).
+	# v0.9.0: per-game SFX map (AudioKit contract) + explore intensity.
+	ArtKit.register_game_sfx(self, {
+		"munch": "pop", "feed_yum": "heal", "throw": "whoosh", "fetch": "success",
+		"trick": "fanfare", "fire": "explosion", "land": "thud", "grow": "powerup",
+		"pet": "sparkle", "ring": "coin",
+	})
+	ArtKit.set_intensity(self, 0)
 
 
 func _ensure_camera() -> void:
@@ -415,10 +426,17 @@ func _build_dragon() -> void:
 	# Wings.
 	wing_r = _build_wing(1.0)
 	wing_l = _build_wing(-1.0)
-	# Fire breath emitter at the mouth.
+	# v0.9.0: Quaternius animated Dragon.fbx hero for the Adult stage (CC0).
+	# Ember's hand-built body stays for Baby/Juvenile; the hero model is the
+	# growth reward. Anims: Dragon_Flying / Dragon_Attack / Dragon_Hit / Death.
+	dragon_hero = ArtKit.spawn_model(MODEL_DIR + "Dragon.fbx", dragon, Vector3(0, 0.02, 0), 0.24)
+	if dragon_hero != null:
+		dragon_hero.visible = false
+		dragon_hero.rotation.y = PI # FBX faces -Z; Ember faces +Z.
+	# Fire breath emitter at the mouth (child of dragon so stage swaps don't hide it).
 	mouth = Node3D.new()
 	mouth.position = Vector3(0, 0.42, 0.36)
-	body_node.add_child(mouth)
+	dragon.add_child(mouth)
 	fire = GPUParticles3D.new()
 	fire.amount = 64
 	fire.lifetime = 0.7
@@ -505,6 +523,19 @@ func _apply_stage(announce: bool) -> void:
 	wing_mat.albedo_color = st["wing"]
 	wing_mat.emission = st["wing"]
 	var target := Vector3.ONE * float(st["scale"])
+	var adult := stage_idx >= 2 and dragon_hero != null
+	# v0.9.0: Adult stage swaps the hand-built body for the animated hero.
+	if dragon_hero != null:
+		dragon_hero.visible = adult
+		body_node.visible = not adult
+		wing_l.visible = not adult
+		wing_r.visible = not adult
+		if adult:
+			mouth.position = Vector3(0, 0.95, 1.05)
+			ArtKit.play_anim(dragon_hero, ["flying", "fly", "swim", "idle"], 0.7)
+		else:
+			mouth.position = Vector3(0, 0.42, 0.36)
+			ArtKit.stop_anim(dragon_hero)
 	if announce:
 		var tw := create_tween()
 		tw.tween_property(dragon, "scale", target * 1.12, 0.35).set_trans(Tween.TRANS_BACK)
@@ -512,6 +543,9 @@ func _apply_stage(announce: bool) -> void:
 		GraphicsPolish.spawn_confetti(self, ranch.to_global(dragon.position) + Vector3(0, 0.6, 0), 60)
 		_set_msg("%s grew into a %s!" % [dragon_name, st["name"]], 3.0)
 		Haptics.thump()
+		ArtKit.game_sfx(self, "grow")
+		if adult:
+			ArtKit.combo_popup(self, ranch.to_global(dragon.position) + Vector3(0, 1.2, 0), "TRUE FORM!")
 	else:
 		dragon.scale = target
 
@@ -792,12 +826,20 @@ func _fly_step(t: float, from: Vector3, target: Vector3) -> void:
 		dir.y = 0.0
 		if dir.length() > 0.01:
 			var yaw := atan2(dir.x, dir.z)
+			# v0.9.0: bank into turns — roll proportional to yaw change per step.
+			var yaw_d := wrapf(yaw - _prev_yaw, -PI, PI)
+			_prev_yaw = yaw
+			var roll := clampf(-yaw_d * 9.0, -0.6, 0.6)
+			dragon.rotation.z = lerpf(dragon.rotation.z, roll, 0.12)
 			dragon.rotation.y = lerp_angle(dragon.rotation.y, yaw, 0.2)
 
 
 func _arrive(next: String) -> void:
 	state = next
 	state_t = 0.0
+	# v0.9.0: landing squash + thud when the dragon touches down.
+	ArtKit.squash_stretch(self, dragon)
+	ArtKit.game_sfx(self, "land")
 	_on_arrive()
 
 
@@ -819,6 +861,8 @@ func _feed(i: int) -> void:
 		return
 	Haptics.tick()
 	_set_msg("Yum!", 1.0)
+	ArtKit.game_sfx(self, "feed_yum")
+	ArtKit.scale_pop(self, slot)
 	state = "to_food"
 	var target: Vector3 = slot.position + Vector3(0, 0.05, -0.25)
 	_fly_to(target, 0.9, "eat")
@@ -1012,6 +1056,19 @@ func _do_trick() -> void:
 	tw.tween_property(dragon, "rotation_degrees:y", dragon.rotation_degrees.y + 360.0, 0.9)
 	# Fire breath!
 	_breathe_fire(1.6 if stage_idx < 2 else 2.6)
+	ArtKit.game_sfx(self, "fire")
+	ArtKit.h_sub_bass(self, 0.9)
+	ArtKit.hit_stop(self, 2)
+	# v0.9.0 SIGNATURE ROOM MOVE: the breath scorches YOUR wall — a fading
+	# scorch decal pinned to the real room (PassthroughFX contract).
+	var wall := ArtKit.largest_wall(_room_walls)
+	var wp := ArtKit.wall_point(wall, 0.5, 0.55)
+	if not wp.is_empty():
+		var mouth_w: Vector3 = ranch.to_global(mouth.position)
+		var to_wall: Vector3 = wp["pos"] - mouth_w
+		if to_wall.length() < 6.0:
+			ArtKit.scorch(self, wp["pos"], wp["normal"], 0.55)
+			ArtKit.sfx_3d(self, "fire", wp["pos"])
 	happiness = clampf(happiness + 6.0, 0.0, 100.0)
 	coins += 2
 	_gain_xp(6)
@@ -1124,17 +1181,31 @@ func _dragon_idle_anim(delta: float) -> void:
 		var seg: MeshInstance3D = tail_segs[i]
 		seg.rotation.y = 0.35 * sin(pulse_t * 1.8 + float(i) * 0.7)
 	# Wing flap when flying, gentle sway when perched.
+	# v0.9.0: shaped (not pure sine) — snappy downstroke, soft upstroke —
+	# plus secondary-motion lag so the wings trail the body by a few frames.
 	var flap := 0.0
 	if flying:
-		flap = sin(pulse_t * 11.0) * 0.75
+		var s := sin(pulse_t * 11.0)
+		flap = signf(s) * pow(abs(s), 0.65) * 0.78
 	elif state == "sleep":
 		flap = -0.85
 	else:
 		flap = -0.45 + 0.10 * sin(pulse_t * 1.5)
+	_flap_lag = lerpf(_flap_lag, flap, 1.0 - exp(-delta * 9.0))
 	if wing_r != null:
-		wing_r.rotation.z = -0.35 - flap * 0.9
+		wing_r.rotation.z = -0.35 - _flap_lag * 0.9
 	if wing_l != null:
-		wing_l.rotation.z = 0.35 + flap * 0.9
+		wing_l.rotation.z = 0.35 + _flap_lag * 0.9
+	# v0.9.0: hero dragon animation state follows the action.
+	if dragon_hero != null and dragon_hero.visible:
+		if state == "trick":
+			ArtKit.play_anim(dragon_hero, ["attack"], 1.2)
+		elif flying:
+			ArtKit.play_anim(dragon_hero, ["flying", "fly"], 1.0)
+		elif state == "eat":
+			ArtKit.play_anim(dragon_hero, ["attack", "hit"], 0.8)
+		else:
+			ArtKit.play_anim(dragon_hero, ["flying", "fly"], 0.45)
 	# Blink.
 	blink_t -= delta
 	if blink_t <= 0.0:

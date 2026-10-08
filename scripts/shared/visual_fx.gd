@@ -180,6 +180,10 @@ func _col3(c: Color) -> String:
 	return "%.3f, %.3f, %.3f" % [c.r, c.g, c.b]
 
 
+static func _col3s(c: Color) -> String:
+	return "%.3f, %.3f, %.3f" % [c.r, c.g, c.b]
+
+
 ## (j) Emissive pulse accent on a node: duplicates materials (never mutates
 ## shared ones), enables emission, and loops a gentle energy pulse via tween.
 func glow_accent(node: Node3D, color: Color = Color(0.4, 0.9, 1.0), base: float = 1.2, amp: float = 0.8, speed: float = 2.0) -> void:
@@ -206,3 +210,89 @@ func glow_accent(node: Node3D, color: Color = Color(0.4, 0.9, 1.0), base: float 
 			var half := 1.0 / maxf(speed, 0.1)
 			tw.tween_property(smat, "emission_energy_multiplier", base + amp, half).set_trans(Tween.TRANS_SINE)
 			tw.tween_property(smat, "emission_energy_multiplier", base, half).set_trans(Tween.TRANS_SINE)
+
+
+# ------------- v0.9.0: environment-depth occlusion (AI_API_ROADMAP #1) ---
+
+## Global shader uniform the vendor plugin registers when
+## openxr/extensions/meta/environment_depth=true (project.godot).
+const DEPTH_UNIFORM := "META_ENVIRONMENT_DEPTH_TEXTURE"
+const XR_SETTINGS_PATH := "user://nexus_settings.cfg"
+
+## Settings toggle, default ON. Gameplay objects only (never the whole
+## scene — real perf cost on the mobile GPU).
+static var _depth_occlusion := -1  # -1 = not loaded yet
+
+
+static func is_depth_occlusion_enabled() -> bool:
+	if _depth_occlusion < 0:
+		var cfg := ConfigFile.new()
+		if cfg.load(XR_SETTINGS_PATH) == OK:
+			_depth_occlusion = 1 if bool(cfg.get_value("xr", "depth_occlusion", true)) else 0
+		else:
+			_depth_occlusion = 1
+	return _depth_occlusion == 1
+
+
+static func set_depth_occlusion_enabled(b: bool) -> void:
+	_depth_occlusion = 1 if b else 0
+	var cfg := ConfigFile.new()
+	cfg.load(XR_SETTINGS_PATH)  # keep other sections intact
+	cfg.set_value("xr", "depth_occlusion", b)
+	cfg.save(XR_SETTINGS_PATH)
+
+
+## Occluder material for gameplay objects: fragments BEHIND real-world
+## geometry (sampled from the environment-depth texture) are discarded, so
+## virtual props correctly hide behind your real couch/walls/hands.
+##
+## Apply to gameplay-critical objects only (tagged meta "occlude", via
+## depth_occlusion_pass). Replaces the object's material — prefer on simple
+## gameplay props, not hero art.
+## NOTE: sampler layout + depth encoding MUST be tuned on Quest 3 hardware;
+## this is the documented hook, not a verified-final shader.
+static func depth_occluder(albedo: Color = Color(0.75, 0.78, 0.82)) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode diffuse_lambert, specular_disabled;
+uniform vec4 albedo_color : source_color = vec4(%s);
+uniform sampler2DArray %s;
+uniform float occlusion_enabled = 1.0;
+void fragment() {
+	if (occlusion_enabled > 0.5) {
+		// Layer 0 of the depth array; red channel carries real-world depth.
+		// Discard virtual fragments that sit behind real geometry.
+		float real_depth = texture(%s, vec3(SCREEN_UV, 0.0)).r;
+		float virtual_depth = length(VIEW);
+		if (real_depth > 0.0001 && real_depth < virtual_depth) {
+			discard;
+		}
+	}
+	ALBEDO = albedo_color.rgb;
+	ROUGHNESS = 0.6;
+}
+""" % [_col3s(albedo), DEPTH_UNIFORM, DEPTH_UNIFORM]
+	var sm := ShaderMaterial.new()
+	sm.shader = sh
+	sm.set_shader_parameter("occlusion_enabled", 1.0 if is_depth_occlusion_enabled() else 0.0)
+	return sm
+
+
+## Walk `root`; children with meta "occlude"=true get the depth_occluder
+## material. Gameplay objects only — the perf budget forbids whole-scene use.
+## Returns the number of meshes converted.
+static func depth_occlusion_pass(root: Node) -> int:
+	if root == null or not is_instance_valid(root):
+		return 0
+	var count := 0
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi.has_meta("occlude") and bool(mi.get_meta("occlude")):
+			var base := Color(0.75, 0.78, 0.82)
+			var m := mi.material_override as StandardMaterial3D
+			if m != null:
+				base = m.albedo_color
+			mi.material_override = depth_occluder(base)
+			count += 1
+	return count

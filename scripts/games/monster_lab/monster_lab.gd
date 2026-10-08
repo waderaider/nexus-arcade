@@ -1,5 +1,5 @@
 ## Monster Lab: Frankenstein-style monster workshop.
-## ASSEMBLE — drag body parts (heads/torsos/arms/legs/wings, 4 options each)
+## ASSEMBLE — drag kit body parts (heads/torsos/arms/legs/eyes/back/horns)
 ## from the shelves onto the slab sockets. ANIMATE — pull the lab lever timed
 ## to the charge-meter peak for maximum lightning power. TRAIN — three
 ## mini-games (smash targets = strength, fly rings = agility, match symbols =
@@ -11,27 +11,44 @@ extends Node3D
 
 const SAVE_PATH := "user://nexus_monster.cfg"
 const MODEL_DIR := "res://assets/models/monster_lab/"
-const CATS := ["head", "torso", "arms", "legs", "wings"]
+const CATS := ["head", "torso", "arms", "legs", "eyes", "back", "horns"]
 const CAT_NAMES := {
 	"head": "HEADS", "torso": "TORSOS", "arms": "ARMS",
-	"legs": "LEGS", "wings": "WINGS",
+	"legs": "LEGS", "eyes": "EYES", "back": "BACK", "horns": "HORNS",
 }
 const OPT_NAMES := {
-	"head": ["Robot", "Beast", "Skull", "Cyclops"],
-	"torso": ["Boiler", "Ribcage", "Reactor", "Barrel"],
-	"arms": ["Claws", "Pistons", "Tentacles", "Blades"],
-	"legs": ["Stompers", "Springs", "Wheels", "Spider"],
-	"wings": ["Bat", "Feather", "Rotor", "Jetpack"],
+	"head": ["Skull", "Horned", "Cyclops", "Blob"],
+	"torso": ["Bulky", "Slim", "Round", "Titan"],
+	"arms": ["Claws", "Tentacles"],
+	"legs": ["Digitigrade", "Stubby"],
+	"eyes": ["Round", "Angry", "Multi"],
+	"back": ["Bat Wings", "Back Fins"],
+	"horns": ["Curved", "Straight", "Twisted", "Spikes"],
 }
+## v0.9.0: in-house Blender 17-part modular monster kit (MODEL_DIR).
+## Socket spec: monster-parts/PARTS.md. Godot mapping of Blender coords:
+## (bx, by, bz) -> (bx, bz, -by): up +Y, face-forward -Z.
+const KIT_HEADS := ["head_skull.glb", "head_horned.glb", "head_cyclops.glb", "head_blob.glb"]
+const KIT_TORSOS := ["torso_bulky.glb", "torso_slim.glb", "torso_round.glb", "torso_bulky.glb"]
+const KIT_TORSO_H := [0.95, 1.0, 0.85, 1.12] # Titan = bulky scaled 1.18
+const KIT_TORSO_BACK_D := [0.29, 0.16, 0.33, 0.34]
+const KIT_ARMS := ["limbs_arm_claw.glb", "limbs_arm_tentacle.glb"]
+const KIT_LEGS := ["limbs_leg_digitigrade.glb", "limbs_leg_stubby.glb"]
+const KIT_EYES := ["eyes_round.glb", "eyes_angry.glb", "eyes_multi.glb"]
+const KIT_BACK := ["attach_batwings.glb", "attach_backfins.glb"]
+const KIT_HORNS := ["HornCurved", "HornStraight", "HornTwisted", "SpikeCluster"]
+const KIT_HORN_OFFX := [0.0, 0.25, 0.5, -0.41] # sub-part x offsets in pack file
 const MONSTER_NAMES := ["VOLTZ", "GRIMM", "SPARK", "BOLTZ", "ZAPPER", "TESLA",
 	"FRANK", "WATTY", "AMPER", "COILY", "SURGE", "JUICE"]
-# Socket positions on the slab (monster lies flat, head away from player).
+# Socket positions on the slab (parts lie flat for assembly, head away from player).
 const SOCKETS := {
 	"head": Vector3(0.0, 1.16, -2.02),
 	"torso": Vector3(0.0, 1.10, -1.55),
-	"arms": Vector3(0.0, 1.10, -1.55),
-	"legs": Vector3(0.0, 1.06, -1.05),
-	"wings": Vector3(0.0, 1.24, -1.55),
+	"arms": Vector3(-0.55, 1.10, -1.55),
+	"legs": Vector3(0.55, 1.06, -1.05),
+	"eyes": Vector3(0.0, 1.38, -2.02),
+	"back": Vector3(0.0, 1.32, -1.28),
+	"horns": Vector3(0.48, 1.38, -2.02),
 }
 const CHARGE_SPEED := 85.0
 const MAX_MONSTERS := 3
@@ -52,6 +69,7 @@ var xr_held := false
 var xr_prev_pinch := false
 
 var monster_root: Node3D = null
+var alive_monster: Node3D = null # v0.9.0: hierarchical kit monster (strike assembly)
 var snapped := {} # cat -> Node3D
 var socket_rings := {}
 var build_parts: Array = [] # chosen option idx per CATS order
@@ -123,6 +141,18 @@ var _tank_roots: Array = []
 
 func _ready() -> void:
 	rng.randomize()
+	# v0.9.0: per-game SFX map (systems-agent AudioKit contract; guarded).
+	ArtKit.game_sfx_map(self, {
+		"snap": "pop",
+		"lever": "thud",
+		"strike": "explosion",
+		"alive": "powerup",
+		"smash": "hit",
+		"ring": "whoosh",
+		"match": "sparkle",
+		"save": "success",
+	})
+	ArtKit.set_intensity(self, 2)
 	ARUpgradeKit.apply_anchor(self, "monster_lab_main")
 	_ensure_camera()
 	_ensure_environment()
@@ -387,9 +417,9 @@ func _build_slab() -> void:
 
 
 func _build_shelves() -> void:
-	# Two shelf units flanking the slab; 20 parts total on display.
-	_add_shelf_unit(Vector3(-1.85, 0, -1.5), ["head", "torso"])
-	_add_shelf_unit(Vector3(1.85, 0, -1.5), ["arms", "legs", "wings"])
+	# v0.9.0: three shelf units flanking the slab; 21 kit parts on display.
+	_add_shelf_unit(Vector3(-1.95, 0, -1.5), ["head", "torso", "eyes"])
+	_add_shelf_unit(Vector3(1.95, 0, -1.5), ["arms", "legs", "back", "horns"])
 
 
 func _add_shelf_unit(base: Vector3, cats: Array) -> void:
@@ -398,17 +428,21 @@ func _add_shelf_unit(base: Vector3, cats: Array) -> void:
 	add_child(unit)
 	shelf_units.append(unit)
 	var wood := GraphicsPolish.pbr_preset(Color(0.3, 0.2, 0.12), "matte")
+	# v0.9.0: unit height adapts to the tallest category stack.
+	var top := 0.75 + float(cats.size() - 1) * 0.68 + 0.45
 	for sx in [-0.75, 0.75]:
-		unit.add_child(_box(0.08, 2.3, 0.5, _darkmetal(), Vector3(sx, 1.15, 0)))
+		unit.add_child(_box(0.08, top, 0.5, _darkmetal(), Vector3(sx, top * 0.5, 0)))
 	for i in cats.size():
 		var cat: String = cats[i]
-		var by := 0.75 + float(i) * 0.72
+		var n_opts: int = (OPT_NAMES[cat] as Array).size()
+		var by := 0.75 + float(i) * 0.68
 		unit.add_child(_box(1.6, 0.06, 0.5, wood, Vector3(0, by, 0)))
-		var tag := _lbl(CAT_NAMES[cat], 40, Color(1.0, 0.85, 0.4), Vector3(0, by + 0.32, 0.1), 0.0035)
+		var tag := _lbl(CAT_NAMES[cat], 40, Color(1.0, 0.85, 0.4), Vector3(0, by + 0.30, 0.1), 0.0035)
 		unit.add_child(tag)
-		for o in 4:
+		for o in n_opts:
 			var part := _build_part(cat, o)
-			part.position = base + Vector3(-0.57 + float(o) * 0.38, by + 0.03, 0)
+			# Center options under the shelf regardless of count.
+			part.position = base + Vector3((float(o) - float(n_opts - 1) * 0.5) * 0.38, by + 0.03, 0)
 			part.set_meta("category", cat)
 			part.set_meta("option", o)
 			part.set_meta("home", part.position)
@@ -620,380 +654,139 @@ func _build_lever() -> void:
 
 
 # ------------------------------------------------------------ part models ---
-# Chunky Kenney-style monster parts: layered primitives, bolts, glowing seams.
+# v0.9.0: kit part builders — in-house Blender 17-part modular monster kit.
+# Per-vertex colors, <8k tris each. Shelf-scale variants for display.
+
+## Instance a kit GLB; null-safe (missing file -> null, caller falls back).
+func _kit(fname: String) -> Node3D:
+	var path: String = MODEL_DIR + fname
+	if not ResourceLoader.exists(path):
+		push_warning("[monster_lab] missing kit part: " + path)
+		return null
+	var ps := load(path) as PackedScene
+	if ps == null or not ps.can_instantiate():
+		return null
+	return ps.instantiate() as Node3D
+
+
+## Show only the named child of a kit node (used for horn options / limb sides).
+func _kit_only(node: Node3D, keep_substr: String) -> void:
+	for c in node.get_children():
+		var cn := c as Node
+		if cn != null and not str(cn.name).contains(keep_substr):
+			cn.queue_free()
+
 
 func _build_part(cat: String, opt: int) -> Node3D:
+	var p: Node3D = null
 	match cat:
 		"head":
-			return [_build_head_robot(), _build_head_beast(), _build_head_skull(), _build_head_cyclops()][opt]
+			p = _kit(KIT_HEADS[clampi(opt, 0, 3)])
+			if p != null:
+				p.scale = Vector3.ONE * 0.85
 		"torso":
-			return [_build_torso_boiler(), _build_torso_ribcage(), _build_torso_reactor(), _build_torso_barrel()][opt]
+			p = _kit(KIT_TORSOS[clampi(opt, 0, 3)])
+			if p != null:
+				p.scale = Vector3.ONE * (0.55 if opt < 3 else 0.55 * 1.18)
 		"arms":
-			return [_build_arms_claws(), _build_arms_pistons(), _build_arms_tentacles(), _build_arms_blades()][opt]
+			p = _kit(KIT_ARMS[clampi(opt, 0, 1)])
+			if p != null:
+				p.scale = Vector3.ONE * 0.9
 		"legs":
-			return [_build_legs_stompers(), _build_legs_springs(), _build_legs_wheels(), _build_legs_spider()][opt]
-		"wings":
-			return [_build_wings_bat(), _build_wings_feather(), _build_wings_rotor(), _build_wings_jetpack()][opt]
-	return Node3D.new()
-
-
-func _eyes(parent: Node3D, color: Color, y: float, spread: float, r: float = 0.028) -> void:
-	var mat := GraphicsPolish.glow(color, 2.2)
-	for sx in [-1.0, 1.0]:
-		parent.add_child(_sph(r, mat, Vector3(spread * sx, y, 0.085)))
-
-
-func _bolts(parent: Node3D, w: float, y: float) -> void:
-	for sx in [-1.0, 1.0]:
-		parent.add_child(_cyl(0.02, 0.02, 0.06, _darkmetal(), Vector3(w * sx, y, 0)))
-		var n := _sph(0.028, _steel(), Vector3((w + 0.03) * sx, y, 0))
-		parent.get_child(parent.get_child_count() - 1).rotation_degrees.z = 90.0
-		parent.add_child(n)
-
-
-func _build_head_robot() -> Node3D:
-	var p := Node3D.new()
-	p.add_child(_box(0.2, 0.22, 0.2, _steel()))
-	p.add_child(_box(0.22, 0.06, 0.22, _darkmetal(), Vector3(0, 0.12, 0)))
-	p.add_child(_box(0.16, 0.07, 0.02, _darkmetal(), Vector3(0, -0.075, 0.1)))
-	_eyes(p, Color(0.3, 1.0, 1.0), 0.02, 0.05)
-	p.add_child(_cyl(0.012, 0.012, 0.14, _copper(), Vector3(0.06, 0.2, 0)))
-	p.add_child(_sph(0.025, GraphicsPolish.glow(Color(1.0, 0.3, 0.2), 2.0), Vector3(0.06, 0.28, 0)))
-	_bolts(p, 0.11, -0.02)
+			p = _kit(KIT_LEGS[clampi(opt, 0, 1)])
+			if p != null:
+				p.scale = Vector3.ONE * 0.9
+		"eyes":
+			p = _kit(KIT_EYES[clampi(opt, 0, 2)])
+			if p != null:
+				p.scale = Vector3.ONE * 0.9
+		"back":
+			p = _kit(KIT_BACK[clampi(opt, 0, 1)])
+			if p != null:
+				p.scale = Vector3.ONE * 0.8
+		"horns":
+			p = _kit("pack_horns_spikes.glb")
+			if p != null:
+				var keep: String = KIT_HORNS[clampi(opt, 0, 3)]
+				_kit_only(p, keep)
+				for c in p.get_children():
+					# queue_free() is deferred: only recenter the KEPT child.
+					if str((c as Node).name).contains(keep):
+						(c as Node3D).position.x -= KIT_HORN_OFFX[clampi(opt, 0, 3)]
+				p.scale = Vector3.ONE * 1.1
+	if p == null:
+		p = Node3D.new()
+		p.add_child(_sph(0.12, GraphicsPolish.glow(Color(1.0, 0.3, 0.3), 1.0)))
 	return p
 
 
-func _build_head_beast() -> Node3D:
-	var p := Node3D.new()
-	var skull := _sph(0.11, _skin_green())
-	skull.scale = Vector3(1.0, 0.95, 1.05)
-	p.add_child(skull)
-	p.add_child(_box(0.12, 0.08, 0.12, _skin_green(), Vector3(0, -0.04, 0.1)))
-	_eyes(p, Color(1.0, 0.2, 0.1), 0.03, 0.05)
-	for sx in [-1.0, 1.0]:
-		var horn := _cyl(0.0, 0.035, 0.14, _bone(), Vector3(0.09 * sx, 0.12, -0.02))
-		horn.rotation_degrees.z = -28.0 * sx
-		p.add_child(horn)
-		for tx in [-1.0, 1.0]:
-			p.add_child(_box(0.018, 0.035, 0.018, _bone(), Vector3(0.03 * tx + 0.02 * sx, -0.095, 0.16)))
-	var brow := _box(0.2, 0.04, 0.06, _skin_green(), Vector3(0, 0.075, 0.08))
-	p.add_child(brow)
+## Full-scale kit part for the assembled standing monster (no shelf scaling).
+func _kit_part_full(cat: String, opt: int) -> Node3D:
+	var p := _build_part(cat, opt)
+	# _build_part applies shelf scaling; reset to full scale here.
+	match cat:
+		"head":
+			p.scale = Vector3.ONE
+		"torso":
+			p.scale = Vector3.ONE * (1.0 if opt < 3 else 1.18)
+		"back":
+			p.scale = Vector3.ONE
+		_:
+			p.scale = Vector3.ONE
 	return p
 
 
-func _build_head_skull() -> Node3D:
-	var p := Node3D.new()
-	var cr := _sph(0.105, _bone())
-	cr.scale = Vector3(1.0, 1.05, 1.0)
-	cr.position = Vector3(0, 0.03, 0)
-	p.add_child(cr)
-	p.add_child(_box(0.13, 0.07, 0.1, _bone(), Vector3(0, -0.07, 0.05)))
-	for sx in [-1.0, 1.0]:
-		p.add_child(_sph(0.032, GraphicsPolish.pbr(Color(0.02, 0.02, 0.03), 0.0, 0.9), Vector3(0.045 * sx, 0.03, 0.085)))
-		p.add_child(_sph(0.012, GraphicsPolish.glow(Color(0.7, 1.0, 0.3), 1.6), Vector3(0.045 * sx, 0.03, 0.1)))
-	for tx in [-1.0, 1.0]:
-		p.add_child(_box(0.016, 0.03, 0.016, _bone(), Vector3(0.035 * tx, -0.115, 0.1)))
-	return p
+## Assemble the chosen parts into a hierarchical STANDING monster per the
+## kit socket spec (PARTS.md). Returns the monster root.
+## Godot mapping of Blender coords: (bx, by, bz) -> (bx, bz, -by).
+func _assemble_kit_monster(opts: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = "KitMonster"
+	var torso_opt: int = int(opts.get("torso", 0))
+	var H: float = KIT_TORSO_H[clampi(torso_opt, 0, 3)]
+	var back_d: float = KIT_TORSO_BACK_D[clampi(torso_opt, 0, 3)]
+	# Torso at hip height so the legs reach the ground.
+	var torso := _kit_part_full("torso", torso_opt)
+	var torso_y := 0.55
+	torso.position = Vector3(0, torso_y, 0)
+	root.add_child(torso)
+	# Head on the neck socket; eyes share the head origin.
+	var head := _kit_part_full("head", int(opts.get("head", 0)))
+	head.position = Vector3(0, torso_y + H, 0)
+	root.add_child(head)
+	var eyes := _kit_part_full("eyes", int(opts.get("eyes", 0)))
+	eyes.position = Vector3(0, torso_y + H, 0)
+	root.add_child(eyes)
+	# Horns on the crown of the head.
+	var horns := _kit_part_full("horns", int(opts.get("horns", 0)))
+	horns.position = Vector3(0, torso_y + H + 0.34, -0.02)
+	root.add_child(horns)
+	# Arms: instance the pair set twice, keep one side each.
+	var arm_file: String = KIT_ARMS[clampi(int(opts.get("arms", 0)), 0, 1)]
+	for side in [-1.0, 1.0]:
+		var set_inst := _kit(arm_file)
+		if set_inst == null:
+			continue
+		_kit_only(set_inst, "_L" if side < 0.0 else "_R")
+		set_inst.position = Vector3(0.30 * side, torso_y + H - 0.12, 0)
+		root.add_child(set_inst)
+	# Legs: same pair-split at the hip sockets.
+	var leg_file: String = KIT_LEGS[clampi(int(opts.get("legs", 0)), 0, 1)]
+	for side in [-1.0, 1.0]:
+		var legset := _kit(leg_file)
+		if legset == null:
+			continue
+		_kit_only(legset, "_L" if side < 0.0 else "_R")
+		legset.position = Vector3(0.14 * side, torso_y + 0.05, 0)
+		root.add_child(legset)
+	# Back attachment at the back socket.
+	var back := _kit_part_full("back", int(opts.get("back", 0)))
+	back.position = Vector3(0, torso_y + H - 0.28, back_d)
+	root.add_child(back)
+	# Kit faces -Z; turn to face the player (+Z).
+	root.rotation.y = PI
+	return root
 
-
-func _build_head_cyclops() -> Node3D:
-	var p := Node3D.new()
-	var hd := _sph(0.11, GraphicsPolish.pbr(Color(0.55, 0.4, 0.6), 0.0, 0.55))
-	hd.scale = Vector3(1.0, 1.1, 0.95)
-	p.add_child(hd)
-	p.add_child(_sph(0.055, _bone(), Vector3(0, 0.02, 0.085)))
-	p.add_child(_sph(0.028, GraphicsPolish.glow(Color(0.6, 0.2, 1.0), 2.4), Vector3(0, 0.02, 0.125)))
-	p.add_child(_box(0.2, 0.035, 0.05, GraphicsPolish.pbr(Color(0.4, 0.28, 0.45), 0.0, 0.6), Vector3(0, 0.095, 0.07)))
-	for sx in [-1.0, 1.0]:
-		var spike := _cyl(0.0, 0.02, 0.09, _bone(), Vector3(0.07 * sx, 0.13, -0.03))
-		spike.rotation_degrees.z = -20.0 * sx
-		p.add_child(spike)
-	return p
-
-
-func _build_torso_boiler() -> Node3D:
-	var p := Node3D.new()
-	var body := _cyl(0.16, 0.16, 0.5, _steel())
-	body.rotation_degrees.x = 90.0
-	p.add_child(body)
-	for i in 3:
-		var band := _cyl(0.175, 0.175, 0.05, _copper())
-		band.rotation_degrees.x = 90.0
-		band.position = Vector3(0, 0, -0.16 + float(i) * 0.16)
-		p.add_child(band)
-	p.add_child(_cyl(0.05, 0.05, 0.1, _darkmetal(), Vector3(0, 0.18, 0.1)))
-	var face := _cyl(0.045, 0.045, 0.02, _bone(), Vector3(0, 0.18, 0.16))
-	face.rotation_degrees.x = 90.0
-	p.add_child(face)
-	p.add_child(_cyl(0.008, 0.008, 0.05, GraphicsPolish.glow(Color(1.0, 0.3, 0.2), 2.0), Vector3(0.01, 0.2, 0.16)))
-	for i in 8:
-		var a := TAU * float(i) / 8.0
-		p.add_child(_sph(0.018, _darkmetal(), Vector3(cos(a) * 0.16, sin(a) * 0.16, 0.26)))
-	return p
-
-
-func _build_torso_ribcage() -> Node3D:
-	var p := Node3D.new()
-	var core := _box(0.24, 0.3, 0.42, GraphicsPolish.pbr(Color(0.25, 0.2, 0.22), 0.1, 0.7))
-	p.add_child(core)
-	for i in 4:
-		var rib := MeshInstance3D.new()
-		var tor := TorusMesh.new()
-		tor.inner_radius = 0.02
-		tor.outer_radius = 0.19
-		rib.mesh = tor
-		rib.material_override = _bone()
-		rib.position = Vector3(0, 0.02, -0.15 + float(i) * 0.1)
-		rib.scale = Vector3(1.0, 0.75, 1.0)
-		p.add_child(rib)
-	p.add_child(_cyl(0.045, 0.045, 0.5, _bone(), Vector3(0, 0, 0)))
-	p.add_child(_sph(0.05, GraphicsPolish.glow(Color(0.5, 1.0, 0.4), 1.8), Vector3(0, -0.02, 0)))
-	return p
-
-
-func _build_torso_reactor() -> Node3D:
-	var p := Node3D.new()
-	for sx in [-1.0, 1.0]:
-		for sy in [-1.0, 1.0]:
-			p.add_child(_box(0.06, 0.34, 0.06, _darkmetal(), Vector3(0.13 * sx, 0, 0.19 * sy)))
-	p.add_child(_box(0.32, 0.05, 0.44, _darkmetal(), Vector3(0, 0.19, 0)))
-	p.add_child(_box(0.32, 0.05, 0.44, _darkmetal(), Vector3(0, -0.19, 0)))
-	var core := _sph(0.11, GraphicsPolish.glow(Color(0.3, 0.8, 1.0), 2.6))
-	core.scale = Vector3(1.0, 1.0, 1.5)
-	p.add_child(core)
-	for i in 3:
-		var cable := _cyl(0.015, 0.015, 0.3, _copper(), Vector3(-0.16, -0.1 + float(i) * 0.1, 0))
-		cable.rotation_degrees.z = 90.0
-		p.add_child(cable)
-	return p
-
-
-func _build_torso_barrel() -> Node3D:
-	var p := Node3D.new()
-	var body := _sph(0.2, _copper())
-	body.scale = Vector3(1.0, 0.9, 1.4)
-	p.add_child(body)
-	for i in 3:
-		var band := MeshInstance3D.new()
-		var tor := TorusMesh.new()
-		tor.inner_radius = 0.018
-		tor.outer_radius = 0.2
-		band.mesh = tor
-		band.material_override = _darkmetal()
-		band.position = Vector3(0, 0, -0.18 + float(i) * 0.18)
-		band.scale = Vector3(1.0, 0.92, 1.0)
-		p.add_child(band)
-	p.add_child(_cyl(0.05, 0.07, 0.12, _steel(), Vector3(0, 0.2, 0)))
-	var valve := MeshInstance3D.new()
-	var vtor := TorusMesh.new()
-	vtor.inner_radius = 0.012
-	vtor.outer_radius = 0.055
-	valve.mesh = vtor
-	valve.material_override = GraphicsPolish.glow(Color(1.0, 0.5, 0.1), 1.4)
-	valve.position = Vector3(0, 0.3, 0)
-	valve.rotation_degrees.x = 90.0
-	p.add_child(valve)
-	return p
-
-
-func _pair_arms(build: Callable) -> Node3D:
-	var p := Node3D.new()
-	for sx in [-1.0, 1.0]:
-		var arm: Node3D = build.call(sx)
-		p.add_child(arm)
-	return p
-
-
-func _build_arms_claws() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var a := Node3D.new()
-		a.position.x = 0.3 * sx
-		a.add_child(_cyl(0.05, 0.06, 0.22, _steel(), Vector3(0.06 * sx, 0, 0)))
-		var fa := _cyl(0.04, 0.05, 0.2, _darkmetal(), Vector3(0.2 * sx, 0, 0))
-		fa.rotation_degrees.z = 90.0
-		a.add_child(fa)
-		for i in 3:
-			var claw := _cyl(0.0, 0.022, 0.12, _steel(), Vector3(0.34 * sx, 0.05 - float(i) * 0.05, 0))
-			claw.rotation_degrees.z = -90.0 * sx
-			a.add_child(claw)
-		a.add_child(_sph(0.055, _copper(), Vector3(0, 0, 0)))
-		return a)
-
-
-func _build_arms_pistons() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var a := Node3D.new()
-		a.position.x = 0.3 * sx
-		var up := _cyl(0.055, 0.055, 0.2, _darkmetal(), Vector3(0.05 * sx, 0, 0))
-		up.rotation_degrees.z = 90.0
-		a.add_child(up)
-		var rod := _cyl(0.025, 0.025, 0.24, GraphicsPolish.pbr(Color(0.85, 0.87, 0.9), 0.95, 0.2), Vector3(0.22 * sx, 0, 0))
-		rod.rotation_degrees.z = 90.0
-		a.add_child(rod)
-		a.add_child(_sph(0.06, _steel(), Vector3(0, 0, 0)))
-		a.add_child(_box(0.1, 0.08, 0.08, _steel(), Vector3(0.36 * sx, 0, 0)))
-		a.add_child(_sph(0.02, GraphicsPolish.glow(Color(1.0, 0.6, 0.1), 1.8), Vector3(0.36 * sx, 0.05, 0)))
-		return a)
-
-
-func _build_arms_tentacles() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var a := Node3D.new()
-		a.position.x = 0.28 * sx
-		var pm := GraphicsPolish.pbr(Color(0.45, 0.25, 0.55), 0.0, 0.5)
-		var prev := Vector3.ZERO
-		for i in 4:
-			var seg := _sph(0.055 - float(i) * 0.01, pm, prev + Vector3(0.09 * sx, -0.02 * float(i), 0.01 * float(i)))
-			a.add_child(seg)
-			prev = seg.position
-		for i in 3:
-			a.add_child(_sph(0.014, GraphicsPolish.glow(Color(0.9, 0.5, 1.0), 1.5), prev + Vector3(0.05 * sx, 0.02 - float(i) * 0.025, 0.04)))
-		return a)
-
-
-func _build_arms_blades() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var a := Node3D.new()
-		a.position.x = 0.3 * sx
-		var arm := _cyl(0.05, 0.06, 0.2, _steel(), Vector3(0.05 * sx, 0, 0))
-		arm.rotation_degrees.z = 90.0
-		a.add_child(arm)
-		var blade := _box(0.3, 0.09, 0.02, GraphicsPolish.pbr(Color(0.8, 0.83, 0.88), 0.95, 0.15), Vector3(0.3 * sx, 0, 0))
-		a.add_child(blade)
-		a.add_child(_box(0.3, 0.015, 0.022, GraphicsPolish.glow(Color(0.4, 0.9, 1.0), 2.0), Vector3(0.3 * sx, 0.05, 0)))
-		a.add_child(_sph(0.055, _copper(), Vector3(0, 0, 0)))
-		return a)
-
-
-func _pair_legs(build: Callable) -> Node3D:
-	var p := Node3D.new()
-	for sx in [-1.0, 1.0]:
-		var leg: Node3D = build.call(sx)
-		p.add_child(leg)
-	return p
-
-
-func _build_legs_stompers() -> Node3D:
-	return _pair_legs(func(sx: float) -> Node3D:
-		var l := Node3D.new()
-		l.position.x = 0.13 * sx
-		l.add_child(_cyl(0.06, 0.07, 0.18, _steel(), Vector3(0, 0.1, 0)))
-		l.add_child(_cyl(0.05, 0.06, 0.16, _darkmetal(), Vector3(0, -0.06, 0)))
-		l.add_child(_box(0.13, 0.09, 0.24, _darkmetal(), Vector3(0, -0.17, 0.04)))
-		l.add_child(_box(0.14, 0.03, 0.25, _steel(), Vector3(0, -0.2, 0.04)))
-		return l)
-
-
-func _build_legs_springs() -> Node3D:
-	return _pair_legs(func(sx: float) -> Node3D:
-		var l := Node3D.new()
-		l.position.x = 0.13 * sx
-		l.add_child(_cyl(0.06, 0.07, 0.14, _steel(), Vector3(0, 0.12, 0)))
-		for i in 3:
-			var ring := MeshInstance3D.new()
-			var tor := TorusMesh.new()
-			tor.inner_radius = 0.012
-			tor.outer_radius = 0.055 - float(i) * 0.005
-			ring.mesh = tor
-			ring.material_override = _copper()
-			ring.position = Vector3(0, 0.0 - float(i) * 0.055, 0)
-			ring.rotation_degrees.x = 90.0
-			l.add_child(ring)
-		l.add_child(_box(0.12, 0.06, 0.2, _steel(), Vector3(0, -0.18, 0.03)))
-		return l)
-
-
-func _build_legs_wheels() -> Node3D:
-	return _pair_legs(func(sx: float) -> Node3D:
-		var l := Node3D.new()
-		l.position.x = 0.13 * sx
-		l.add_child(_cyl(0.045, 0.045, 0.2, _steel(), Vector3(0, 0.05, 0)))
-		var wheel := MeshInstance3D.new()
-		var tor := TorusMesh.new()
-		tor.inner_radius = 0.03
-		tor.outer_radius = 0.09
-		wheel.mesh = tor
-		wheel.material_override = _darkmetal()
-		wheel.position = Vector3(0, -0.1, 0)
-		l.add_child(wheel)
-		var hub := _cyl(0.035, 0.035, 0.05, _copper(), Vector3(0, -0.1, 0))
-		hub.rotation_degrees.x = 90.0
-		l.add_child(hub)
-		return l)
-
-
-func _build_legs_spider() -> Node3D:
-	return _pair_legs(func(sx: float) -> Node3D:
-		var l := Node3D.new()
-		l.position.x = 0.13 * sx
-		var pts := [Vector3(0, 0.12, 0), Vector3(0.08 * sx, 0.02, 0), Vector3(0.05 * sx, -0.12, 0), Vector3(0.1 * sx, -0.22, 0)]
-		for i in 3:
-			var a: Vector3 = pts[i]
-			var b: Vector3 = pts[i + 1]
-			var d: Vector3 = b - a
-			var dir := d.normalized()
-			var up := Vector3.UP
-			if absf(dir.dot(up)) > 0.95:
-				up = Vector3.RIGHT
-			var seg := _cyl(0.022, 0.028, d.length(), _darkmetal(), (a + b) * 0.5)
-			seg.basis = Basis.looking_at(dir, up) * Basis(Vector3.RIGHT, -PI * 0.5)
-			l.add_child(seg)
-			l.add_child(_sph(0.032, _steel(), a))
-		return l)
-
-
-func _build_wings_bat() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var w := Node3D.new()
-		w.position = Vector3(0.15 * sx, 0.1, 0)
-		var mem := _box(0.34, 0.02, 0.26, GraphicsPolish.pbr(Color(0.3, 0.15, 0.4), 0.0, 0.6), Vector3(0.2 * sx, 0.02, -0.02))
-		w.add_child(mem)
-		for i in 2:
-			var strut := _cyl(0.012, 0.012, 0.36, _bone(), Vector3(0.19 * sx, 0.03, -0.08 + float(i) * 0.12))
-			strut.rotation_degrees.z = 90.0
-			strut.rotation_degrees.y = 12.0 * sx
-			w.add_child(strut)
-		w.add_child(_sph(0.02, GraphicsPolish.glow(Color(0.8, 0.3, 1.0), 1.6), Vector3(0.36 * sx, 0.03, -0.02)))
-		return w)
-
-
-func _build_wings_feather() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var w := Node3D.new()
-		w.position = Vector3(0.15 * sx, 0.1, 0)
-		for i in 5:
-			var f := _box(0.07, 0.015, 0.3 - float(i) * 0.03, _bone(), Vector3((0.12 + float(i) * 0.055) * sx, 0.02, -0.1 + float(i) * 0.045))
-			f.rotation_degrees.y = -18.0 * sx + float(i) * 6.0 * sx
-			w.add_child(f)
-		return w)
-
-
-func _build_wings_rotor() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var w := Node3D.new()
-		w.position = Vector3(0.15 * sx, 0.05, 0)
-		w.add_child(_cyl(0.03, 0.04, 0.22, _steel(), Vector3(0, 0.08, 0)))
-		var rotor := Node3D.new()
-		rotor.position = Vector3(0, 0.2, 0)
-		var blade := _box(0.5, 0.015, 0.07, _darkmetal())
-		rotor.add_child(blade)
-		rotor.add_child(_box(0.07, 0.015, 0.5, _darkmetal()))
-		rotor.add_child(_sph(0.035, GraphicsPolish.glow(Color(1.0, 0.5, 0.1), 1.8)))
-		w.add_child(rotor)
-		rotor_refs.append(rotor)
-		return w)
-
-
-func _build_wings_jetpack() -> Node3D:
-	return _pair_arms(func(sx: float) -> Node3D:
-		var w := Node3D.new()
-		w.position = Vector3(0.16 * sx, 0.02, 0.12)
-		w.add_child(_cyl(0.06, 0.07, 0.3, _steel(), Vector3(0, 0, 0)))
-		w.add_child(_cyl(0.065, 0.065, 0.04, _copper(), Vector3(0, 0.17, 0)))
-		var flame := _cyl(0.035, 0.0, 0.16, GraphicsPolish.glow(Color(0.4, 0.7, 1.0), 2.4), Vector3(0, -0.22, 0))
-		w.add_child(flame)
-		w.add_child(_box(0.02, 0.1, 0.08, GraphicsPolish.glow(Color(1.0, 0.6, 0.1), 1.4), Vector3(0.07 * sx, 0.05, 0)))
-		return w)
 
 
 # ------------------------------------------------------------------- HUD ---
@@ -1169,6 +962,7 @@ func _snap_part(p: Node3D, cat: String) -> void:
 	mat.emission = Color(0.3, 1.0, 0.4)
 	Haptics.tick()
 	GraphicsPolish.spawn_sparks(self, to_global(target), Color(0.4, 1.0, 0.6), 18)
+	ArtKit.game_sfx(self, "snap")
 	_toast("%s snapped on!" % OPT_NAMES[cat][int(p.get_meta("option"))], 1.4)
 	if snapped.size() >= CATS.size():
 		alive = true
@@ -1264,6 +1058,8 @@ func _pull_lever() -> void:
 	tw.tween_property(lever, "rotation:x", lever_base_rot.x - 0.7, 0.18)
 	tw.tween_property(lever, "rotation:x", lever_base_rot.x, 0.6).set_delay(1.6)
 	Haptics.thump()
+	ArtKit.game_sfx(self, "lever")
+	ArtKit.game_sfx(self, "strike")
 	_toast("⚡ STRIKE! Power %d%%" % int(strike_power), 2.5)
 	_update_hud()
 
@@ -1307,8 +1103,13 @@ func _end_strike() -> void:
 	stat_sma = base + rng.randf_range(0.0, 10.0)
 	monster_name = _unique_monster_name()
 	monster_root.scale = Vector3.ONE * 1.06
+	# v0.9.0: IT'S ALIVE — the flat snapped parts fly together into a STANDING
+	# kit monster assembled at the documented sockets (PARTS.md).
+	_bring_monster_alive()
 	GraphicsPolish.spawn_confetti(self, Vector3(0, 2.0, -1.5), 80)
 	Haptics.pulse(1.0, 0.4)
+	ArtKit.game_sfx(self, "alive")
+	ArtKit.stinger(self, "boss")
 	if strike_power >= 90.0:
 		_toast("PERFECT STRIKE! %s lives!" % monster_name, 3.0)
 	elif strike_power >= 60.0:
@@ -1316,6 +1117,27 @@ func _end_strike() -> void:
 	else:
 		_toast("Weak spark... %s twitches awake." % monster_name, 3.0)
 	_start_train()
+
+
+## v0.9.0: assemble the snapped kit options into a standing monster.
+func _bring_monster_alive() -> void:
+	var opts := {}
+	for ci in CATS.size():
+		opts[CATS[ci]] = int(build_parts[ci]) if ci < build_parts.size() else 0
+	# Shrink the flat slab parts away.
+	for cat in snapped.keys():
+		var p: Node3D = snapped[cat]
+		if is_instance_valid(p):
+			var tw := create_tween().set_parallel(true)
+			tw.tween_property(p, "scale", Vector3.ONE * 0.01, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+			tw.tween_property(p, "position", Vector3(0, 1.6, -1.55), 0.45)
+			tw.chain().tween_callback(p.hide)
+	# Raise the assembled monster on the slab with a BACK-ease grow.
+	alive_monster = _assemble_kit_monster(opts)
+	alive_monster.position = Vector3(0, 1.0, -1.55)
+	add_child(alive_monster)
+	ArtKit.grow_in(alive_monster, 0.6)
+	ArtKit.h_sub_bass(self, 1.2)
 
 
 func _unique_monster_name() -> String:
@@ -1633,20 +1455,37 @@ func _build_pod(px: float, rec: Dictionary) -> void:
 	pod.add_child(glass)
 	pod.add_child(_cyl(0.55, 0.55, 0.1, _darkmetal(), Vector3(0, 2.06, 0)))
 	GraphicsPolish.make_point_light(pod, Vector3(0, 1.9, 0), Color(0.5, 0.8, 1.0), 0.8, 2.5)
-	# Mini monster lying on a tiny slab inside the pod.
+	# Mini STANDING monster inside the pod (v0.9.0: hierarchical kit assembly).
 	var mini := Node3D.new()
 	mini.scale = Vector3.ONE * 0.42
 	mini.position = Vector3(0, 0.35, 0.35)
 	pod.add_child(mini)
-	mini.add_child(_box(1.5, 0.1, 1.9, GraphicsPolish.pbr_preset(Color(0.32, 0.33, 0.36), "matte"), Vector3(0, 0.75, -0.35)))
-	var parts: Array = rec["parts"]
+	mini.add_child(_box(1.5, 0.1, 1.9, GraphicsPolish.pbr_preset(Color(0.32, 0.33, 0.36), "matte"), Vector3(0, -0.05, 0)))
+	var parts: Array = _migrate_parts(rec["parts"])
+	var opts := {}
 	for ci in CATS.size():
-		var part := _build_part(CATS[ci], int(parts[ci]))
-		part.position = SOCKETS[CATS[ci]] + Vector3(0, 0, 0.35)
-		mini.add_child(part)
+		opts[CATS[ci]] = int(parts[ci])
+	var mini_monster := _assemble_kit_monster(opts)
+	# (kit faces the player by default: rotation.y = PI inside the assembler)
+	mini.add_child(mini_monster)
 	var stats: Array = rec["stats"]
 	pod.add_child(_lbl(str(rec["name"]), 52, Color(1.0, 0.9, 0.5), Vector3(0, 2.35, 0), 0.005))
 	pod.add_child(_lbl("STR %d AGI %d SMA %d PWR %d" % [int(stats[0]), int(stats[1]), int(stats[2]), int(rec["power"])], 34, Color(0.7, 1.0, 0.8), Vector3(0, -0.25, 0.62), 0.0035))
+
+
+## v0.9.0: migrate old 5-part saves [head,torso,arms,legs,wings] to the
+## 7-category kit format [head,torso,arms,legs,eyes,back,horns].
+func _migrate_parts(parts: Array) -> Array:
+	if parts.size() >= CATS.size():
+		return parts
+	if parts.size() == 5:
+		var wings_opt := int(parts[4])
+		return [int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]),
+			0, 0 if wings_opt == 0 else 1, 0]
+	var out := []
+	for ci in CATS.size():
+		out.append(int(parts[ci]) if ci < parts.size() else 0)
+	return out
 
 
 func _reset_to_assemble() -> void:
@@ -1660,6 +1499,9 @@ func _reset_to_assemble() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	snapped.clear()
+	if alive_monster != null and is_instance_valid(alive_monster):
+		alive_monster.queue_free()
+	alive_monster = null
 	for cat in CATS:
 		socket_rings[cat]["filled"] = false
 		(socket_rings[cat]["mat"] as StandardMaterial3D).emission = Color(0.2, 0.85, 1.0)
@@ -1681,7 +1523,7 @@ func _reset_to_assemble() -> void:
 	shelf_units.clear()
 	_build_shelves()
 	phase = "assemble"
-	_toast("New monster: pick 5 parts!", 2.5)
+	_toast("New monster: pick 7 parts!", 2.5)
 	_update_hud()
 
 

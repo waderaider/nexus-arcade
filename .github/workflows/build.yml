@@ -64,6 +64,13 @@ jobs:
           export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
           bash tools/build_camera_plugin.sh
 
+      # Gray-primitive audit: heuristic scan for untextured default-gray
+      # meshes in shipped games. WARN (non-blocking) until the v0.9.0 art
+      # pass lands; then flip to --mode strict and drop continue-on-error.
+      - name: Gray-primitive audit (warn)
+        run: python3 tools/ci_gray_audit.py --mode warn
+        continue-on-error: true
+
       - name: Build APK
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk

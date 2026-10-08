@@ -190,9 +190,16 @@ func _ready() -> void:
 	_build_jellies()
 	_build_schools()
 	_build_sharks()
+	_build_whale() # v0.9.0: whale encounter + ambient manta/dolphins
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, 0.0), 2.5, 60)
 	_set_msg("DIVE START — find 5 treasure chests", 3.0)
+	# v0.9.0: per-game SFX map (AudioKit contract).
+	ArtKit.register_game_sfx(self, {
+		"bite": "hit", "chest": "chest", "pearl": "coin", "bubble": "bubble",
+		"whale": "splash", "win": "fanfare", "low_air": "buzzer",
+	})
+	ArtKit.set_intensity(self, 0)
 	_apply_room_layout()
 
 
@@ -474,128 +481,104 @@ func _build_chests() -> void:
 		idx += 1
 
 
-func _make_fish(body_color: Color, stripe_color: Color, size: float = 1.0) -> Node3D:
-	var root := Node3D.new()
-	var body := MeshInstance3D.new()
-	var sph := SphereMesh.new()
-	sph.radius = 0.09 * size
-	sph.height = 0.18 * size
-	body.mesh = sph
-	body.material_override = GraphicsPolish.pbr(body_color, 0.15, 0.35)
-	body.scale = Vector3(0.55, 0.8, 1.9)
-	root.add_child(body)
-	# Emissive lateral stripe.
-	var stripe := MeshInstance3D.new()
-	var sbox := BoxMesh.new()
-	sbox.size = Vector3(0.10 * size, 0.03 * size, 0.26 * size)
-	stripe.mesh = sbox
-	stripe.material_override = GraphicsPolish.glow(stripe_color, 1.5)
-	stripe.position = Vector3(0, 0.02 * size, 0)
-	root.add_child(stripe)
-	# Tail fin.
-	var tail := MeshInstance3D.new()
-	var tbox := BoxMesh.new()
-	tbox.size = Vector3(0.02 * size, 0.14 * size, 0.10 * size)
-	tail.mesh = tbox
-	tail.material_override = GraphicsPolish.pbr(body_color.darkened(0.25), 0.1, 0.5)
-	tail.position = Vector3(0, 0, 0.20 * size)
-	tail.rotation.y = deg_to_rad(35.0)
-	root.add_child(tail)
-	# Dorsal fin.
-	var fin := MeshInstance3D.new()
-	var fbox := BoxMesh.new()
-	fbox.size = Vector3(0.02 * size, 0.09 * size, 0.12 * size)
-	fin.mesh = fbox
-	fin.material_override = GraphicsPolish.pbr(body_color.darkened(0.25), 0.1, 0.5)
-	fin.position = Vector3(0, 0.10 * size, -0.02 * size)
-	fin.rotation.x = deg_to_rad(-18.0)
-	root.add_child(fin)
-	# Eyes.
-	for side in [-1.0, 1.0]:
-		var eye := MeshInstance3D.new()
-		var esph := SphereMesh.new()
-		esph.radius = 0.018 * size
-		esph.height = 0.036 * size
-		eye.mesh = esph
-		eye.material_override = GraphicsPolish.glow(Color(0.1, 0.1, 0.1), 0.3)
-		eye.position = Vector3(side * 0.045 * size, 0.03 * size, -0.13 * size)
-		root.add_child(eye)
-	return root
+# v0.9.0: animated Quaternius FBX drop-in (CC0). One model = 1-2 draw calls
+# vs 6+ for the old primitive assembly; schools cut 21 -> 15 fish.
+# FBX fish are ~3.2 m long facing -Z; scale to game size here.
+const FISH_FILES := ["Fish1", "Fish2", "Fish3"]
+
+func _make_fish(variant: int, size: float = 1.0) -> Node3D:
+	var node := _load_model(FISH_FILES[clampi(variant, 0, 2)])
+	if node == null:
+		return null
+	node.scale = Vector3.ONE * 0.11 * size
+	ArtKit.play_anim(node, ["swim"], randf_range(0.9, 1.15))
+	return node
 
 
 func _make_shark() -> Node3D:
-	var root := Node3D.new()
-	var gray := GraphicsPolish.pbr(Color(0.42, 0.47, 0.55), 0.25, 0.45)
-	# Torpedo body.
-	var body := MeshInstance3D.new()
-	var sph := SphereMesh.new()
-	sph.radius = 0.30
-	sph.height = 0.60
-	body.mesh = sph
-	body.material_override = gray
-	body.scale = Vector3(0.75, 0.85, 2.6)
-	root.add_child(body)
-	# Snout.
-	var snout := MeshInstance3D.new()
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.02
-	cone.bottom_radius = 0.20
-	cone.height = 0.35
-	snout.mesh = cone
-	snout.material_override = gray
-	snout.position = Vector3(0, -0.02, -0.85)
-	snout.rotation_degrees = Vector3(-90, 0, 0)
-	root.add_child(snout)
-	# Tail fin (vertical).
-	var tail := MeshInstance3D.new()
-	var tbox := BoxMesh.new()
-	tbox.size = Vector3(0.06, 0.55, 0.22)
-	tail.mesh = tbox
-	tail.material_override = gray
-	tail.position = Vector3(0, 0.12, 0.85)
-	tail.rotation.x = deg_to_rad(-25.0)
-	root.add_child(tail)
-	# Dorsal fin.
-	var dorsal := MeshInstance3D.new()
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.08, 0.35, 0.30)
-	dorsal.mesh = prism
-	dorsal.material_override = gray
-	dorsal.position = Vector3(0, 0.38, 0.05)
-	root.add_child(dorsal)
-	# Pectoral fins.
-	for side in [-1.0, 1.0]:
-		var pec := MeshInstance3D.new()
-		var pbox := BoxMesh.new()
-		pbox.size = Vector3(0.35, 0.05, 0.20)
-		pec.mesh = pbox
-		pec.material_override = gray
-		pec.position = Vector3(side * 0.30, -0.18, -0.15)
-		pec.rotation.z = deg_to_rad(side * -28.0)
-		root.add_child(pec)
-	# Glowing eyes.
-	for side in [-1.0, 1.0]:
-		var eye := MeshInstance3D.new()
-		var esph := SphereMesh.new()
-		esph.radius = 0.045
-		esph.height = 0.09
-		eye.mesh = esph
-		eye.material_override = GraphicsPolish.glow(Color(1.0, 0.2, 0.1), 2.0)
-		eye.position = Vector3(side * 0.16, 0.10, -0.62)
-		root.add_child(eye)
-	# Gill slits glow.
-	for g in 3:
-		var gill := MeshInstance3D.new()
-		var gbox := BoxMesh.new()
-		gbox.size = Vector3(0.02, 0.16, 0.03)
-		gill.mesh = gbox
-		gill.material_override = GraphicsPolish.glow(Color(0.3, 0.8, 1.0), 0.8)
-		gill.position = Vector3(0.20, 0.0, -0.35 + float(g) * 0.10)
-		root.add_child(gill)
-		var gill2: MeshInstance3D = gill.duplicate()
-		gill2.position.x = -0.20
-		root.add_child(gill2)
-	return root
+	var node := _load_model("Shark")
+	if node == null:
+		return null
+	node.scale = Vector3.ONE * 0.11
+	ArtKit.play_anim(node, ["swim"], 0.9)
+	return node
+
+
+# v0.9.0: whale encounter — the signature moment. A huge animated whale
+# crosses the room with sub-bass rumble you feel in the controllers.
+var _whale: Node3D = null
+var _whale_t := 18.0
+var _whale_from := Vector3.ZERO
+var _whale_to := Vector3.ZERO
+var _whale_dur := 26.0
+var _manta: Node3D = null
+var _manta_a := 0.0
+var _dolphins: Array = []
+
+
+func _build_whale() -> void:
+	_whale = _load_model("Whale")
+	if _whale == null:
+		return
+	_whale.scale = Vector3.ONE * 0.22
+	_whale.visible = false
+	add_child(_whale)
+	ArtKit.play_anim(_whale, ["swim"], 0.55)
+	# Ambient manta + dolphins (cheap: 3 extra draw calls total).
+	_manta = _load_model("Manta ray")
+	if _manta != null:
+		_manta.scale = Vector3.ONE * 0.14
+		add_child(_manta)
+		ArtKit.play_anim(_manta, ["swim"], 0.8)
+	for i in 2:
+		var d := _load_model("Dolphin")
+		if d != null:
+			d.scale = Vector3.ONE * 0.11
+			add_child(d)
+			ArtKit.play_anim(d, ["swim"], randf_range(1.0, 1.2))
+			_dolphins.append({"node": d, "a": randf_range(0.0, TAU), "r": randf_range(1.6, 2.2),
+				"y": randf_range(1.2, 1.9), "spd": randf_range(0.5, 0.7)})
+
+
+func _update_whale(delta: float) -> void:
+	if _whale == null:
+		return
+	# Ambient manta circles high; dolphins arc around the room.
+	if _manta != null:
+		_manta_a += delta * 0.25
+		_manta.position = Vector3(cos(_manta_a) * 2.4, 2.3 + sin(_manta_a * 0.7) * 0.2, sin(_manta_a) * 2.4)
+		_manta.global_transform.basis = Basis.looking_at(Vector3(-sin(_manta_a), 0, cos(_manta_a)), Vector3.UP)
+	for d in _dolphins:
+		var dn: Node3D = d["node"]
+		d["a"] = float(d["a"]) + delta * float(d["spd"])
+		var a: float = d["a"]
+		var r: float = d["r"]
+		dn.position = Vector3(cos(a) * r, float(d["y"]) + sin(a * 2.0) * 0.25, sin(a) * r)
+		dn.global_transform.basis = Basis.looking_at(Vector3(-sin(a), 0, cos(a)), Vector3.UP)
+	# Whale crossing event.
+	if not _whale.visible:
+		_whale_t -= delta
+		if _whale_t <= 0.0:
+			_whale_t = randf_range(40.0, 60.0)
+			_whale_from = Vector3(-9.0, 2.4, -2.5)
+			_whale_to = Vector3(9.0, 2.1, -2.5)
+			_whale.visible = true
+			_whale_t = -_whale_dur # reuse as progress timer while visible
+			ArtKit.h_sub_bass(self, 2.5)
+			ArtKit.stinger(self, "boss")
+			ArtKit.game_sfx(self, "whale")
+			_set_msg("A WHALE passes through your room...", 3.5)
+		return
+	_whale_t += delta
+	var t := clampf(1.0 + _whale_t / _whale_dur, 0.0, 1.0)
+	_whale.global_position = _whale_from.lerp(_whale_to, t)
+	_whale.global_transform.basis = Basis.looking_at((_whale_to - _whale_from).normalized(), Vector3.UP)
+	var pp := _player_pos()
+	if _whale.global_position.distance_to(pp) < 3.0 and randf() < delta * 2.0:
+		ArtKit.h_sub_bass(self, 0.6)
+	if t >= 1.0:
+		_whale.visible = false
+		_whale_t = randf_range(40.0, 60.0)
 
 
 func _make_jellyfish(color: Color) -> Node3D:
@@ -651,8 +634,10 @@ func _build_schools() -> void:
 	for s in 3:
 		var center := Vector3(cos(deg_to_rad(float(s) * 120.0)) * 1.8, 1.5 + float(s) * 0.25, sin(deg_to_rad(float(s) * 120.0)) * 1.8)
 		var fishes: Array = []
-		for f in 7:
-			var fish: Node3D = _make_fish(palettes[s][0], palettes[s][1], randf_range(0.8, 1.2))
+		for f in 5: # v0.9.0: 5 per school (was 7) — perf: animated FBX, fewer nodes
+			var fish: Node3D = _make_fish(s, randf_range(0.8, 1.2))
+			if fish == null:
+				continue
 			add_child(fish)
 			fishes.append({"node": fish, "off": randf_range(0.0, TAU), "r": randf_range(0.5, 1.0), "y": randf_range(-0.2, 0.2)})
 		schools.append({"center": center, "fishes": fishes, "speed": randf_range(0.35, 0.6), "t": randf_range(0.0, TAU)})
@@ -661,6 +646,8 @@ func _build_schools() -> void:
 func _build_sharks() -> void:
 	for i in 2:
 		var shark: Node3D = _make_shark()
+		if shark == null:
+			continue
 		add_child(shark)
 		var wps: Array = []
 		for k in 5:
@@ -789,6 +776,7 @@ func _process(delta: float) -> void:
 	_update_chests(delta)
 	_update_sharks(delta)
 	_update_critters(delta)
+	_update_whale(delta) # v0.9.0: whale encounter + ambient manta/dolphins
 	_update_air(delta)
 	_update_hud()
 
@@ -907,6 +895,9 @@ func _open_chest(c: Dictionary) -> void:
 	tw.tween_property(pearl, "position", at + Vector3(0, 1.2, 0), 1.4).set_trans(Tween.TRANS_SINE)
 	tw.chain().tween_callback(pearl.queue_free)
 	Haptics.tick()
+	ArtKit.game_sfx(self, "chest")
+	ArtKit.game_sfx(self, "pearl")
+	ArtKit.scale_pop(self, pearl)
 	_set_msg("TREASURE! +%d pearls" % gain, 1.8)
 	_save_log()
 	var opened := 0
@@ -951,9 +942,9 @@ func _update_sharks(delta: float) -> void:
 		if dir.length() > 0.01:
 			var want := Basis.looking_at(dir, Vector3.UP)
 			node.global_transform.basis = node.global_transform.basis.slerp(want, minf(delta * 3.0, 1.0))
-		# Tail sway.
+		# Tail sway (subtle now — the Swim animation does the real work).
 		s["sway"] = float(s.get("sway", 0.0)) + delta * 4.0
-		node.rotation.z = sin(float(s.get("sway"))) * 0.12
+		node.rotation.z = sin(float(s.get("sway"))) * 0.05
 		# Bite + near-miss.
 		s["bite_cd"] = maxf(0.0, float(s.get("bite_cd", 0.0)) - delta)
 		s["warn_cd"] = maxf(0.0, float(s.get("warn_cd", 0.0)) - delta)
@@ -964,6 +955,8 @@ func _update_sharks(delta: float) -> void:
 			air = maxf(0.0, air - 25.0)
 			shake_camera(0.5)
 			Haptics.pulse(1.0, 0.3)
+			ArtKit.hit_stop(self, 3)
+			ArtKit.game_sfx(self, "bite")
 			GraphicsPolish.spawn_sparks(self, pp, Color(1.0, 0.2, 0.15), 24)
 			_set_msg("SHARK BITE! -25 air", 1.6)
 			low_air_warned = false
@@ -1004,6 +997,8 @@ func _update_critters(delta: float) -> void:
 			fn.position = center + Vector3(cos(a) * r, float(f.get("y", 0.0)) + sin(t * 2.0 + a) * 0.08, sin(a) * r)
 			var tangent := Vector3(-sin(a), 0, cos(a))
 			fn.global_transform.basis = Basis.looking_at(tangent, Vector3.UP)
+			# v0.9.0: bank into the turn (constant-curvature circle -> constant roll).
+			fn.rotate_object_local(Vector3(0, 0, 1), -0.32)
 	# God-ray shimmer.
 	for r in rays:
 		var mat: StandardMaterial3D = r.get("mat")

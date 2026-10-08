@@ -22,25 +22,35 @@ const FOODS := [
 	{"name": "Emberpepper", "color": Color(1.0, 0.45, 0.1)},
 ]
 
+# v0.9.0: the mythic creatures are REAL animated models — Quaternius
+# animatedmonster pack (CC0, staged under assets/models/myth_zoo/). "fbx" is
+# the model file; "idle" lists animation keywords for the ambient loop;
+# "reveal" plays once on hatch; "tint" optionally recolors a variant.
 const CREATURES := [
-	{"id": "phoenix", "name": "Phoenix", "model": "animal-parrot.glb",
+	{"id": "drake", "name": "Ember Drake", "fbx": "Dragon.fbx", "fbx_scale": 0.13,
+		"idle": ["flying", "fly"], "reveal": ["attack"], "tint": Color(1, 1, 1),
 		"accent": Color(1.0, 0.45, 0.12), "food": 0, "theme": "volcano",
 		"blurb": "Reborn in flame every dawn."},
-	{"id": "kelpie", "name": "Kelpie", "model": "animal-deer.glb",
-		"accent": Color(0.25, 0.7, 1.0), "food": 1, "theme": "pond",
-		"blurb": "A shy water-horse of the mist."},
-	{"id": "griffin", "name": "Griffin", "model": "animal-lion.glb",
-		"accent": Color(1.0, 0.8, 0.25), "food": 2, "theme": "aerie",
+	{"id": "ooze", "name": "Mire Ooze", "fbx": "Slime.fbx", "fbx_scale": 0.55,
+		"idle": ["idle", "walk"], "reveal": ["attack", "spawn"], "tint": Color(1, 1, 1),
+		"accent": Color(0.35, 1.0, 0.4), "food": 1, "theme": "pond",
+		"blurb": "It jiggles. It hungers. It loves you."},
+	{"id": "gloomwing", "name": "Gloomwing", "fbx": "Bat.fbx", "fbx_scale": 0.42,
+		"idle": ["flying", "fly"], "reveal": ["attack"], "tint": Color(1, 1, 1),
+		"accent": Color(0.65, 0.4, 1.0), "food": 2, "theme": "aerie",
 		"blurb": "King of sky and stone."},
-	{"id": "jackalope", "name": "Jackalope", "model": "animal-bunny.glb",
-		"accent": Color(0.5, 1.0, 0.4), "food": 3, "theme": "meadow",
-		"blurb": "Sings to the moon hares."},
-	{"id": "kitsune", "name": "Kitsune", "model": "animal-fox.glb",
-		"accent": Color(0.7, 0.5, 1.0), "food": 4, "theme": "grove",
-		"blurb": "Nine tails, one trickster."},
-	{"id": "kraken", "name": "Kraken Tot", "model": "animal-crab.glb",
-		"accent": Color(0.65, 0.35, 1.0), "food": 5, "theme": "tidepool",
+	{"id": "warden", "name": "Bone Warden", "fbx": "Skeleton.fbx", "fbx_scale": 0.5,
+		"idle": ["idle"], "reveal": ["spawn", "attack"], "tint": Color(1, 1, 1),
+		"accent": Color(0.5, 0.9, 1.0), "food": 3, "theme": "meadow",
+		"blurb": "An ancient guardian, rattling awake."},
+	{"id": "tidecaller", "name": "Tidecaller Ooze", "fbx": "Slime.fbx", "fbx_scale": 0.7,
+		"idle": ["idle", "walk"], "reveal": ["attack", "spawn"], "tint": Color(0.45, 0.75, 1.0),
+		"accent": Color(0.25, 0.7, 1.0), "food": 4, "theme": "tidepool",
 		"blurb": "Small now. Dreaming deep."},
+	{"id": "duskbat", "name": "Dusk Bat", "fbx": "Bat.fbx", "fbx_scale": 0.3,
+		"idle": ["flying", "fly"], "reveal": ["attack"], "tint": Color(1.0, 0.6, 0.9),
+		"accent": Color(1.0, 0.4, 0.7), "food": 5, "theme": "grove",
+		"blurb": "Sings to the moon hares."},
 ]
 
 var camera: Camera3D = null
@@ -93,6 +103,12 @@ func _ready() -> void:
 	_build_log_board()
 	_build_hud()
 	_toast("Welcome to the Myth Zoo! Tap a mystery egg.", 3.5)
+	# v0.9.0: per-game SFX map (AudioKit contract).
+	ArtKit.register_game_sfx(self, {
+		"hatch": "powerup", "feed": "pop", "clean": "sparkle", "play": "jump",
+		"reveal": "fanfare", "full": "success",
+	})
+	ArtKit.set_intensity(self, 0)
 	_apply_room_layout() # v0.7.0: map enclosures to room quadrants (no-op w/o room data).
 
 
@@ -431,15 +447,29 @@ func _reveal_creature(rec: Dictionary) -> void:
 		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.5, 1.5), rng.randf_range(-1, 1)).normalized()
 		tw.tween_property(bit, "position", bit.position + dir * 0.5, 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		tw.tween_property(bit, "scale", Vector3.ZERO, 0.7)
-	# The creature itself: real Kenney model + mythic accents.
-	var c := _load_model(str(def["model"]))
+	# The creature itself: a real animated Quaternius model (v0.9.0).
+	# Reveal animation plays once, then the ambient idle loop takes over.
+	var c := _load_model(str(def["fbx"]))
 	if c == null:
 		c = Node3D.new()
 		c.add_child(_sph(0.2, GraphicsPolish.glow(accent, 1.2)))
 	c.position = _egg_spot(rec)
-	c.scale = Vector3.ONE * 0.55
+	c.scale = Vector3.ONE * float(def.get("fbx_scale", 0.5))
 	n.add_child(c)
-	_add_creature_accents(c, str(def["id"]), accent)
+	_apply_creature_tint(c, def)
+	var reveal_played := ArtKit.play_anim(c, def.get("reveal", []), 1.0) != ""
+	if reveal_played:
+		var ap := ArtKit.anim_player(c)
+		var idle_kw: Array = def.get("idle", [])
+		var tw_timer := get_tree().create_timer(1.6)
+		tw_timer.timeout.connect(func() -> void:
+			if is_instance_valid(c):
+				ArtKit.play_anim(c, idle_kw, 1.0)
+		)
+	else:
+		ArtKit.play_anim(c, def.get("idle", []), 1.0)
+	# Keep the accent aura ring + particles (no more primitive wings/horns).
+	_add_creature_aura(c, accent)
 	# Aura particles + light.
 	_rising_particles(n, c.position + Vector3(0, 0.1, 0), Color(accent.r, accent.g, accent.b, 0.85), 20, 0.45, 35.0, 0.045)
 	GraphicsPolish.make_point_light(n, c.position + Vector3(0, 0.6, 0), accent, 1.1, 3.0)
@@ -454,51 +484,47 @@ func _reveal_creature(rec: Dictionary) -> void:
 	_save_progress()
 	_refresh_log_slot(rec["idx"])
 	Haptics.pulse(1.0, 0.35)
+	ArtKit.grow_in(c, 0.45)
+	ArtKit.stinger(self, "success")
+	ArtKit.game_sfx(self, "reveal")
+	ArtKit.combo_popup(self, n.to_global(c.position + Vector3(0, 1.1, 0)), str(def["name"]).to_upper() + "!")
 	GraphicsPolish.spawn_confetti(n, c.position + Vector3(0, 0.5, 0), 60)
 	_toast("✨ %s revealed! %s" % [str(def["name"]), str(def["blurb"])], 4.0)
 
 
-func _add_creature_accents(c: Node3D, cid: String, accent: Color) -> void:
-	var gm := GraphicsPolish.glow(accent, 2.2)
-	match cid:
-		"phoenix":
-			for i in 3:
-				var fl := _cyl(0.0, 0.035, 0.16, gm, Vector3(-0.07 + float(i) * 0.07, 0.42, -0.05))
-				fl.rotation_degrees.x = -18.0
-				c.add_child(fl)
-		"kelpie":
-			var fin := _box(0.02, 0.22, 0.12, gm, Vector3(0, 0.45, -0.1))
-			fin.rotation_degrees.x = -25.0
-			c.add_child(fin)
-		"griffin":
-			for sx in [-1.0, 1.0]:
-				for i in 4:
-					var f := _box(0.09, 0.015, 0.3 - float(i) * 0.04, GraphicsPolish.pbr(Color(0.95, 0.8, 0.4), 0.0, 0.5), Vector3((0.15 + float(i) * 0.07) * sx, 0.35, -0.15 + float(i) * 0.05))
-					f.rotation_degrees.y = -15.0 * sx
-					c.add_child(f)
-		"jackalope":
-			for sx in [-1.0, 1.0]:
-				var ant := _cyl(0.012, 0.02, 0.18, GraphicsPolish.pbr(Color(0.9, 0.85, 0.7), 0.0, 0.5), Vector3(0.06 * sx, 0.42, 0.02))
-				ant.rotation_degrees.z = -18.0 * sx
-				c.add_child(ant)
-				var t2 := _cyl(0.008, 0.012, 0.09, GraphicsPolish.pbr(Color(0.9, 0.85, 0.7), 0.0, 0.5), Vector3(0.1 * sx, 0.48, 0.02))
-				t2.rotation_degrees.z = -55.0 * sx
-				c.add_child(t2)
-		"kitsune":
-			for i in 2:
-				var prev := Vector3(-0.12 - float(i) * 0.08, 0.12, -0.28)
-				for j in 3:
-					var seg := _sph(0.055 - float(j) * 0.012, GraphicsPolish.pbr(Color(0.95, 0.93, 1.0), 0.0, 0.4), prev + Vector3(-0.06, 0.05 - float(j) * 0.02, -0.05))
-					c.add_child(seg)
-					c.add_child(_sph(0.02, gm, seg.position + Vector3(0, 0.03, 0)))
-					prev = seg.position
-		"kraken":
-			for i in 6:
-				var a := TAU * float(i) / 6.0
-				var spike := _cyl(0.0, 0.025, 0.12, gm, Vector3(cos(a) * 0.1, 0.3, sin(a) * 0.1))
-				spike.rotation_degrees.z = -cos(a) * 30.0
-				spike.rotation_degrees.x = sin(a) * 30.0
-				c.add_child(spike)
+var _tint_mats: Dictionary = {} # shared per-tint materials for creature variants
+
+
+## Variant tint: one shared material per color morph (not per-node duplication).
+func _apply_creature_tint(c: Node3D, def: Dictionary) -> void:
+	var tint: Color = def.get("tint", Color(1, 1, 1))
+	if tint == Color(1, 1, 1):
+		return
+	var key := "tint_" + tint.to_html()
+	if not _tint_mats.has(key):
+		_tint_mats[key] = GraphicsPolish.pbr(tint, 0.05, 0.55)
+	var m: Material = _tint_mats[key]
+	var stack: Array = [c]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			(node as MeshInstance3D).material_override = m
+		for ch in node.get_children():
+			stack.append(ch)
+
+
+## Accent aura ring under the creature (replaces the old primitive wings/horns —
+## the models are real now; the glow ring keeps the mythic read).
+func _add_creature_aura(c: Node3D, accent: Color) -> void:
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.28
+	tm.outer_radius = 0.34
+	ring.mesh = tm
+	ring.material_override = GraphicsPolish.glow(accent, 1.4)
+	ring.position = Vector3(0, 0.03, 0)
+	c.add_child(ring)
+	c.set_meta("aura_ring", ring)
 
 
 func _refresh_all_habitats() -> void:
@@ -766,7 +792,11 @@ func _play_process(delta: float) -> void:
 		var want: Vector3 = n.to_local(orb_pos)
 		want.y = c.position.y
 		# AILib: curious approach with arrival slowdown instead of hand-rolled lerp.
-		c.position += AILib.investigate(c, want, delta, 0.9)
+		# (via /root lookup: avoids a --check-only parser quirk with autoload
+		#  singletons called with statically-typed Node3D args.)
+		var ai := get_node_or_null("/root/AILib")
+		if ai != null:
+			c.position += ai.call("investigate", c, want, delta, 0.9)
 		c.position.y += absf(sin(t * 8.0)) * 0.02
 	if play_t <= 0.0:
 		var frac := clampf(play_score / 8.0, 0.0, 1.0)

@@ -405,3 +405,114 @@ static func _record_anchor(label: String, anchor: Dictionary) -> void:
 	if not _anchors.has(label):
 		_anchors[label] = []
 	(_anchors[label] as Array).append(anchor)
+
+
+# ----------------- v0.9.0 signature-move helpers (one-call recipes) ---
+
+## Run `build_fn` once per wall. build_fn receives the wall dict
+## ({position, size: Vector2, normal}) and returns a Node3D (or null to
+## skip). Returned nodes are positioned at the wall center, facing into
+## the room. Returns the spawned nodes. No-op ([]) without room data.
+static func spawn_on_walls(build_fn: Callable) -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	for wall in get_walls():
+		var node: Node3D = build_fn.call(wall)
+		if node == null or not is_instance_valid(node):
+			continue
+		_place_on_wall(node, wall)
+		out.append(node)
+	return out
+
+
+## One call: `build_fn` receives the floor-center position (world Vector3)
+## and returns a Node3D, which is placed there. Returns the node or null.
+## Falls back to room-bounds center when no room data exists.
+static func spawn_on_floor(build_fn: Callable) -> Node3D:
+	var bounds := room_bounds()
+	var center := Vector3(bounds.position.x + bounds.size.x * 0.5, 0.0,
+		bounds.position.y + bounds.size.y * 0.5)
+	if has_room_data():
+		var floors := get_anchors("floor")
+		if not floors.is_empty():
+			var f: Dictionary = floors[0]
+			var p: Vector3 = f["position"]
+			center = Vector3(p.x, 0.02, p.z)
+	var node: Node3D = build_fn.call(center)
+	if node == null or not is_instance_valid(node):
+		return null
+	_attach_to_scene(node)
+	node.global_position = center
+	return node
+
+
+## One call: `build_fn` receives the largest table cuboid
+## ({position, size}) and returns a Node3D, placed on the table top.
+## Returns the node or null when the room has no table.
+static func spawn_on_table(build_fn: Callable) -> Node3D:
+	var tables := get_tables()
+	if tables.is_empty():
+		return null
+	var best: Dictionary = tables[0]
+	var best_area := 0.0
+	for t in tables:
+		var s: Vector3 = t["size"]
+		var area := s.x * s.z
+		if area > best_area:
+			best_area = area
+			best = t
+	var node: Node3D = build_fn.call(best)
+	if node == null or not is_instance_valid(node):
+		return null
+	_attach_to_scene(node)
+	place_on_cuboid(node, best, 0.02)
+	return node
+
+
+## One call: `build_fn` receives a ceiling anchor position (world Vector3)
+## and returns a Node3D, hung just below the ceiling. Falls back to 2.6m
+## height when no ceiling anchor exists. Returns the node or null.
+static func spawn_on_ceiling(build_fn: Callable) -> Node3D:
+	var pos := Vector3(0, 2.6, 0)
+	if has_room_data():
+		var ceilings := get_anchors("ceiling")
+		if not ceilings.is_empty():
+			var c: Dictionary = ceilings[0]
+			var p: Vector3 = c["position"]
+			pos = Vector3(p.x, p.y - 0.1, p.z)
+	var node: Node3D = build_fn.call(pos)
+	if node == null or not is_instance_valid(node):
+		return null
+	_attach_to_scene(node)
+	node.global_position = pos
+	return node
+
+
+## Position a node at a wall's center, facing into the room (+Z toward
+## the room interior along the wall normal).
+static func _place_on_wall(node: Node3D, wall: Dictionary) -> void:
+	_attach_to_scene(node)
+	var pos: Vector3 = wall.get("position", Vector3.ZERO)
+	var normal: Vector3 = wall.get("normal", Vector3.FORWARD).normalized()
+	node.global_position = pos + normal * 0.02
+	if normal.length() > 0.01:
+		# Face +Z along the normal (into the room).
+		var z := normal
+		var up := Vector3.UP
+		if absf(z.dot(up)) > 0.99:
+			up = Vector3.FORWARD
+		var x := up.cross(z).normalized()
+		var y := z.cross(x).normalized()
+		node.global_transform = Transform3D(Basis(x, y, z), node.global_position)
+
+
+## Add a node to the current scene (shared by the one-call helpers).
+static func _attach_to_scene(node: Node3D) -> void:
+	if node.get_parent() != null:
+		return
+	var tree := Engine.get_main_loop() as SceneTree
+	var parent: Node = null
+	if tree != null:
+		parent = tree.current_scene if tree.current_scene != null else tree.root
+	if parent == null:
+		return
+	parent.add_child(node)

@@ -44,6 +44,7 @@ var buttons: Array = []
 # --- farm ---
 var farm_root: Node3D = null
 var plots: Array = []
+var animals: Array = [] # v0.9.0: Quaternius farm animals (pasture)
 var plot_spacing := 1.15
 var stall_pos := Vector3(3.4, 0.0, -1.2)
 var shop_sign_pos := Vector3(-3.4, 0.0, -0.2)
@@ -92,7 +93,14 @@ func _ready() -> void:
 	_build_shop()
 	_build_seed_buttons()
 	_build_critters()
+	_build_animals() # v0.9.0: real animated farm animals
 	_build_hud()
+	# v0.9.0: per-game SFX map (AudioKit contract).
+	ArtKit.register_game_sfx(self, {
+		"plant": "pop", "water": "splash", "grow": "powerup", "harvest": "coin",
+		"sell": "coin", "till": "thud", "animal": "pop",
+	})
+	ArtKit.set_intensity(self, 0)
 	_apply_upgrades_visual()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.5, -0.5), 4.0, 40)
 	_apply_room_layout()
@@ -441,7 +449,7 @@ func _plot_center(pd: Dictionary) -> Vector3:
 	return (pd["node"] as Node3D).global_position
 
 
-func _refresh_plot_visual(pd: Dictionary) -> void:
+func _refresh_plot_visual(pd: Dictionary, pop: bool = false) -> void:
 	# Soil swap: tilled rows vs plain dirt.
 	var old_soil: Node3D = pd["soil"]
 	if old_soil != null and is_instance_valid(old_soil):
@@ -467,6 +475,9 @@ func _refresh_plot_visual(pd: Dictionary) -> void:
 			m.scale = Vector3.ONE * float(spec["scale"])
 			m.position = Vector3(0.0, float(spec["y"]), 0.0)
 			holder.add_child(m)
+			if pop:
+				ArtKit.grow_in(m, 0.35)
+				ArtKit.game_sfx(self, "grow")
 
 
 func _crop_stage_spec(crop: String, stage: int) -> Dictionary:
@@ -503,7 +514,7 @@ func _plots_process(delta: float) -> void:
 					GraphicsPolish.spawn_sparks(self, _plot_center(d) + Vector3(0, 0.5, 0), Color(1.0, 0.9, 0.4), 18)
 					Haptics.tick()
 					_set_msg("%s ready to harvest!" % str(d["crop"]).capitalize(), 1.6)
-				_refresh_plot_visual(d)
+				_refresh_plot_visual(d, true)
 			# Soil tint follows watering.
 			var was: bool = d["watered"]
 			var now: bool = float(d["water_t"]) > 0.0
@@ -533,7 +544,7 @@ func _interact_plot(pd: Dictionary) -> void:
 			pd["stage"] = 0
 			pd["growth_t"] = 0.0
 			pd["water_t"] = 0.0
-			_refresh_plot_visual(pd)
+			_refresh_plot_visual(pd, true)
 			GraphicsPolish.spawn_sparks(self, c + Vector3(0, 0.25, 0), CROP_COLOR[seed], 14)
 			Haptics.tick()
 			_set_msg("Planted %s - hold to water!" % seed.capitalize(), 1.6)
@@ -551,6 +562,10 @@ func _interact_plot(pd: Dictionary) -> void:
 			pd["stage"] = 0
 			pd["growth_t"] = 0.0
 			_refresh_plot_visual(pd)
+			# v0.9.0: harvest juice — squash pop, coin arcs to the player, sfx.
+			ArtKit.game_sfx(self, "harvest")
+			ArtKit.scale_pop(self, pd["node"])
+			_harvest_coins(c)
 			GraphicsPolish.spawn_confetti(self, c + Vector3(0, 0.6, 0), 30)
 			Haptics.pulse(0.7, 0.12)
 			_set_msg("Harvested %s! Sell it at the stall." % crop.capitalize(), 1.8)
@@ -565,6 +580,10 @@ func _water_plot(pd: Dictionary) -> void:
 		_tint_soil(pd["soil"], true)
 	var c := _plot_center(pd)
 	GraphicsPolish.spawn_sparks(self, c + Vector3(0, 0.5, 0), Color(0.35, 0.65, 1.0), 22)
+	# v0.9.0: splash ripple on the soil + water sfx + soil squash.
+	ArtKit.game_sfx(self, "water")
+	if pd["soil"] != null and is_instance_valid(pd["soil"]):
+		ArtKit.squash_stretch(self, pd["soil"])
 	Haptics.tick()
 	_set_msg("Watered!", 1.0)
 	_save()
@@ -859,6 +878,103 @@ func _refresh_seed_selection() -> void:
 
 
 # ---------------------------------------------------------------- critters ---
+# v0.9.0: pasture animals — real animated Quaternius farm animals (CC0).
+# They wander the pasture, graze (head dips), and hop when tapped.
+const PASTURE_ANIMALS := [
+	{"file": "Cow", "scale": 0.13, "spot": Vector3(-2.6, 0, -2.2)},
+	{"file": "Pig", "scale": 0.13, "spot": Vector3(-1.7, 0, -2.6)},
+	{"file": "Sheep", "scale": 0.22, "spot": Vector3(-2.4, 0, -1.3)},
+	{"file": "Horse", "scale": 0.12, "spot": Vector3(2.7, 0, -2.3)},
+]
+
+
+func _build_animals() -> void:
+	for spec in PASTURE_ANIMALS:
+		var a := _model(str(spec["file"]))
+		if a == null:
+			continue
+		a.scale = Vector3.ONE * float(spec["scale"])
+		a.position = spec["spot"]
+		a.rotation.y = randf() * TAU
+		farm_root.add_child(a)
+		ArtKit.play_anim(a, ["idle"], 1.0)
+		ArtKit.grow_in(a, 0.5)
+		animals.append({"node": a, "home": spec["spot"], "target": spec["spot"],
+			"wait": randf_range(1.0, 4.0), "graze": randf_range(2.0, 6.0), "hop_cd": 0.0})
+
+
+func _animals_process(delta: float) -> void:
+	for entry in animals:
+		var d: Dictionary = entry
+		var a: Node3D = d["node"]
+		if a == null or not is_instance_valid(a):
+			continue
+		d["hop_cd"] = maxf(0.0, float(d["hop_cd"]) - delta)
+		var target: Vector3 = d["target"]
+		var to := target - a.position
+		to.y = 0.0
+		if to.length() > 0.15:
+			# Walk to the wander target.
+			var dir := to.normalized()
+			a.position += dir * delta * 0.35
+			a.rotation.y = lerp_angle(a.rotation.y, atan2(dir.x, dir.z), delta * 4.0)
+			ArtKit.play_anim(a, ["walk", "walkslow"], 1.0)
+		else:
+			d["wait"] = float(d["wait"]) - delta
+			# Graze: gentle head-dip bob while idle.
+			a.position.y = (d["home"] as Vector3).y + absf(sin(Time.get_ticks_msec() * 0.001 + float(d["graze"]))) * 0.02
+			ArtKit.play_anim(a, ["idle"], 1.0)
+			if float(d["wait"]) <= 0.0:
+				d["wait"] = randf_range(3.0, 8.0)
+				var home: Vector3 = d["home"]
+				d["target"] = home + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.2, 1.2))
+
+
+## Tap-an-animal: happy hop (called from the tap handler via animal meta).
+func _pet_animal(a: Node3D) -> void:
+	for entry in animals:
+		var d: Dictionary = entry
+		if d["node"] == a and float(d["hop_cd"]) <= 0.0:
+			d["hop_cd"] = 2.0
+			ArtKit.scale_pop(self, a)
+			ArtKit.game_sfx(self, "animal")
+			Haptics.tick()
+			ArtKit.play_anim(a, ["jump"], 1.4)
+			var tw_timer := get_tree().create_timer(0.9)
+			tw_timer.timeout.connect(func() -> void:
+				if is_instance_valid(a):
+					ArtKit.play_anim(a, ["idle"], 1.0)
+			)
+			return
+
+
+## Harvest coin fountain: coins arc from the crop toward the player.
+func _harvest_coins(from_pos: Vector3) -> void:
+	var pp := camera.position if camera != null else Vector3(0, 1.4, 2.0)
+	for i in 3:
+		var coin := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.05
+		cm.bottom_radius = 0.05
+		cm.height = 0.012
+		coin.mesh = cm
+		coin.material_override = GraphicsPolish.glow(Color(1.0, 0.85, 0.3), 1.6)
+		coin.position = from_pos + Vector3(randf_range(-0.15, 0.15), 0.35, randf_range(-0.15, 0.15))
+		add_child(coin)
+		ArtKit.grow_in(coin, 0.25)
+		var dest: Vector3 = pp + Vector3(0, -0.2, 0)
+		var tw_timer := get_tree().create_timer(0.25 + float(i) * 0.12)
+		tw_timer.timeout.connect(func() -> void:
+			if is_instance_valid(coin):
+				ArtKit.arc_to(coin, dest, 0.6, 0.55)
+				var tw2 := get_tree().create_timer(0.6)
+				tw2.timeout.connect(func() -> void:
+					if is_instance_valid(coin):
+						coin.queue_free()
+				)
+		)
+
+
 func _build_critters() -> void:
 	var wing_colors := [Color(1.0, 0.60, 0.20), Color(0.75, 0.45, 1.0), Color(1.0, 0.90, 0.35), Color(0.45, 0.80, 1.0), Color(1.0, 0.45, 0.60)]
 	for i in 5:
@@ -1254,6 +1370,12 @@ func _handle_tap() -> void:
 		if is_instance_valid(cn) and hit_zone.call(cn.global_position, 0.6):
 			_shoo_crow(cd)
 			return
+	# v0.9.0: pet the pasture animals.
+	for entry in animals:
+		var an: Node3D = (entry as Dictionary)["node"]
+		if is_instance_valid(an) and hit_zone.call(an.global_position, 0.7):
+			_pet_animal(an)
+			return
 	# Plot interaction: nearest plot within radius.
 	var best: Dictionary = {}
 	var best_d := 0.62
@@ -1336,6 +1458,7 @@ func _process(delta: float) -> void:
 		water_hold_t = 0.0
 	_plots_process(delta)
 	_crows_process(delta)
+	_animals_process(delta) # v0.9.0: pasture wander + graze
 	_butterflies_process()
 	if windmill_blades != null:
 		windmill_blades.rotation.z += delta * 0.9

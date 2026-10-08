@@ -26,29 +26,21 @@ const CAT_GAMES := [
 	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "color": Color(1.0, 0.3, 0.2)},
 	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "color": Color(1.0, 0.9, 0.2)},
 	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "color": Color(1.0, 0.0, 1.0)},
-	{"name": "Portal Ball", "scene": "res://scenes/portal-ball/portal-ball.tscn", "color": Color(0.0, 1.0, 1.0)},
 	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "color": Color(1.0, 0.1, 0.1)},
-	{"name": "Gravity Pong", "scene": "res://scenes/gravity-pong/gravity-pong.tscn", "color": Color(0.3, 1.0, 0.6)},
-	{"name": "AR Bowling", "scene": "res://scenes/ar-bowling/ar-bowling.tscn", "color": Color(0.2, 0.6, 1.0)},
-	{"name": "Time Pilot", "scene": "res://scenes/time-pilot/time-pilot.tscn", "color": Color(0.5, 0.8, 1.0)},
 	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "color": Color(0.0, 0.8, 1.0)},
 	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "color": Color(1.0, 0.2, 0.5)},
 	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "color": Color(0.9, 0.5, 0.1)},
 	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "color": Color(0.3, 0.7, 1.0)},
-	{"name": "Tower Topple", "scene": "res://scenes/tower-topple/tower-topple.tscn", "color": Color(0.75, 0.55, 0.3)},
 	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "color": Color(0.7, 0.2, 1.0)},
 	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "color": Color(1.0, 0.2, 0.2)},
 	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "color": Color(0.25, 0.5, 1.0)},
 	{"name": "AR Darts", "scene": "res://scenes/ar-darts/ar-darts.tscn", "color": Color(1.0, 0.75, 0.15)},
-	{"name": "Zero-G Hoops", "scene": "res://scenes/zero-g-hoops/zero-g-hoops.tscn", "color": Color(1.0, 0.55, 0.1)},
 	{"name": "AR Fishing", "scene": "res://scenes/ar-fishing/ar-fishing.tscn", "color": Color(0.15, 0.8, 0.75)},
 	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "color": Color(1.0, 0.15, 0.25)},
 	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "color": Color(0.3, 1.0, 0.9)},
 	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
-	{"name": "Portal Maze", "scene": "res://scenes/portal-maze/portal-maze.tscn", "color": Color(0.2, 1.0, 0.8)},
 	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "color": Color(1.0, 0.35, 0.15)},
 	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "color": Color(1.0, 0.65, 0.3)},
-	{"name": "Holo Chess", "scene": "res://scenes/holo-chess/holo-chess.tscn", "color": Color(0.9, 0.9, 0.9)},
 	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "color": Color(0.8, 0.4, 1.0)},
 	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "color": Color(0.4, 0.2, 0.6)},
 	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "color": Color(0.7, 0.5, 0.2)},
@@ -67,22 +59,17 @@ const CAT_GAMES := [
 ]
 
 const CAT_UTILITIES := [
-	{"name": "AR Measure", "scene": "res://scenes/ar-measure/ar-measure.tscn", "color": Color(0.0, 1.0, 0.5)},
-	{"name": "Holo Notes", "scene": "res://scenes/holo-notes/holo-notes.tscn", "color": Color(1.0, 1.0, 0.0)},
 	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "color": Color(0.1, 0.1, 0.8)},
 	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "color": Color(0.4, 0.8, 1.0)},
 	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "color": Color(0.2, 0.9, 1.0)},
 	{"name": "Plant Doctor", "scene": "res://scenes/plant_doctor/plant_doctor.tscn", "color": Color(0.3, 1.0, 0.5)},
-	{"name": "AR Workout", "scene": "res://scenes/ar-workout/ar-workout.tscn", "color": Color(1.0, 0.3, 0.0)},
 	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "color": Color(1.0, 0.6, 0.8)},
-	{"name": "Mind Palace", "scene": "res://scenes/mind-palace/mind-palace.tscn", "color": Color(0.6, 0.3, 0.9)},
 	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "color": Color(0.8, 0.0, 0.8)},
-	{"name": "Familiar", "scene": "res://scenes/familiar/familiar.tscn", "color": Color(0.4, 0.7, 1.0)},
 	{"name": "Couch Morph", "scene": "res://scenes/couch_morph/couch_morph.tscn", "color": Color(0.9, 0.4, 1.0)},
+	{"name": "Mano Mágica", "scene": "res://scenes/mano_magica/mano_magica.tscn", "color": Color(1.0, 0.75, 0.3)},
 ]
 
 const CAT_CREATE := [
-	{"name": "Portal Painter", "scene": "res://scenes/portal-painter/portal-painter.tscn", "color": Color(1.0, 0.5, 0.0)},
 	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "color": Color(1.0, 0.3, 0.9)},
 	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "color": Color(1.0, 1.0, 1.0)},
 	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "color": Color(0.55, 0.3, 1.0)},
@@ -98,16 +85,11 @@ const CAT_CREATE := [
 
 const CAT_THEMES := [
 	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "color": Color(1.0, 0.45, 0.05)},
-	{"name": "Ghost Catch", "scene": "res://scenes/hw_ghost_catch/hw_ghost_catch.tscn", "color": Color(0.7, 1.0, 0.9)},
-	{"name": "Candy Run", "scene": "res://scenes/hw_candy_run/hw_candy_run.tscn", "color": Color(1.0, 0.3, 0.5)},
 	{"name": "Haunted Maze", "scene": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "color": Color(0.3, 0.6, 0.2)},
 	{"name": "Web Slingshot", "scene": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "color": Color(0.8, 0.8, 0.9)},
 	{"name": "Potion Mix", "scene": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "color": Color(0.4, 0.9, 0.3)},
 	{"name": "Zombie Defense", "scene": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "color": Color(0.5, 0.9, 0.2)},
-	{"name": "Bat Catch", "scene": "res://scenes/hw_bat_catch/hw_bat_catch.tscn", "color": Color(0.2, 0.2, 0.4)},
-	{"name": "Door Dash", "scene": "res://scenes/hw_door_dash/hw_door_dash.tscn", "color": Color(0.9, 0.5, 0.1)},
 	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "color": Color(0.9, 0.9, 0.85)},
-	{"name": "Eyeball Pong", "scene": "res://scenes/hw_eyeball_pong/hw_eyeball_pong.tscn", "color": Color(1.0, 0.2, 0.2)},
 	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "color": Color(0.6, 0.3, 1.0)},
 	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "color": Color(0.7, 0.2, 0.9)},
 	{"name": "Candy Stack", "scene": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "color": Color(1.0, 0.7, 0.1)},
@@ -115,22 +97,19 @@ const CAT_THEMES := [
 	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "color": Color(0.35, 0.1, 0.5)},
 	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "color": Color(1.0, 0.55, 0.0)},
 	{"name": "Portrait Gallery", "scene": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "color": Color(0.5, 0.2, 0.6)},
-	{"name": "Spider Catch", "scene": "res://scenes/hw_spider_catch/hw_spider_catch.tscn", "color": Color(0.9, 0.1, 0.3)},
 	{"name": "Werewolf Howl", "scene": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "color": Color(0.4, 0.5, 1.0)},
-	{"name": "Grave Digger", "scene": "res://scenes/hw_grave_digger/hw_grave_digger.tscn", "color": Color(0.45, 0.35, 0.2)},
 	{"name": "Hayride Shooter", "scene": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "color": Color(1.0, 0.6, 0.15)},
 	{"name": "Apple Bobbing", "scene": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "color": Color(0.9, 0.15, 0.2)},
 	{"name": "Phantom Piano", "scene": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "color": Color(0.75, 0.6, 1.0)},
 	{"name": "Goblin Archery", "scene": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "color": Color(0.2, 0.8, 0.3)},
 	{"name": "Haunted Mirror Maze", "scene": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "color": Color(0.6, 0.9, 1.0)},
-	{"name": "Pumpkin Bowling", "scene": "res://scenes/hw_pumpkin_bowling/hw_pumpkin_bowling.tscn", "color": Color(1.0, 0.5, 0.0)},
 	{"name": "Witch Hat Toss", "scene": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "color": Color(0.55, 0.25, 0.9)},
 	{"name": "Monster Feed", "scene": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "color": Color(0.3, 1.0, 0.4)},
 	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "color": Color(0.15, 0.1, 0.35)},
 ]
 
 
-const GAMES_PER_PAGE := 25
+const GAMES_PER_PAGE := 20
 const GRID_COLS := 5
 const VP_SIZE := Vector2(1600, 1000)
 const QUAD_SIZE := Vector2(2.4, 1.5)
@@ -144,6 +123,17 @@ const SETTINGS_PATH := "user://nexus_settings.cfg"
 const ROOM_KIT_PATH := "res://scripts/shared/room_kit.gd"
 const COSTUME_SCENE := "res://scenes/halloween/costume_picker.tscn"
 const TAB_NAMES := ["GAMES", "UTILITIES", "CREATE", "THEMES"]
+
+## v0.9.0 Launcher 2.1 category skins: neon GAMES / holographic UTILITIES /
+## studio CREATE / halloween THEMES. Applied to tabs, card borders, and
+## launch transitions (title-card accent).
+const CAT_SKINS := [
+	{"edge": Color(1.0, 0.25, 0.85), "tab": Color(0.45, 0.08, 0.32), "glow": Color(1.0, 0.45, 0.95)},
+	{"edge": Color(0.35, 0.85, 1.0), "tab": Color(0.08, 0.28, 0.42), "glow": Color(0.55, 0.92, 1.0)},
+	{"edge": Color(1.0, 0.65, 0.25), "tab": Color(0.42, 0.22, 0.08), "glow": Color(1.0, 0.8, 0.45)},
+	{"edge": Color(0.7, 0.3, 1.0), "tab": Color(0.26, 0.1, 0.42), "glow": Color(1.0, 0.55, 0.15)},
+]
+const HUB_EXTRAS_PATH := "res://scripts/hub_extras.gd"
 
 var _current_game: Node = null
 var _page := 0
@@ -193,6 +183,15 @@ var _gaze_dwell := 0.0
 var _status_accum := 0.0
 var _trigger_prev := {}
 var _recenter_timer: Timer = null
+# v0.9.0 Launcher 2.1: Spotlight hero row + key-art + category skins.
+var _spotlight_row: HBoxContainer = null
+var _spotlight_art: TextureRect = null
+var _spotlight_name: Label = null
+var _spotlight_desc: Label = null
+var _spotlight_play: Button = null
+var _spotlight_entry := {}
+var _extras_table_cache: Array = []
+var _depth_toggle: CheckButton = null
 
 
 func _ready() -> void:
@@ -380,6 +379,8 @@ func _build_ui() -> void:
 		tab_row.add_child(tb)
 		_tab_buttons.append(tb)
 
+	_build_spotlight(vbox)
+
 	_grid = GridContainer.new()
 	_grid.name = "GameGrid"
 	_grid.columns = GRID_COLS
@@ -433,6 +434,15 @@ func _build_ui() -> void:
 	_costumes_button = _make_button("Costumes", "CostumesButton", 24, Color(0.5, 0.2, 0.6))
 	_costumes_button.pressed.connect(_on_costumes_pressed)
 	footer.add_child(_costumes_button)
+	# v0.9.0: environment-depth occlusion toggle (default on). Persisted via
+	# VisualFX; gameplay objects only.
+	_depth_toggle = CheckButton.new()
+	_depth_toggle.name = "DepthToggle"
+	_depth_toggle.text = "Depth FX"
+	_depth_toggle.add_theme_font_size_override("font_size", 22)
+	_depth_toggle.button_pressed = VisualFX.is_depth_occlusion_enabled()
+	_depth_toggle.toggled.connect(_on_depth_toggled)
+	footer.add_child(_depth_toggle)
 	_version_label = Label.new()
 	_version_label.name = "VersionLabel"
 	_version_label.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.1.0"))
@@ -526,10 +536,19 @@ func _build_page() -> void:
 	for i in range(start, end):
 		var game: Dictionary = games[i]
 		var b := _make_button(
-			str(game["name"]), "Game_%d" % (i - start), 20,
+			str(game["name"]), "Game_%d" % (i - start), 19,
 			(game["color"] as Color).darkened(0.55))
-		b.custom_minimum_size = Vector2(280, 100)
+		b.custom_minimum_size = Vector2(240, 128)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		# Launcher 2.1: key-art thumbnail on top, name below (card look).
+		var art := game_card_icon(str(game["scene"]))
+		if art != null:
+			b.icon = art
+			b.expand_icon = true
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		_skin_card(b, _tab)
 		b.pressed.connect(_load_game.bind(str(game["scene"]), str(game["name"])))
 		_grid.add_child(b)
 		_game_buttons.append(b)
@@ -538,6 +557,7 @@ func _build_page() -> void:
 	_nav_prev.visible = _page > 0
 	_nav_next.visible = _page < pages - 1
 	_refresh_tabs()
+	_refresh_spotlight()
 	# Costumes button belongs to the THEMES (Halloween) section.
 	if is_instance_valid(_costumes_button):
 		_costumes_button.visible = _tab == 3
@@ -558,10 +578,131 @@ func _refresh_tabs() -> void:
 	for i in range(_tab_buttons.size()):
 		if is_instance_valid(_tab_buttons[i]):
 			_tab_buttons[i].button_pressed = (i == _tab)
+	_apply_tab_skins()
+
+
+## Key-art thumbnail for a game card (assets/keyart/<stem>.png), or null.
+func game_card_icon(scene_path: String) -> Texture2D:
+	var stem := scene_path.get_file().get_basename()
+	var path := "res://assets/keyart/%s.png" % stem
+	if ResourceLoader.exists(path):
+		return load(path) as Texture2D
+	return null
+
+
+## Launcher 2.1 category skins: tab button colors per category; the active
+## tab gets the category edge glow.
+func _apply_tab_skins() -> void:
+	for i in range(_tab_buttons.size()):
+		var tb := _tab_buttons[i]
+		if tb == null or not is_instance_valid(tb):
+			continue
+		var skin: Dictionary = CAT_SKINS[clampi(i, 0, 3)]
+		var sb := tb.get_theme_stylebox("normal") as StyleBoxFlat
+		if sb != null:
+			sb.bg_color = skin["tab"]
+			if i == _tab:
+				sb.border_color = skin["edge"]
+				sb.set_border_width_all(4)
+			else:
+				sb.set_border_width_all(0)
+
+
+## Apply the category edge border to a game card button.
+func _skin_card(b: Button, tab: int) -> void:
+	var skin: Dictionary = CAT_SKINS[clampi(tab, 0, 3)]
+	for sb_name in ["normal", "hover", "pressed"]:
+		var sb := b.get_theme_stylebox(sb_name) as StyleBoxFlat
+		if sb != null:
+			sb.border_color = skin["edge"]
+			sb.set_border_width_all(3)
+
+
+## Category accent color (title-card tint, spotlight edge).
+func _skin_accent(tab: int) -> Color:
+	return CAT_SKINS[clampi(tab, 0, 3)]["edge"]
+
+
+# ------------------------------------------------- Spotlight hero row ---
+
+## The featured game, rotating daily across all 75 experiences.
+func _spotlight_game() -> Dictionary:
+	var all: Array = []
+	all.append_array(CAT_GAMES)
+	all.append_array(CAT_UTILITIES)
+	all.append_array(CAT_CREATE)
+	all.append_array(CAT_THEMES)
+	if all.is_empty():
+		return {}
+	var day := int(Time.get_unix_time_from_system() / 86400.0)
+	return all[day % all.size()]
+
+
+func _build_spotlight(vbox: VBoxContainer) -> void:
+	_spotlight_row = HBoxContainer.new()
+	_spotlight_row.name = "SpotlightRow"
+	_spotlight_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_spotlight_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(_spotlight_row)
+	_spotlight_art = TextureRect.new()
+	_spotlight_art.name = "SpotlightArt"
+	_spotlight_art.custom_minimum_size = Vector2(220, 138)
+	_spotlight_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_spotlight_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_spotlight_row.add_child(_spotlight_art)
+	var info := VBoxContainer.new()
+	info.add_theme_constant_override("separation", 4)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_spotlight_row.add_child(info)
+	var tag := Label.new()
+	tag.text = "★ SPOTLIGHT — featured today"
+	tag.add_theme_font_size_override("font_size", 22)
+	tag.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	info.add_child(tag)
+	_spotlight_name = Label.new()
+	_spotlight_name.add_theme_font_size_override("font_size", 36)
+	_spotlight_name.add_theme_color_override("font_color", Color.WHITE)
+	info.add_child(_spotlight_name)
+	_spotlight_desc = Label.new()
+	_spotlight_desc.add_theme_font_size_override("font_size", 22)
+	_spotlight_desc.add_theme_color_override("font_color", Color(0.8, 0.88, 1.0))
+	_spotlight_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_spotlight_desc.custom_minimum_size = Vector2(700, 0)
+	info.add_child(_spotlight_desc)
+	_spotlight_play = _make_button("PLAY", "SpotlightPlay", 28, Color(0.0, 0.55, 0.3))
+	_spotlight_play.custom_minimum_size = Vector2(220, 76)
+	_spotlight_play.pressed.connect(_on_spotlight_play)
+	_spotlight_row.add_child(_spotlight_play)
+
+
+func _refresh_spotlight() -> void:
+	if _spotlight_row == null or not is_instance_valid(_spotlight_row):
+		return
+	_spotlight_entry = _spotlight_game()
+	if _spotlight_entry.is_empty():
+		_spotlight_row.visible = false
+		return
+	_spotlight_row.visible = true
+	var nm := str(_spotlight_entry.get("name", "?"))
+	_spotlight_name.text = nm
+	_spotlight_desc.text = _game_desc(nm)
+	var art := game_card_icon(str(_spotlight_entry.get("scene", "")))
+	if art != null:
+		_spotlight_art.texture = art
+
+
+func _on_spotlight_play() -> void:
+	if _spotlight_entry.is_empty():
+		return
+	_load_game(str(_spotlight_entry.get("scene", "")), str(_spotlight_entry.get("name", "")))
 
 
 func _on_costumes_pressed() -> void:
 	_load_game(COSTUME_SCENE, "Costume Picker")
+
+
+func _on_depth_toggled(on: bool) -> void:
+	VisualFX.set_depth_occlusion_enabled(on)
 
 
 # -------------------------------------------------------------- input ---
@@ -758,10 +899,10 @@ func _poll_controller_buttons() -> void:
 		if XRServer.get_tracker(ctl.tracker) == null:
 			continue
 		var id := ctl.get_instance_id()
-		var menu_now: bool = ctl.is_button_pressed("menu_button")
-		if menu_now and not bool(_menu_prev.get(id, false)) and _current_game != null:
-			_return_to_hub()
-		_menu_prev[id] = menu_now
+		# NOTE (v0.9.0): the menu button in games is owned by the PauseExit
+		# autoload now (pause overlay -> Quit to Hub). The hub no longer
+		# hijacks it here; this only keeps edge state fresh.
+		_menu_prev[id] = ctl.is_button_pressed("menu_button")
 		var trig_now := XRUIPointer.trigger_pressed(ctl)
 		if trig_now and not bool(_trigger_prev.get(id, false)):
 			_note_input_event()
@@ -936,6 +1077,7 @@ func _load_game(scene_path: String, game_name: String) -> void:
 		_current_game = scene.instantiate()
 		_current_game.position = Vector3(0, 0, -0.5)
 		add_child(_current_game)
+		_autowire_game(scene_path, game_name)
 		print("[Hub] Loaded: ", game_name)
 	else:
 		push_error("[Hub] Failed to load: " + scene_path)
@@ -943,11 +1085,82 @@ func _load_game(scene_path: String, game_name: String) -> void:
 			_panel_root.visible = true
 
 
+## v0.9.0 global auto-wirer (opt-OUT): every launched game automatically
+## gets genre music, a passthrough mood grade, a title-card sting, and an
+## affordance pass — the shared systems no game ever called are now alive
+## by default. A game opts out with `static var no_auto_wire := true`.
+func _autowire_game(scene_path: String, game_name: String) -> void:
+	var stem := scene_path.get_file().get_basename()
+	# 1. Genre music (activates the dormant GENRE_FOR_SCENE map).
+	if get_node_or_null("/root/AudioKit") != null:
+		AudioKit.set_active_scene(stem)
+		AudioKit.set_intensity(0)
+		AudioKit.play_music_for_scene(stem)
+	# 2. Passthrough mood grade (haunted green for THEMES, deep teal for
+	# dive/aquarium, natural everywhere else).
+	if get_node_or_null("/root/MoodLUT") != null:
+		MoodLUT.apply_for_game(stem, _tab)
+	# 3. Juice: title card + affordance pass.
+	if _current_game == null or not is_instance_valid(_current_game):
+		return
+	if _game_opt_out():
+		return
+	if get_node_or_null("/root/JuiceFX") != null:
+		JuiceFX.title_card(game_name, _game_desc(game_name), _skin_accent(_tab))
+		JuiceFX.affordance_pass(_current_game)
+	# 4. Global pause/exit (ship-blocker) + controller skins + button legend.
+	# Same opt-out flag: no_auto_wire games own their own exit path.
+	if get_node_or_null("/root/PauseExit") != null:
+		PauseExit.attach_to_game(
+			_current_game, _return_to_hub,
+			_load_game.bind(scene_path, game_name))
+		# controller_skins.gd by path: immune to stale class caches.
+		var skins_scr: GDScript = load("res://scripts/shared/controller_skins.gd")
+		var skin_cfg: Dictionary = skins_scr.config_for(_current_game, stem)
+		if bool(skin_cfg.get("uses_controllers", true)):
+			skins_scr.apply(_current_game, skin_cfg)
+			PauseExit.show_controls_intro(skin_cfg, game_name)
+
+
+## Per-game opt-out: `static var no_auto_wire := true` in the game script.
+func _game_opt_out() -> bool:
+	if _current_game == null or not is_instance_valid(_current_game):
+		return false
+	var scr := _current_game.get_script() as GDScript
+	return scr != null and bool(scr.get("no_auto_wire"))
+
+
+## One-line description for the title card, from hub_extras' master table.
+func _game_desc(game_name: String) -> String:
+	if _extras_table_cache.is_empty() and ResourceLoader.exists(HUB_EXTRAS_PATH):
+		var scr: GDScript = load(HUB_EXTRAS_PATH)
+		var table: Array = scr.get("GAMES")
+		if table != null:
+			_extras_table_cache = table
+	for g in _extras_table_cache:
+		var gd: Dictionary = g
+		if str(gd.get("n", "")) == game_name:
+			return str(gd.get("d", ""))
+	return ""
+
+
 func _return_to_hub() -> void:
 	BugReporter.session_end()
+	if get_node_or_null("/root/PauseExit") != null:
+		PauseExit.detach()
+	(load("res://scripts/shared/controller_skins.gd") as GDScript).clear()
+	if get_node_or_null("/root/JuiceFX") != null:
+		JuiceFX.dismiss_title_card()
 	if _current_game != null and is_instance_valid(_current_game):
 		_current_game.queue_free()
 	_current_game = null
+	# Restore the hub's own atmosphere.
+	if get_node_or_null("/root/AudioKit") != null:
+		AudioKit.set_active_scene("")
+		AudioKit.set_intensity(0)
+		AudioKit.play_music("menu_theme")
+	if get_node_or_null("/root/MoodLUT") != null:
+		MoodLUT.reset()
 	if is_instance_valid(_panel_root):
 		_panel_root.visible = true
 	_on_menu_open()

@@ -29,8 +29,8 @@ const SYNC_INTERVAL := 0.5
 const SEARCH_DEBOUNCE := 0.25
 const MAX_RECENTS := 8
 const MAX_SEARCH_RESULTS := 25
-const GRID_BTN_H := 100.0
-const GRID_BTN_H_COMPACT := 80.0
+const GRID_BTN_H := 128.0
+const GRID_BTN_H_COMPACT := 104.0
 const DEFAULT_HINT := "Point the laser and pull the trigger (or pinch) to select - hover a game for details"
 
 const TAB_TAGLINES := [
@@ -49,29 +49,21 @@ const GAMES := [
 	{"n": "Swarm Protocol", "s": "res://scenes/swarm/swarm.tscn", "t": 0, "d": "Command your drone swarm to outmaneuver the hive."},
 	{"n": "Neon Duel", "s": "res://scenes/duel/duel.tscn", "t": 0, "d": "Fast-draw light-blade duels in your living room."},
 	{"n": "Beat Blades", "s": "res://scenes/beat-blades/beat-blades.tscn", "t": 0, "d": "Slice incoming beats with twin energy blades."},
-	{"n": "Portal Ball", "s": "res://scenes/portal-ball/portal-ball.tscn", "t": 0, "d": "Bank shots through portals to solve kinetic puzzles."},
 	{"n": "Laser Tag AR", "s": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "t": 0, "d": "Classic laser tag, played across your real room."},
-	{"n": "Gravity Pong", "s": "res://scenes/gravity-pong/gravity-pong.tscn", "t": 0, "d": "Pong where the ball obeys shifting gravity."},
-	{"n": "AR Bowling", "s": "res://scenes/ar-bowling/ar-bowling.tscn", "t": 0, "d": "Bowl strikes down a lane projected on your floor."},
-	{"n": "Time Pilot", "s": "res://scenes/time-pilot/time-pilot.tscn", "t": 0, "d": "Rewind time mid-flight to dodge what already hit you."},
 	{"n": "Room Racer", "s": "res://scenes/room-racer/room-racer.tscn", "t": 0, "d": "Race hover cars on a track mapped to your room."},
 	{"n": "AR Defender", "s": "res://scenes/ar-defender/ar-defender.tscn", "t": 0, "d": "Defend your furniture forts against enemy waves."},
 	{"n": "Sky Defender", "s": "res://scenes/sky-defender/sky-defender.tscn", "t": 0, "d": "Swat invading drones out of your ceiling sky."},
 	{"n": "Drone Racer", "s": "res://scenes/drone-racer/drone-racer.tscn", "t": 0, "d": "Thread FPV drones through rings around your home."},
-	{"n": "Tower Topple", "s": "res://scenes/tower-topple/tower-topple.tscn", "t": 0, "d": "Topple physics towers without waking the giant."},
 	{"n": "Spell Duel", "s": "res://scenes/spell-duel/spell-duel.tscn", "t": 0, "d": "Duel rival wizards with gesture-cast spells."},
 	{"n": "Rhythm Boxer", "s": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "t": 0, "d": "Punch targets to the beat, round after round."},
 	{"n": "Marble Run", "s": "res://scenes/marble-run/marble-run.tscn", "t": 0, "d": "Build wild marble tracks across your tables."},
 	{"n": "AR Darts", "s": "res://scenes/ar-darts/ar-darts.tscn", "t": 0, "d": "Darts on a holographic board on your wall."},
-	{"n": "Zero-G Hoops", "s": "res://scenes/zero-g-hoops/zero-g-hoops.tscn", "t": 0, "d": "Basketball where every dunk floats."},
 	{"n": "AR Fishing", "s": "res://scenes/ar-fishing/ar-fishing.tscn", "t": 0, "d": "Cast into a pond that appears on your floor."},
 	{"n": "Laser Mirrors", "s": "res://scenes/mirror-maze/mirror-maze.tscn", "t": 0, "d": "Aim lasers with mirrors to hit every target."},
 	{"n": "Gravity Glove", "s": "res://scenes/gravity-glove/gravity-glove.tscn", "t": 0, "d": "Grab and fling objects with a gravity glove."},
 	{"n": "Time Freeze", "s": "res://scenes/time-freeze/time-freeze.tscn", "t": 0, "d": "Freeze time, reposition, then let chaos resume."},
-	{"n": "Portal Maze", "s": "res://scenes/portal-maze/portal-maze.tscn", "t": 0, "d": "Escape mazes stitched together with portals."},
 	{"n": "Air Drums", "s": "res://scenes/air-drums/air-drums.tscn", "t": 0, "d": "Play a full drum kit on thin air."},
 	{"n": "Shadow Puppets", "s": "res://scenes/shadow-puppet/shadow-puppet.tscn", "t": 0, "d": "Cast shadow creatures onto your walls."},
-	{"n": "Holo Chess", "s": "res://scenes/holo-chess/holo-chess.tscn", "t": 0, "d": "Chess with holographic pieces on your table."},
 	{"n": "Starforge", "s": "res://scenes/starforge/starforge.tscn", "t": 0, "d": "Forge a star system, planet by planet."},
 	{"n": "Holo Dungeon", "s": "res://scenes/holo-dungeon/holo-dungeon.tscn", "t": 0, "d": "A dungeon crawler that unfolds in your room."},
 	{"n": "AR Escape Room", "s": "res://scenes/ar-escape-room/ar-escape-room.tscn", "t": 0, "d": "Solve the room to escape the room."},
@@ -87,19 +79,14 @@ const GAMES := [
 	{"n": "Monster Lab", "s": "res://scenes/monster_lab/monster_lab.tscn", "t": 0, "d": "Mix monster DNA and unleash your creation."},
 	{"n": "Myth Zoo", "s": "res://scenes/myth_zoo/myth_zoo.tscn", "t": 0, "d": "Mythical beasts roaming your space."},
 	{"n": "QR Treasure Hunt", "s": "res://scenes/qr_hunt/qr_hunt.tscn", "t": 0, "d": "Follow QR clues to buried AR treasure."},
-	{"n": "AR Measure", "s": "res://scenes/ar-measure/ar-measure.tscn", "t": 1, "d": "Measure anything with a laser tape line."},
-	{"n": "Holo Notes", "s": "res://scenes/holo-notes/holo-notes.tscn", "t": 1, "d": "Sticky notes that float where you leave them."},
 	{"n": "Star Map", "s": "res://scenes/star-map/star-map.tscn", "t": 1, "d": "Name the constellations on your ceiling."},
 	{"n": "Sky Traffic", "s": "res://scenes/sky_traffic/sky_traffic.tscn", "t": 1, "d": "Watch live airplanes cross your sky in AR."},
 	{"n": "Eye Spy AR", "s": "res://scenes/eye_spy/eye_spy.tscn", "t": 1, "d": "I spy, played with your whole house."},
 	{"n": "Plant Doctor", "s": "res://scenes/plant_doctor/plant_doctor.tscn", "t": 1, "d": "Scan your houseplants for a health checkup."},
-	{"n": "AR Workout", "s": "res://scenes/ar-workout/ar-workout.tscn", "t": 1, "d": "A trainer that counts your reps in AR."},
 	{"n": "Holo Pets", "s": "res://scenes/holo-pets/holo-pets.tscn", "t": 1, "d": "Adopt a pet that lives on your furniture."},
-	{"n": "Mind Palace", "s": "res://scenes/mind-palace/mind-palace.tscn", "t": 1, "d": "Build a memory palace out of your rooms."},
 	{"n": "AR DJ", "s": "res://scenes/ar-dj/ar-dj.tscn", "t": 1, "d": "Spin tracks on floating decks."},
-	{"n": "Familiar", "s": "res://scenes/familiar/familiar.tscn", "t": 1, "d": "A magical companion that follows you around."},
 	{"n": "Couch Morph", "s": "res://scenes/couch_morph/couch_morph.tscn", "t": 1, "d": "Reskin your couch: spaceship, lava isle, pirate deck."},
-	{"n": "Portal Painter", "s": "res://scenes/portal-painter/portal-painter.tscn", "t": 2, "d": "Paint murals that hang in midair."},
+	{"n": "Mano Mágica", "s": "res://scenes/mano_magica/mano_magica.tscn", "t": 1, "d": "Learn hand tracking: pinch, grab, throw, sculpt, conduct, pet."},
 	{"n": "Light Painter", "s": "res://scenes/light-painter/light-painter.tscn", "t": 2, "d": "Draw with light and leave glowing trails."},
 	{"n": "Holo Piano", "s": "res://scenes/holo-piano/holo-piano.tscn", "t": 2, "d": "A grand piano projected onto your floor."},
 	{"n": "Holo Theremin", "s": "res://scenes/holo-theremin/holo-theremin.tscn", "t": 2, "d": "Make music just by waving your hands."},
@@ -112,16 +99,11 @@ const GAMES := [
 	{"n": "Zero-G Sandbox", "s": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "t": 2, "d": "Build contraptions in zero gravity."},
 	{"n": "Holo Aquarium", "s": "res://scenes/holo-aquarium/holo-aquarium.tscn", "t": 2, "d": "An aquarium on your wall, no water needed."},
 	{"n": "Pumpkin Smash", "s": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "t": 3, "d": "Smash every pumpkin before time runs out."},
-	{"n": "Ghost Catch", "s": "res://scenes/hw_ghost_catch/hw_ghost_catch.tscn", "t": 3, "d": "Catch mischievous ghosts with your net."},
-	{"n": "Candy Run", "s": "res://scenes/hw_candy_run/hw_candy_run.tscn", "t": 3, "d": "Grab candy while dodging spooky traps."},
 	{"n": "Haunted Maze", "s": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "t": 3, "d": "Escape a maze that rearranges itself."},
 	{"n": "Web Slingshot", "s": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "t": 3, "d": "Slingshot through giant spider webs."},
 	{"n": "Potion Mix", "s": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "t": 3, "d": "Brew the perfect potion - don't blow up the lab."},
 	{"n": "Zombie Defense", "s": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "t": 3, "d": "Barricade your room against the horde."},
-	{"n": "Bat Catch", "s": "res://scenes/hw_bat_catch/hw_bat_catch.tscn", "t": 3, "d": "Snatch bats out of the midnight sky."},
-	{"n": "Door Dash", "s": "res://scenes/hw_door_dash/hw_door_dash.tscn", "t": 3, "d": "Knock on haunted doors: trick or treat?"},
 	{"n": "Skeleton Dance", "s": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "t": 3, "d": "Match the skeleton's dance moves."},
-	{"n": "Eyeball Pong", "s": "res://scenes/hw_eyeball_pong/hw_eyeball_pong.tscn", "t": 3, "d": "Pong with eyeballs. Obviously."},
 	{"n": "Broom Flight", "s": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "t": 3, "d": "Race broomsticks through the night sky."},
 	{"n": "Monster Mash", "s": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "t": 3, "d": "Dance-battle classic movie monsters."},
 	{"n": "Candy Stack", "s": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "t": 3, "d": "Stack candy as high as physics allows."},
@@ -129,15 +111,12 @@ const GAMES := [
 	{"n": "Bat Dodge", "s": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "t": 3, "d": "Dodge swooping bats in your hallway."},
 	{"n": "Pumpkin Carve", "s": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "t": 3, "d": "Carve jack-o'-lanterns with light."},
 	{"n": "Portrait Gallery", "s": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "t": 3, "d": "Portraits whose eyes follow you. Creepy."},
-	{"n": "Spider Catch", "s": "res://scenes/hw_spider_catch/hw_spider_catch.tscn", "t": 3, "d": "Catch the spiders before they reach you."},
 	{"n": "Werewolf Howl", "s": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "t": 3, "d": "Howl in tune to wake the pack."},
-	{"n": "Grave Digger", "s": "res://scenes/hw_grave_digger/hw_grave_digger.tscn", "t": 3, "d": "Dig for treasure in the haunted graveyard."},
 	{"n": "Hayride Shooter", "s": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "t": 3, "d": "Shoot targets from a rolling hayride."},
 	{"n": "Apple Bobbing", "s": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "t": 3, "d": "Bob for apples, AR style."},
 	{"n": "Phantom Piano", "s": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "t": 3, "d": "Play a piano that plays itself back."},
 	{"n": "Goblin Archery", "s": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "t": 3, "d": "Outshoot goblins in the dark forest."},
 	{"n": "Haunted Mirror Maze", "s": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "t": 3, "d": "A mirror maze full of lying reflections."},
-	{"n": "Pumpkin Bowling", "s": "res://scenes/hw_pumpkin_bowling/hw_pumpkin_bowling.tscn", "t": 3, "d": "Bowling with pumpkins for balls."},
 	{"n": "Witch Hat Toss", "s": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "t": 3, "d": "Toss rings onto the witch hats."},
 	{"n": "Monster Feed", "s": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "t": 3, "d": "Feed the monster before it feeds on you."},
 	{"n": "Midnight Survival", "s": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "t": 3, "d": "Survive until dawn in the haunted house."},
@@ -519,10 +498,18 @@ func _apply_search() -> void:
 	for i in matches.size():
 		var gd: Dictionary = matches[i]
 		var b: Button = _hub.call(
-			"_make_button", str(gd["n"]), "Search_%d" % i, 20,
+			"_make_button", str(gd["n"]), "Search_%d" % i, 19,
 			Color(0.16, 0.22, 0.38))
-		b.custom_minimum_size = Vector2(280, GRID_BTN_H)
+		b.custom_minimum_size = Vector2(240, GRID_BTN_H)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		# Launcher 2.1: key-art on search results too.
+		var art: Texture2D = _hub.call("game_card_icon", str(gd["s"]))
+		if art != null:
+			b.icon = art
+			b.expand_icon = true
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.pressed.connect(_on_search_chosen.bind(str(gd["s"]), str(gd["n"])))
 		grid.add_child(b)
 	# _sync() (already running) hooks hover/stars onto these buttons and
@@ -613,6 +600,12 @@ func _load_settings() -> void:
 	for x in cfg.get_value("hub_extras", "recents", []):
 		_recents.append(str(x))
 	_recents = _recents.slice(0, MAX_RECENTS)
+	# v0.9.0 roster sync: silently drop favorites/recents for cut games.
+	var live := {}
+	for g in GAMES:
+		live[str((g as Dictionary).get("n", ""))] = true
+	_favorites.assign(_favorites.filter(func(x: String) -> bool: return live.has(x)))
+	_recents.assign(_recents.filter(func(x: String) -> bool: return live.has(x)))
 
 
 func _save_settings() -> void:

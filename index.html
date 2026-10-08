@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS ARCADE - 96 Quest 3 Mixed Reality Experiences</title>
+<title>NEXUS ARCADE - 75 Quest 3 Mixed Reality Experiences</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0ff; line-height: 1.6; }
@@ -28,6 +28,7 @@
   .tag.game { color: #00ff88; }
   .tag.utility { color: #ffaa00; }
   .tag.halloween { color: #ff8800; }
+  .tag.create { color: #ffcc66; }
   .tag.new { color: #ff00ff; }
   .feature { max-width: 800px; margin: 0 auto; padding: 20px; text-align: center; }
   .feature .banner { background: linear-gradient(135deg, #2a1a3a, #1a1a2a); border: 1px solid #ff8800; border-radius: 12px; padding: 24px; }
@@ -46,132 +47,112 @@
 <body>
 <div class="hero">
   <h1>NEXUS ARCADE</h1>
-  <p>96 cutting-edge mixed reality games and utilities for Meta Quest 3, organized into GAMES, UTILITIES, CREATE, and THEMES screens. Your room is the arcade. Hand tracking, spatial anchors, real 3D models, haptics, and PBR graphics throughout.</p>
-  <a href="https://github.com/waderaider/nexus-arcade/releases/download/v0.8.0/NexusArcade-v0.8.0.apk" class="download-btn">Download APK</a>
-  <div class="version">v0.8.0 &bull; 102MB &bull; <a href="https://github.com/waderaider/nexus-arcade/releases" style="color:#00ffff;">All releases</a></div>
+  <p>75 cutting-edge mixed reality games and utilities for Meta Quest 3, organized into GAMES, UTILITIES, CREATE, and THEMES screens. Your room is the arcade. Hand tracking, spatial anchors, real 3D models, haptics, and PBR graphics throughout.</p>
+  <a href="https://github.com/waderaider/nexus-arcade/releases/download/v0.9.0/NexusArcade-v0.9.0.apk" class="download-btn">Download APK</a>
+  <div class="version">v0.9.0 &bull; 107MB &bull; <a href="https://github.com/waderaider/nexus-arcade/releases" style="color:#00ffff;">All releases</a></div>
 </div>
 
 <div class="feature">
   <div class="banner">
-    <h3>&#128266; NEW in v0.8.0: Launcher Fixed for Real + Sound Everywhere</h3>
-    <p>The launcher's stuck-menu bug is fixed <b>for real</b>: the old "is a controller live?" check was meaningless, so clicks never registered. Now there are <b>4 ways to click</b> — controller lasers (both hands, trigger = click), hand-tracking pinch, and a <b>new gaze fallback</b> (look at a button + trigger, or stare 1.2s to auto-click), plus an auto-hint after 10s of no input and live input diagnostics. Look for the big <b>v0.8.0 badge</b> on the launcher to confirm your version. Also new: <b>AudioKit</b> — 30 procedural SFX + 11 original genre music loops, every one of the 96 games mapped to a fitting genre, plus menu music. Menu upgrades: animated aurora background, one-line descriptions for all 96 games, favorites + recently-played rows, search, and a big <b>CHECK FOR UPDATES</b> button. Roomscale hardened; crash-log relay still wired.</p>
+    <h3>&#127878; NEW in v0.9.0: Everything Comes Alive</h3>
+    <p><b>22 boring games cut</b> — wade’s permanent quality bar: anything that wasn’t amazing got removed outright (<a href="https://github.com/waderaider/nexus-arcade/blob/main/CUT_LIST.md" style="color:#00ffff;">CUT_LIST.md</a>). <b>75 experiences remain</b>, and every one now has <b>working music</b> (genre soundtracks finally play, with explore/tense/combat intensity layers), <b>3-second skippable title cards</b>, a <b>pause menu in every game</b> (menu button or Esc — Resume / Restart / Quit to Hub, works with laser, pinch, and gaze), <b>controller skins</b> (1:1 render models with game-styled grips + per-game button legends), <b>passthrough FX</b> (dragon fire scorches your real walls, splashes ripple your floor, portals anchor to walls), and <b>per-game color grading</b> for your real room. <b>Launcher 2.1</b>: key-art cards, daily Spotlight row, 4 category skins, Depth FX toggle (virtual objects hide behind real furniture). New: <b>Mano Mágica</b> hand-tracking tour. XR upgrades: simultaneous hands+controllers, body tracking in Skeleton Dance, grab/throw physics. Targets Android SDK 34. <b>Not Quest-tested on real hardware yet — your headset pass is the validation.</b></p>
   </div>
 </div>
 
 <div class="games">
-  <h2>65 Games, Utilities & Creations</h2>
+  <h2>53 Games, Utilities & Creations</h2>
   <div class="subtitle">Browse by screen: GAMES &bull; UTILITIES &bull; CREATE &bull; THEMES</div>
   <div class="subtitle">The ARCADE tab &mdash; full-featured MR experiences</div>
   <div class="grid">
-    <div class="card"><h3>Gravity Golf</h3><p>Room-scale mini golf with portals, gravity wells, and hole-in-one celebration.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Swarm Protocol</h3><p>Wall portals spawn enemies. Mount turrets on furniture. Defend the core.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Familiar</h3><p>Adaptive creature living in your room. Responds to gestures and voice.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Starforge Command</h3><p>Tabletop space RTS. Command fleets from your coffee table.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Neon Duel</h3><p>Hand-tracked energy blade duel with adaptive AI.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Holo Chess</h3><p>Holographic chess vs AI with full move validation.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Portal Painter</h3><p>Paint in 3D space with hand-tracked brush. Save your art.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Room Racer</h3><p>Hover-car racing on your floor. 3 laps, boost, best times.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR Defender</h3><p>Tower defense on your furniture. Build, upgrade, survive waves.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Zero-G Sandbox</h3><p>Physics playground. Grab, fling, toggle zero gravity.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Holo Piano</h3><p>2-octave piano on any table. Hand-tracked keys, synthesized sound.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Star Map</h3><p>AR planetarium on your ceiling. Constellations and planet facts.</p><span class="tag utility">Utility</span></div>
-    <div class="card"><h3>AR Measure</h3><p>Measure distances and room areas with hand gestures.</p><span class="tag utility">Utility</span></div>
-    <div class="card"><h3>Holo Notes</h3><p>Spatial sticky notes anchored to your room. Never lose a thought.</p><span class="tag utility">Utility</span></div>
-    <div class="card"><h3>Beat Blades</h3><p>Rhythm slicer. Cut notes to the beat, build combos.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Portal Ball</h3><p>Pong with teleporting portals. First to 5 wins.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR Workout</h3><p>Punch targets in your room. 60-second rounds, calorie tracking.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Mind Palace</h3><p>Memory palace technique with spatial anchors and quiz mode.</p><span class="tag utility">Utility</span></div>
-    <div class="card"><h3>Holo Pets</h3><p>Virtual pets living in your room. Feed, play, keep them happy.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR DJ</h3><p>Dual turntables in your space. Scratch, mix, loop at 128 BPM.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Laser Tag AR</h3><p>Room-scale laser tag vs AI bots. Wall barriers, 3 lives, 60s rounds.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Holo Dungeon</h3><p>Roguelike dungeon crawler in your room. Procedural rooms, loot, permadeath.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR Bowling</h3><p>Bowling alley in your hallway. Full 10-frame scoring with strikes and spares.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Sky Defender</h3><p>Anti-aircraft defense. Shoot down drone waves before they reach the city.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Holo Aquarium</h3><p>Virtual aquarium on your wall. Schooling fish, tap to feed, day/night cycle.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR Escape Room</h3><p>Escape room in your space. Solve 3 puzzles to unlock the exit. Beat the timer.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Gravity Pong</h3><p>3D pong with gravity wells curving the ball. First to 7 wins.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Holo Garden</h3><p>Grow a virtual garden. Plant, water, harvest. Coins and seeds economy.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>AR Karaoke</h3><p>Lyrics float in your space. Timed scoring with S/A/B/C grades.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Time Pilot</h3><p>Time-manipulation shooter. Slow-mo and time-stop to dodge bullets.</p><span class="tag game">Game</span></div>
-    <div class="card"><h3>Clay Shaper</h3><p>Hand-sculpt a deformable clay blob. Bimanual stretch and detail tools.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Portal Maze</h3><p>Walk-through portal time trial with room-anchored rings.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Air Drums</h3><p>Hand-velocity drum kit with pattern mode and synthesized percussion.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Drone Racer</h3><p>Hand-guided drone through 8 checkpoint rings. 3 timed laps.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Tower Topple</h3><p>AR Jenga stacked on your table. Lean physics, steady hands.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Light Painter</h3><p>3D hand-trail light painting with persistent glowing strokes.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Holo Theremin</h3><p>Hand-height pitch, hand-distance volume. Song mode included.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>AR Billiards</h3><p>Pool on your table. Drag-to-shoot physics, full rules.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Spell Duel</h3><p>Drawn-gesture spellcasting vs an AI wizard. Circles, zigzags, shields.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Sand Shaper</h3><p>Deformable terrain sandbox with water flow and goal cards.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Rhythm Boxer</h3><p>Punch orbs on the beat. Escalating BPM, combo scoring.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>AR Graffiti</h3><p>Spray-paint your wall with stencils. Coverage scoring.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Marble Run</h3><p>Build marble tracks from anchored parts. Multi-anchor persistence.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>AR Darts</h3><p>Flick-thrown darts at a wall-anchored board. Real scoring.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Zero-G Hoops</h3><p>Momentum basketball floating in your room. Bank shots count double.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Shadow Puppets</h3><p>Hand-shadow theater with story prompts and applause meter.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>AR Fishing</h3><p>Cast and reel in your room. 5-species collection log.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Laser Mirrors</h3><p>Real-time beam-bounce puzzle. 6 levels of mirror mayhem.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Gravity Glove</h3><p>Pinch-grab objects and fling them with magnet assist.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Time Freeze</h3><p>Pinch-hold to freeze time and plot paths. 8-level puzzler.</p><span class="tag new">New in v0.4.0</span></div>
-    <div class="card"><h3>Holo Chef</h3><p>AR cooking: chop, stir, flip with hand gestures. Timed recipes, plating scores.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Dragon Ranch</h3><p>Raise a pet dragon in your room. Feed, play, teach it to fly. It grows.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Wizard Academy</h3><p>Magic school: lessons, timed exams, gesture-spell duels vs an AI rival.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Holo Farm</h3><p>Farm sim on your floor. Till, plant, water, harvest, sell at market.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Mech Pilot</h3><p>Pilot a mech with hand controls. Punch, blast, 3 missions + boss.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Deep Dive</h3><p>Your room becomes the ocean. Find 5 treasures, dodge sharks, watch your air.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>AR Detective</h3><p>Noir crime scenes. Scan clues, interrogate hologram suspects, solve 3 cases.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Sky Pirates</h3><p>Captain an airship. Hand-steered cannon battles, boarding, 5 waves + sky-kraken.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Monster Lab</h3><p>Assemble monsters from 20 parts, zap them alive, train your creations.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Myth Zoo</h3><p>Collect mythical creatures living around your home. Care, feed, complete the log.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Eye Spy AR</h3><p>Camera scavenger hunt. Point at real objects, the game verifies by sight.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>QR Treasure Hunt</h3><p>Scan hidden QR codes around your house to unlock AR loot. 5-clue chain.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Plant Doctor</h3><p>Point at a real plant, get a care plan, grow its twin in Holo Garden.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Sketch to 3D</h3><p>Draw on paper, hold it up — your sketch becomes a 3D model in your room.</p><span class="tag new">New in v0.6.0</span></div>
-    <div class="card"><h3>Sky Traffic</h3><p>Realtime AR airplane viewer. Live planes positioned where they really are, with path trails and info cards. Free live data.</p><span class="tag new">New in v0.5.0</span></div>
+    <div class="card"><h3>Gravity Golf</h3><p>Putt across floating courses where every shot bends gravity.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Swarm Protocol</h3><p>Command your drone swarm to outmaneuver the hive.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Neon Duel</h3><p>Fast-draw light-blade duels in your living room.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Beat Blades</h3><p>Slice incoming beats with twin energy blades.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Laser Tag AR</h3><p>Classic laser tag, played across your real room.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Room Racer</h3><p>Race hover cars on a track mapped to your room.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Defender</h3><p>Defend your furniture forts against enemy waves.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Sky Defender</h3><p>Swat invading drones out of your ceiling sky.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Drone Racer</h3><p>Thread FPV drones through rings around your home.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Spell Duel</h3><p>Duel rival wizards with gesture-cast spells.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Rhythm Boxer</h3><p>Punch targets to the beat, round after round.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Marble Run</h3><p>Build wild marble tracks across your tables.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Darts</h3><p>Darts on a holographic board on your wall.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Fishing</h3><p>Cast into a pond that appears on your floor.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Laser Mirrors</h3><p>Aim lasers with mirrors to hit every target.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Gravity Glove</h3><p>Grab and fling objects with a gravity glove.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Time Freeze</h3><p>Freeze time, reposition, then let chaos resume.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Air Drums</h3><p>Play a full drum kit on thin air.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Shadow Puppets</h3><p>Cast shadow creatures onto your walls.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Starforge</h3><p>Forge a star system, planet by planet.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Holo Dungeon</h3><p>A dungeon crawler that unfolds in your room.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Escape Room</h3><p>Solve the room to escape the room.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Billiards</h3><p>Pool on your coffee table - no table required.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Holo Chef</h3><p>Cook holographic recipes with your own hands.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Dragon Ranch</h3><p>Raise and train your own AR dragons.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Wizard Academy</h3><p>Learn real spell combos at wizard school.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Holo Farm</h3><p>Grow a farm that lives on your floor.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Mech Pilot</h3><p>Climb into a mech and stomp the block.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Deep Dive</h3><p>Dive an ocean trench from your couch.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>AR Detective</h3><p>Hunt for clues hidden around your home.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Sky Pirates</h3><p>Board airships and duel sky pirates.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Monster Lab</h3><p>Mix monster DNA and unleash your creation.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Myth Zoo</h3><p>Mythical beasts roaming your space.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>QR Treasure Hunt</h3><p>Follow QR clues to buried AR treasure.</p><span class="tag game">Game</span></div>
+    <div class="card"><h3>Star Map</h3><p>Name the constellations on your ceiling.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Sky Traffic</h3><p>Watch live airplanes cross your sky in AR.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Eye Spy AR</h3><p>I spy, played with your whole house.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Plant Doctor</h3><p>Scan your houseplants for a health checkup.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Holo Pets</h3><p>Adopt a pet that lives on your furniture.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>AR DJ</h3><p>Spin tracks on floating decks.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Couch Morph</h3><p>Reskin your couch: spaceship, lava isle, pirate deck.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Mano Mágica</h3><p>Learn hand tracking: pinch, grab, throw, sculpt, conduct, pet.</p><span class="tag utility">Utility</span></div>
+    <div class="card"><h3>Light Painter</h3><p>Draw with light and leave glowing trails.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Holo Piano</h3><p>A grand piano projected onto your floor.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Holo Theremin</h3><p>Make music just by waving your hands.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>AR Graffiti</h3><p>Tag your walls with zero cleanup.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>AR Karaoke</h3><p>Karaoke night with lyrics on your wall.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Sand Shaper</h3><p>Sculpt a sandbox that never spills.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Clay Shaper</h3><p>Throw virtual clay on a floating wheel.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Sketch to 3D</h3><p>Sketch it, then watch it pop into 3D.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Holo Garden</h3><p>Plant a garden that blooms overnight.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Zero-G Sandbox</h3><p>Build contraptions in zero gravity.</p><span class="tag create">Create</span></div>
+    <div class="card"><h3>Holo Aquarium</h3><p>An aquarium on your wall, no water needed.</p><span class="tag create">Create</span></div>
   </div>
 </div>
 
 <div class="games">
-  <h2 class="halloween">30 Halloween Mini-Games</h2>
+  <h2 class="halloween">22 Halloween Mini-Games</h2>
   <div class="subtitle">The HALLOWEEN tab &mdash; spooky 60&ndash;90 second rounds</div>
   <div class="grid">
-    <div class="card hw"><h3>Pumpkin Smash</h3><p>Whack-a-mole jack-o'-lanterns with a hand-tracked mallet.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Ghost Catch</h3><p>Sweep a glowing net through drifting ghosts.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Candy Run</h3><p>Move the basket with your hand. Catch raining candy, 3 lives.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Haunted Maze</h3><p>Walk-through hedge maze. Collect 5 tokens, dodge the ghoul.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Web Slingshot</h3><p>Pinch-pull slingshot at spider targets.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Potion Mix</h3><p>Pour vials in recipe order into bubbling cauldrons.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Zombie Defense</h3><p>Point and pinch-zap zombies. Survive 90 seconds.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Bat Catch</h3><p>Pinch-grab fluttering bats out of the air.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Door Dash</h3><p>Knock on 3 haunted doors. Trick or treat?</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Skeleton Dance</h3><p>Mirror the skeleton's dance poses on the beat.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Eyeball Pong</h3><p>Pong vs a ghost AI. First to 7 wins.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Broom Flight</h3><p>Steer a witch through glowing rings.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Monster Mash</h3><p>Rhythm game at 120 BPM. Hit the timing windows.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Candy Stack</h3><p>Stack falling candy corn. Tallest stable stack wins.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Mummy Wrap</h3><p>Circular hand motions wind the bandages. Beat the clock.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Bat Dodge</h3><p>Dodge the diving bat swarm. Near-misses score big.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Pumpkin Carve</h3><p>Trace carve patterns with your fingertip.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Portrait Gallery</h3><p>Spot the haunted portrait. 10 rounds, faster each time.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Spider Catch</h3><p>Grab spiders descending on webs before they land.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Werewolf Howl</h3><p>Dual-pinch charge, then unleash a shockwave blast.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Grave Digger</h3><p>Dig the glowing spots. Candy or skeleton tricks?</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Hayride Shooter</h3><p>On-rails haunted hayride shooter.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Apple Bobbing</h3><p>Grab apples as they surface. Don't touch the tricks.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Phantom Piano</h3><p>Simon-style haunted piano. Repeat the ghost's melody.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Goblin Archery</h3><p>Pinch-draw the bow at popping goblins.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Mirror Maze</h3><p>Generated mirror maze. Find the portal out.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Pumpkin Bowling</h3><p>Roll pumpkins at ghost pins. Strikes raise the dead.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Hat Toss</h3><p>Toss rings onto witch hats.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Monster Feed</h3><p>Feed the monster exactly what it wants.</p><span class="tag halloween">Halloween</span></div>
-    <div class="card hw"><h3>Midnight Survival</h3><p>Survive the spook waves until the clock strikes 12.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Pumpkin Smash</h3><p>Smash every pumpkin before time runs out.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Haunted Maze</h3><p>Escape a maze that rearranges itself.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Web Slingshot</h3><p>Slingshot through giant spider webs.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Potion Mix</h3><p>Brew the perfect potion - don&#x27;t blow up the lab.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Zombie Defense</h3><p>Barricade your room against the horde.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Skeleton Dance</h3><p>Match the skeleton&#x27;s dance moves.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Broom Flight</h3><p>Race broomsticks through the night sky.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Monster Mash</h3><p>Dance-battle classic movie monsters.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Candy Stack</h3><p>Stack candy as high as physics allows.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Mummy Wrap</h3><p>Wrap the mummy before it wakes up.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Bat Dodge</h3><p>Dodge swooping bats in your hallway.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Pumpkin Carve</h3><p>Carve jack-o&#x27;-lanterns with light.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Portrait Gallery</h3><p>Portraits whose eyes follow you. Creepy.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Werewolf Howl</h3><p>Howl in tune to wake the pack.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Hayride Shooter</h3><p>Shoot targets from a rolling hayride.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Apple Bobbing</h3><p>Bob for apples, AR style.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Phantom Piano</h3><p>Play a piano that plays itself back.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Goblin Archery</h3><p>Outshoot goblins in the dark forest.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Haunted Mirror Maze</h3><p>A mirror maze full of lying reflections.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Witch Hat Toss</h3><p>Toss rings onto the witch hats.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Monster Feed</h3><p>Feed the monster before it feeds on you.</p><span class="tag halloween">Halloween</span></div>
+    <div class="card"><h3>Midnight Survival</h3><p>Survive until dawn in the haunted house.</p><span class="tag halloween">Halloween</span></div>
   </div>
 </div>
 
 <div class="install">
   <h2>How to Install</h2>
   <div class="step"><h4>1. Enable Developer Mode</h4><p>Meta Horizon app &rarr; Menu &rarr; Devices &rarr; your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
-  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-v0.8.0.apk</code></p></div>
+  <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-v0.9.0.apk</code></p></div>
   <div class="step"><h4>3. Launch</h4><p>Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
   <div class="step"><h4>4. Stay updated</h4><p>The in-app <b>Check for Updates</b> button in the hub notifies you when a new version drops.</p></div>
 </div>

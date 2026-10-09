@@ -33,6 +33,12 @@ const LOG_TAIL_LINES := 200
 const CRASH_TAIL_LINES := 50
 const EARLY_LINE_CAP := 100
 const MANIFEST_URL := "https://raw.githubusercontent.com/waderaider/nexus-arcade/main/version.json"
+## v0.9.3: compiled-in fallback report URL. POST /report needs no key (the
+## read key is server-side only), so leaking nothing. The remote
+## version.json fetch still overrides this when it succeeds; this constant
+## only fixes the case where that fetch never completes (prime suspect for
+## zero device telemetry ever arriving: the URL sat empty until then).
+const RELAY_FALLBACK_URL := "https://nexus-log-relay.brio-00c.workers.dev/report"
 
 var _log_file: FileAccess = null
 var _session_path := ""
@@ -40,7 +46,7 @@ var _session_game := ""
 var _breadcrumbs: Array[String] = []
 var _early_lines: Array[String] = []
 var _pending_crash: Dictionary = {}
-var _report_url := ""
+var _report_url := RELAY_FALLBACK_URL
 var _http: HTTPRequest = null
 var _config_http: HTTPRequest = null
 var _last_report_json := ""
@@ -235,7 +241,10 @@ func _on_config_completed(result: int, response_code: int, _headers: PackedStrin
 		return
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if data is Dictionary:
-		set_report_url(str((data as Dictionary).get("report_url", "")))
+		# Only a non-empty remote URL overrides the compiled-in fallback.
+		var url := str((data as Dictionary).get("report_url", "")).strip_edges()
+		if url != "":
+			set_report_url(url)
 		# Config just arrived: flush any reports saved while offline/local-only.
 		if _report_url != "":
 			retry_pending()

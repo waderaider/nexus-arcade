@@ -109,12 +109,9 @@ func _ready() -> void:
 		add_child(p3)
 		_pool3d.append(p3)
 	_load_settings()
-	for n in SFX_NAMES:
-		var path := SFX_DIR + n + ".wav"
-		if ResourceLoader.exists(path):
-			_sfx[n] = load(path)
-		else:
-			push_warning("AudioKit: missing SFX " + path)
+	# v0.9.3: SFX streams load LAZILY on first play via _ensure_sfx() (the
+	# old 31-synchronous-wav-load loop stalled the boot thread; Stage 0 must
+	# stay light). The player pools are the only boot cost now.
 
 
 func _process(_delta: float) -> void:
@@ -126,19 +123,29 @@ func _process(_delta: float) -> void:
 	_music.volume_db = _vol_db(music_volume) - _duck_level
 
 
+## Load-once cache for SFX streams (v0.9.3 lazy boot). Returns null when the
+## file doesn't exist; callers warn and no-op.
+func _ensure_sfx(sfx_name: String) -> AudioStream:
+	if _sfx.has(sfx_name):
+		return _sfx[sfx_name] as AudioStream
+	var path := SFX_DIR + sfx_name + ".wav"
+	if ResourceLoader.exists(path):
+		var s := load(path) as AudioStream
+		if s != null:
+			_sfx[sfx_name] = s
+			return s
+	push_warning("AudioKit: missing SFX " + path)
+	return null
+
+
 ## Play a named SFX (see SFX_NAMES). Pitch and extra dB are optional.
 func play_sfx(sfx_name: String, pitch := 1.0, volume_db := 0.0) -> void:
 	if not sfx_enabled:
 		return
-	if not _sfx.has(sfx_name):
-		push_warning("AudioKit: unknown SFX '" + sfx_name + "'")
+	var stream := _ensure_sfx(sfx_name)
+	if stream == null:
 		return
-	var p := _pool[_pool_idx]
-	_pool_idx = (_pool_idx + 1) % POOL_SIZE
-	p.stream = _sfx[sfx_name]
-	p.pitch_scale = pitch
-	p.volume_db = _vol_db(sfx_volume) + volume_db
-	p.play()
+	_play_stream(stream, pitch, volume_db)
 	_note_sfx_burst()
 
 
@@ -244,8 +251,8 @@ func play_sfx_3d(sfx_name: String, pos: Vector3, pitch := 1.0, volume_db := 0.0)
 	var game_map: Dictionary = _game_sfx.get(_active_scene, {})
 	if game_map.has(sfx_name):
 		stream = game_map[sfx_name]
-	elif _sfx.has(sfx_name):
-		stream = _sfx[sfx_name]
+	else:
+		stream = _ensure_sfx(sfx_name)
 	if stream == null:
 		push_warning("AudioKit: unknown 3D SFX '" + sfx_name + "'")
 		return

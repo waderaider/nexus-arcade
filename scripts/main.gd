@@ -12,6 +12,10 @@ var _spin := 0.0
 
 
 func _ready() -> void:
+	# v0.9.3 staged boot: XR init stays FIRST (the compositor needs it);
+	# everything after it is staged by the hub (stage 0 = panel + LOADING
+	# label; the hub records the boot timestamp and the first-frame
+	# breadcrumb). Child _ready (hub) runs before this parent _ready.
 	var xr_interface: OpenXRInterface = XRServer.find_interface("OpenXR")
 	if xr_interface and xr_interface.initialize():
 		get_viewport().use_xr = true

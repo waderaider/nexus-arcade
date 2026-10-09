@@ -28,10 +28,16 @@ extends Node
 const FLUSH_INTERVAL := 60.0
 const MAX_EVENTS := 300
 const MANIFEST_URL := "https://raw.githubusercontent.com/waderaider/nexus-arcade/main/version.json"
+## v0.9.3: compiled-in fallback report URL (POST /report needs no key; the
+## read key is server-side only). Remote version.json still overrides this
+## when its fetch succeeds; this constant fixes the URL sitting empty
+## forever when that fetch never completes (prime suspect for zero device
+## telemetry ever arriving).
+const RELAY_FALLBACK_URL := "https://nexus-log-relay.brio-00c.workers.dev/report"
 
 var _events: Array[Dictionary] = []
 var _session_id := ""
-var _report_url := ""
+var _report_url := RELAY_FALLBACK_URL
 var _http: HTTPRequest = null
 var _config_http: HTTPRequest = null
 var _flush_timer := 0.0
@@ -190,7 +196,10 @@ func _on_config_completed(result: int, response_code: int, _headers: PackedStrin
 		return
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if data is Dictionary:
-		_report_url = str((data as Dictionary).get("report_url", "")).strip_edges()
+		# Only a non-empty remote URL overrides the compiled-in fallback.
+		var url := str((data as Dictionary).get("report_url", "")).strip_edges()
+		if url != "":
+			_report_url = url
 
 
 func _detect_headset() -> String:

@@ -69,11 +69,23 @@ var _gaze_dwell := 0.0
 var _gaze_hover: Control = null
 var _gaze_target := ""  # "exit" or "pause"
 
+# v0.9.3: belt-and-suspenders fallback input (independent of the XRUIPointer
+# signal rigs above). Target switches between the exit-button quad and the
+# pause-overlay quad via _direct_set_target().
+var _direct: DirectUIInput = null
+var _direct_vp: SubViewport = null
+var _last_click_msec := 0
+var _last_click_pos := Vector2.INF
+
 
 func _ready() -> void:
 	# Must keep polling the menu button + driving pointers while the tree
 	# is paused (the overlay itself lives under a paused tree).
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_direct = DirectUIInput.new()
+	_direct.name = "PauseDirectInput"
+	add_child(_direct)
+	_direct.configure(null, null, null, _direct_moved, _direct_clicked)
 
 
 ## Attach to a launched game. Called by the hub auto-wirer (opt-out via
@@ -93,6 +105,7 @@ func attach_to_game(game: Node, on_quit: Callable, on_restart: Callable, game_na
 	_build_overlay()
 	_exit_root.visible = true
 	_pause_root.visible = false
+	_direct_set_target(_exit_vp, _exit_quad)
 	_update_pointer_visibility()
 	if is_instance_valid(_game):
 		_game.tree_exiting.connect(_on_game_exiting.bind(_game))
@@ -118,6 +131,7 @@ func detach() -> void:
 	_on_restart_cb = Callable()
 	_on_switch_cb = Callable()
 	_nav_index = -1
+	_direct_set_target(null, null)
 	if is_instance_valid(_exit_root):
 		_exit_root.visible = false
 	if is_instance_valid(_pause_root):
@@ -155,6 +169,8 @@ func _process(delta: float) -> void:
 	for p in _exit_pointers + _pause_pointers:
 		if is_instance_valid(p):
 			p.xr_mode = xr
+	if _direct != null and is_instance_valid(_direct):
+		_direct.xr_mode = xr
 	_poll_menu_button()
 	_position_exit_button()
 	_update_pointer_visibility()
@@ -247,6 +263,10 @@ func _set_paused(p: bool) -> void:
 			AudioKit.set_intensity(_pre_intensity)
 	_pause_root.visible = p
 	_exit_root.visible = not p
+	if p:
+		_direct_set_target(_pause_vp, _pause_quad)
+	else:
+		_direct_set_target(_exit_vp, _exit_quad)
 	_gaze_dwell = 0.0
 	_gaze_hover = null
 	_update_pointer_visibility()
@@ -301,7 +321,8 @@ func _make_quad(vp_size: Vector2i, quad_size: Vector2) -> Array:
 	var root := Node3D.new()
 	var vp := SubViewport.new()
 	vp.size = vp_size
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# Stop rendering while hidden (perf); resumes on show.
+	vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	vp.transparent_bg = true
 	root.add_child(vp)
 	var ui := Control.new()
@@ -342,7 +363,7 @@ func _build_exit_button() -> void:
 	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.05, 0.1, 0.18, 0.72)
-	sb.set_corner_radius_all(48)
+	sb.set_corner_radius_all(0)
 	sb.border_color = Color(0.4, 0.9, 1.0, 0.9)
 	sb.set_border_width_all(6)
 	b.add_theme_stylebox_override("normal", sb)
@@ -377,7 +398,7 @@ func _build_overlay() -> void:
 	var panel := PanelContainer.new()
 	var psb := StyleBoxFlat.new()
 	psb.bg_color = Color(0.04, 0.07, 0.13, 0.97)
-	psb.set_corner_radius_all(24)
+	psb.set_corner_radius_all(0)
 	psb.border_color = Color(0.4, 0.9, 1.0)
 	psb.set_border_width_all(4)
 	psb.content_margin_left = 60.0
@@ -394,7 +415,10 @@ func _build_overlay() -> void:
 	_make_pointers(_pause_vp, _pause_quad, _pause_pointers)
 
 
-## (Re)build the pause menu page: Prev/Next | Resume | Controls | Restart | Quit.
+## (Re)build the pause menu page — v0.9.3 order (Game Designer spec):
+## Resume | Controls | Restart Game | Prev/Next nav row | EXIT TO LAUNCHER
+## (big red, bottom). Pause title shows the current game name so Restart's
+## target is obvious. Flat accent styling (zero radius), laser+trigger.
 func _build_menu_page() -> void:
 	_overlay_page = "menu"
 	_clear_overlay_vbox()
@@ -404,22 +428,54 @@ func _build_menu_page() -> void:
 	_pause_title.add_theme_font_size_override("font_size", 72)
 	_pause_title.add_theme_color_override("font_color", Color(0.4, 0.95, 1.0))
 	_overlay_vbox.add_child(_pause_title)
+	if _game_name != "":
+		var gl := Label.new()
+		gl.text = _game_name
+		gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		gl.add_theme_font_size_override("font_size", 32)
+		gl.add_theme_color_override("font_color", Color(0.75, 0.82, 0.95))
+		_overlay_vbox.add_child(gl)
 	var hint := Label.new()
 	hint.text = "Menu button / Esc resumes"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 28)
 	hint.add_theme_color_override("font_color", Color(0.75, 0.82, 0.95))
 	_overlay_vbox.add_child(hint)
-	# v0.9.2: Next/Previous game row — flip through games without going
-	# back to the launcher grid. Same buttons/input paths as everything else
-	# (laser + pinch + gaze dwell all work: these are real 2D Buttons).
-	if _on_switch_cb.is_valid() and _nav_names.size() > 1 and _nav_index >= 0:
-		_overlay_vbox.add_child(_build_nav_row())
 	for spec in [["Resume", _on_resume, Color(0.0, 0.5, 0.3)],
 			["Controls", _on_controls, Color(0.1, 0.3, 0.55)],
-			["Restart Game", _on_restart, Color(0.5, 0.35, 0.1)],
-			["Quit to Hub", _on_quit, Color(0.5, 0.15, 0.15)]]:
+			["Restart Game", _on_restart, Color(0.5, 0.35, 0.1)]]:
 		_overlay_vbox.add_child(_overlay_button(spec[0], spec[1], spec[2]))
+	# v0.9.2 Next/Previous row — grouped with the leave-this-game actions
+	# just above Exit (never above Resume: a mis-aimed resume tap must not
+	# yank wade into a different game).
+	if _on_switch_cb.is_valid() and _nav_names.size() > 1 and _nav_index >= 0:
+		_overlay_vbox.add_child(_build_nav_row())
+	# EXIT TO LAUNCHER: bottom, red, full-width, unmissable (wade's words).
+	_overlay_vbox.add_child(_exit_button())
+
+
+## Big red full-width exit button, pinned to the bottom of the menu.
+func _exit_button() -> Button:
+	var b := Button.new()
+	b.text = "EXIT TO LAUNCHER"
+	b.custom_minimum_size = Vector2(560, 120)
+	b.add_theme_font_size_override("font_size", 44)
+	b.add_theme_color_override("font_color", Color(1, 1, 1))
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(0.72, 0.12, 0.12)
+	bsb.set_corner_radius_all(0)
+	bsb.border_color = Color(1.0, 0.3, 0.3)
+	bsb.set_border_width_all(4)
+	b.add_theme_stylebox_override("normal", bsb)
+	var bhov := bsb.duplicate() as StyleBoxFlat
+	bhov.bg_color = Color(0.9, 0.18, 0.18)
+	b.add_theme_stylebox_override("hover", bhov)
+	var bpr := bsb.duplicate() as StyleBoxFlat
+	bpr.bg_color = Color(1.0, 0.25, 0.25)
+	b.add_theme_stylebox_override("pressed", bpr)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.pressed.connect(_on_quit)
+	return b
 
 
 ## v0.9.2: "◀ Prev name" / "Next name ▶" row. Names wrap around the list.
@@ -447,11 +503,12 @@ func _nav_button(text: String, cb: Callable) -> Button:
 	b.add_theme_font_size_override("font_size", 34)
 	var bsb := StyleBoxFlat.new()
 	bsb.bg_color = Color(0.12, 0.28, 0.5)
-	bsb.set_corner_radius_all(14)
+	bsb.set_corner_radius_all(0)
 	b.add_theme_stylebox_override("normal", bsb)
 	var bhov := bsb.duplicate() as StyleBoxFlat
 	bhov.bg_color = Color(0.2, 0.42, 0.72)
 	b.add_theme_stylebox_override("hover", bhov)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.pressed.connect(cb)
 	return b
 
@@ -486,11 +543,12 @@ func _overlay_button(text: String, cb: Callable, color: Color) -> Button:
 	b.add_theme_font_size_override("font_size", 40)
 	var bsb := StyleBoxFlat.new()
 	bsb.bg_color = color
-	bsb.set_corner_radius_all(14)
+	bsb.set_corner_radius_all(0)
 	b.add_theme_stylebox_override("normal", bsb)
 	var bhov := bsb.duplicate() as StyleBoxFlat
 	bhov.bg_color = color.lightened(0.25)
 	b.add_theme_stylebox_override("hover", bhov)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.pressed.connect(cb)
 	return b
 
@@ -532,6 +590,7 @@ func show_controls_intro(cfg: Dictionary, game_name: String) -> void:
 	_show_controls_page("Got it!", dismiss_intro_legend)
 	_place_overlay()
 	_pause_root.visible = true
+	_direct_set_target(_pause_vp, _pause_quad)
 	_gaze_dwell = 0.0
 	_gaze_hover = null
 	_update_pointer_visibility()
@@ -544,9 +603,27 @@ func dismiss_intro_legend() -> void:
 	_intro_open = false
 	_pause_root.visible = false
 	_build_menu_page()
+	_direct_set_target(_exit_vp, _exit_quad)
 	_update_pointer_visibility()
 	Haptics.tick()
 	_make_pointers(_pause_vp, _pause_quad, _pause_pointers)
+
+
+## Switch the DirectUIInput fallback target (exit quad <-> pause quad).
+func _direct_set_target(vp: SubViewport, quad: MeshInstance3D) -> void:
+	_direct_vp = vp
+	if _direct != null and is_instance_valid(_direct):
+		_direct.set_target(vp, quad)
+
+
+func _direct_moved(pos: Vector2) -> void:
+	if _direct_vp != null and is_instance_valid(_direct_vp):
+		_on_pointer_moved(pos, _direct_vp)
+
+
+func _direct_clicked(pos: Vector2) -> void:
+	if _direct_vp != null and is_instance_valid(_direct_vp):
+		_on_pointer_clicked(pos, _direct_vp, null)
 
 
 ## One XRUIPointer per input source, wired to inject clicks/motion into the
@@ -603,6 +680,13 @@ func _on_pointer_moved(viewport_pos: Vector2, vp: SubViewport) -> void:
 func _inject_click(vp: SubViewport, viewport_pos: Vector2) -> void:
 	if vp == null:
 		return
+	# Dual-path dedupe (XRUIPointer signals + DirectUIInput fallback share
+	# this funnel): 120ms / 8px window, same as the hub.
+	var now := Time.get_ticks_msec()
+	if now - _last_click_msec < 120 and viewport_pos.distance_to(_last_click_pos) < 8.0:
+		return
+	_last_click_msec = now
+	_last_click_pos = viewport_pos
 	for pressed in [true, false]:
 		var ev := InputEventMouseButton.new()
 		ev.button_index = MOUSE_BUTTON_LEFT

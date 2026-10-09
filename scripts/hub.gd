@@ -1,161 +1,167 @@
 ## Hub.gd - NEXUS ARCADE game selection hub.
-## Category screens: GAMES / UTILITIES / CREATE / THEMES, each paged (25 per page).
 ##
-## v0.8.0: the launcher is a 2D Control panel rendered into a SubViewport and
-## shown on a 3D quad in front of the user. Input comes from XR laser pointers
-## (see scripts/shared/xr_ui_pointer.gd): controller trigger clicks and hand
-## pinches are raycast against the quad and injected into the SubViewport, so
-## real 2D Buttons work on Quest 3. Desktop mouse is forwarded the same way
-## when no XR tracker is live.
+## v0.9.3 LAUNCHER REWORK (permanent LAUNCHER LAW): ONE simple 2D panel, one
+## scrollable list (name + one-line desc, master order), controller laser +
+## trigger. Keep: version badge, Check for Updates, Room setup. Deleted:
+## tabs, categories, spotlight, pager, search, favorites, key art, depth
+## toggle, room auto-popup, hub_extras (aurora shader) attach.
 ##
-## v0.8.0 input hardening (this file):
-##  - project.godot pins xr/openxr/default_action_map to openxr_action_map.tres
-##    (the engine default already pointed there; now it's explicit);
-##  - trigger detection ORs trigger_click / analog trigger / boolean trigger;
-##  - hand trackers are found via XRServer TRACKER_HAND iteration (name
-##    lookups collide with controller trackers);
-##  - gaze fallback: camera-center reticle, trigger-press or 1.2s dwell
-##    select, auto-hint after 10s with no input;
-##  - live input-status line in the menu footer (never a silent dead menu);
-##  - the panel yaw-aligns to the user's view on every menu open.
+## Input is belt-and-suspenders: XRUIPointer signal path AND the independent
+## DirectUIInput fallback (own yellow beams, raw trigger-edge polling) run
+## every frame; both funnel into the single deduped inject_click(). The gaze
+## reticle/dwell fallback keys on "no beam actually drawn" (never on tracker
+## registration). Panel auto-frames: recenter on every menu open + 0.5s tick
+## guard (push out when <0.8m, recenter when >30deg off-axis).
+##
+## Boot is staged: stage 0 = panel + quad + LOADING (first frame <2s);
+## stage 1 = list UI + pointers; stage 2 (idle) = music, updater, telemetry
+## warmup, crash prompt. AudioKit SFX lazy-load; no textures/shaders at boot.
 extends Node3D
 class_name NexusHub
 
 const CAT_GAMES := [
-	{"name": "Gravity Golf", "scene": "res://scenes/golf/golf.tscn", "color": Color(0.2, 0.8, 0.3)},
-	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "color": Color(1.0, 0.3, 0.2)},
-	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "color": Color(1.0, 0.9, 0.2)},
-	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "color": Color(1.0, 0.0, 1.0)},
-	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "color": Color(1.0, 0.1, 0.1)},
-	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "color": Color(0.0, 0.8, 1.0)},
-	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "color": Color(1.0, 0.2, 0.5)},
-	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "color": Color(0.9, 0.5, 0.1)},
-	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "color": Color(0.3, 0.7, 1.0)},
-	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "color": Color(0.7, 0.2, 1.0)},
-	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "color": Color(1.0, 0.2, 0.2)},
-	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "color": Color(0.25, 0.5, 1.0)},
-	{"name": "AR Darts", "scene": "res://scenes/ar-darts/ar-darts.tscn", "color": Color(1.0, 0.75, 0.15)},
-	{"name": "AR Fishing", "scene": "res://scenes/ar-fishing/ar-fishing.tscn", "color": Color(0.15, 0.8, 0.75)},
-	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "color": Color(1.0, 0.15, 0.25)},
-	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "color": Color(0.3, 1.0, 0.9)},
-	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "color": Color(0.5, 0.85, 1.0)},
-	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "color": Color(1.0, 0.35, 0.15)},
-	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "color": Color(1.0, 0.65, 0.3)},
-	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "color": Color(0.8, 0.4, 1.0)},
-	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "color": Color(0.4, 0.2, 0.6)},
-	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "color": Color(0.7, 0.5, 0.2)},
-	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "color": Color(0.1, 0.6, 0.25)},
-	{"name": "Holo Chef", "scene": "res://scenes/holo_chef/holo_chef.tscn", "color": Color(1.0, 0.55, 0.2)},
-	{"name": "Dragon Ranch", "scene": "res://scenes/dragon_ranch/dragon_ranch.tscn", "color": Color(1.0, 0.3, 0.25)},
-	{"name": "Wizard Academy", "scene": "res://scenes/wizard_academy/wizard_academy.tscn", "color": Color(0.65, 0.35, 1.0)},
-	{"name": "Holo Farm", "scene": "res://scenes/holo_farm/holo_farm.tscn", "color": Color(0.45, 0.9, 0.35)},
-	{"name": "Mech Pilot", "scene": "res://scenes/mech_pilot/mech_pilot.tscn", "color": Color(0.35, 0.75, 0.95)},
-	{"name": "Deep Dive", "scene": "res://scenes/deep_dive/deep_dive.tscn", "color": Color(0.15, 0.5, 1.0)},
-	{"name": "AR Detective", "scene": "res://scenes/ar_detective/ar_detective.tscn", "color": Color(1.0, 0.75, 0.3)},
-	{"name": "Sky Pirates", "scene": "res://scenes/sky_pirates/sky_pirates.tscn", "color": Color(0.3, 0.85, 0.8)},
-	{"name": "Monster Lab", "scene": "res://scenes/monster_lab/monster_lab.tscn", "color": Color(0.6, 1.0, 0.3)},
-	{"name": "Myth Zoo", "scene": "res://scenes/myth_zoo/myth_zoo.tscn", "color": Color(1.0, 0.4, 0.8)},
-	{"name": "QR Treasure Hunt", "scene": "res://scenes/qr_hunt/qr_hunt.tscn", "color": Color(1.0, 0.85, 0.2)},
+	{"name": "Gravity Golf", "scene": "res://scenes/golf/golf.tscn", "desc": "Putt across floating courses where every shot bends gravity.", "color": Color(0.2, 0.8, 0.3)},
+	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "desc": "Command your drone swarm to outmaneuver the hive.", "color": Color(1.0, 0.3, 0.2)},
+	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "desc": "Fast-draw light-blade duels in your living room.", "color": Color(1.0, 0.9, 0.2)},
+	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "desc": "Slice incoming beats with twin energy blades.", "color": Color(1.0, 0.0, 1.0)},
+	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "desc": "Classic laser tag, played across your real room.", "color": Color(1.0, 0.1, 0.1)},
+	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "desc": "Race hover cars on a track mapped to your room.", "color": Color(0.0, 0.8, 1.0)},
+	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "desc": "Defend your furniture forts against enemy waves.", "color": Color(1.0, 0.2, 0.5)},
+	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "desc": "Swat invading drones out of your ceiling sky.", "color": Color(0.9, 0.5, 0.1)},
+	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "desc": "Thread FPV drones through rings around your home.", "color": Color(0.3, 0.7, 1.0)},
+	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "desc": "Duel rival wizards with gesture-cast spells.", "color": Color(0.7, 0.2, 1.0)},
+	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "desc": "Punch targets to the beat, round after round.", "color": Color(1.0, 0.2, 0.2)},
+	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "desc": "Build wild marble tracks across your tables.", "color": Color(0.25, 0.5, 1.0)},
+	{"name": "AR Darts", "scene": "res://scenes/ar-darts/ar-darts.tscn", "desc": "Darts on a holographic board on your wall.", "color": Color(1.0, 0.75, 0.15)},
+	{"name": "AR Fishing", "scene": "res://scenes/ar-fishing/ar-fishing.tscn", "desc": "Cast into a pond that appears on your floor.", "color": Color(0.15, 0.8, 0.75)},
+	{"name": "Laser Mirrors", "scene": "res://scenes/mirror-maze/mirror-maze.tscn", "desc": "Aim lasers with mirrors to hit every target.", "color": Color(1.0, 0.15, 0.25)},
+	{"name": "Gravity Glove", "scene": "res://scenes/gravity-glove/gravity-glove.tscn", "desc": "Grab and fling objects with a gravity glove.", "color": Color(0.3, 1.0, 0.9)},
+	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "desc": "Freeze time, reposition, then let chaos resume.", "color": Color(0.5, 0.85, 1.0)},
+	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "desc": "Play a full drum kit on thin air.", "color": Color(1.0, 0.35, 0.15)},
+	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "desc": "Cast shadow creatures onto your walls.", "color": Color(1.0, 0.65, 0.3)},
+	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "desc": "Forge a star system, planet by planet.", "color": Color(0.8, 0.4, 1.0)},
+	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "desc": "A dungeon crawler that unfolds in your room.", "color": Color(0.4, 0.2, 0.6)},
+	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "desc": "Solve the room to escape the room.", "color": Color(0.7, 0.5, 0.2)},
+	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "desc": "Pool on your coffee table - no table required.", "color": Color(0.1, 0.6, 0.25)},
+	{"name": "Holo Chef", "scene": "res://scenes/holo_chef/holo_chef.tscn", "desc": "Cook holographic recipes with your own hands.", "color": Color(1.0, 0.55, 0.2)},
+	{"name": "Dragon Ranch", "scene": "res://scenes/dragon_ranch/dragon_ranch.tscn", "desc": "Raise and train your own AR dragons.", "color": Color(1.0, 0.3, 0.25)},
+	{"name": "Wizard Academy", "scene": "res://scenes/wizard_academy/wizard_academy.tscn", "desc": "Learn real spell combos at wizard school.", "color": Color(0.65, 0.35, 1.0)},
+	{"name": "Holo Farm", "scene": "res://scenes/holo_farm/holo_farm.tscn", "desc": "Grow a farm that lives on your floor.", "color": Color(0.45, 0.9, 0.35)},
+	{"name": "Mech Pilot", "scene": "res://scenes/mech_pilot/mech_pilot.tscn", "desc": "Climb into a mech and stomp the block.", "color": Color(0.35, 0.75, 0.95)},
+	{"name": "Deep Dive", "scene": "res://scenes/deep_dive/deep_dive.tscn", "desc": "Dive an ocean trench from your couch.", "color": Color(0.15, 0.5, 1.0)},
+	{"name": "AR Detective", "scene": "res://scenes/ar_detective/ar_detective.tscn", "desc": "Hunt for clues hidden around your home.", "color": Color(1.0, 0.75, 0.3)},
+	{"name": "Sky Pirates", "scene": "res://scenes/sky_pirates/sky_pirates.tscn", "desc": "Board airships and duel sky pirates.", "color": Color(0.3, 0.85, 0.8)},
+	{"name": "Monster Lab", "scene": "res://scenes/monster_lab/monster_lab.tscn", "desc": "Mix monster DNA and unleash your creation.", "color": Color(0.6, 1.0, 0.3)},
+	{"name": "Myth Zoo", "scene": "res://scenes/myth_zoo/myth_zoo.tscn", "desc": "Mythical beasts roaming your space.", "color": Color(1.0, 0.4, 0.8)},
+	{"name": "QR Treasure Hunt", "scene": "res://scenes/qr_hunt/qr_hunt.tscn", "desc": "Follow QR clues to buried AR treasure.", "color": Color(1.0, 0.85, 0.2)},
 ]
 
 const CAT_UTILITIES := [
-	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "color": Color(0.1, 0.1, 0.8)},
-	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "color": Color(0.4, 0.8, 1.0)},
-	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "color": Color(0.2, 0.9, 1.0)},
-	{"name": "Plant Doctor", "scene": "res://scenes/plant_doctor/plant_doctor.tscn", "color": Color(0.3, 1.0, 0.5)},
-	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "color": Color(1.0, 0.6, 0.8)},
-	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "color": Color(0.8, 0.0, 0.8)},
-	{"name": "Couch Morph", "scene": "res://scenes/couch_morph/couch_morph.tscn", "color": Color(0.9, 0.4, 1.0)},
-	{"name": "Mano Mágica", "scene": "res://scenes/mano_magica/mano_magica.tscn", "color": Color(1.0, 0.75, 0.3)},
+	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "desc": "Name the constellations on your ceiling.", "color": Color(0.1, 0.1, 0.8)},
+	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "desc": "Watch live airplanes cross your sky in AR.", "color": Color(0.4, 0.8, 1.0)},
+	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "desc": "I spy, played with your whole house.", "color": Color(0.2, 0.9, 1.0)},
+	{"name": "Plant Doctor", "scene": "res://scenes/plant_doctor/plant_doctor.tscn", "desc": "Scan your houseplants for a health checkup.", "color": Color(0.3, 1.0, 0.5)},
+	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "desc": "Adopt a pet that lives on your furniture.", "color": Color(1.0, 0.6, 0.8)},
+	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "desc": "Spin tracks on floating decks.", "color": Color(0.8, 0.0, 0.8)},
+	{"name": "Couch Morph", "scene": "res://scenes/couch_morph/couch_morph.tscn", "desc": "Reskin your couch: spaceship, lava isle, pirate deck.", "color": Color(0.9, 0.4, 1.0)},
+	{"name": "Mano Mágica", "scene": "res://scenes/mano_magica/mano_magica.tscn", "desc": "Learn hand tracking: pinch, grab, throw, sculpt, conduct, pet.", "color": Color(1.0, 0.75, 0.3)},
 ]
 
 const CAT_CREATE := [
-	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "color": Color(1.0, 0.3, 0.9)},
-	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "color": Color(1.0, 1.0, 1.0)},
-	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "color": Color(0.55, 0.3, 1.0)},
-	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "color": Color(0.5, 1.0, 0.2)},
-	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "color": Color(1.0, 0.4, 0.7)},
-	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "color": Color(0.9, 0.75, 0.45)},
-	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "color": Color(0.8, 0.45, 0.25)},
-	{"name": "Sketch to 3D", "scene": "res://scenes/sketch_3d/sketch_3d.tscn", "color": Color(1.0, 0.5, 1.0)},
-	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "color": Color(0.3, 0.9, 0.3)},
-	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "color": Color(0.5, 0.0, 1.0)},
-	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "color": Color(0.1, 0.7, 0.9)},
+	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "desc": "Draw with light and leave glowing trails.", "color": Color(1.0, 0.3, 0.9)},
+	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "desc": "A grand piano projected onto your floor.", "color": Color(1.0, 1.0, 1.0)},
+	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "desc": "Make music just by waving your hands.", "color": Color(0.55, 0.3, 1.0)},
+	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "desc": "Tag your walls with zero cleanup.", "color": Color(0.5, 1.0, 0.2)},
+	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "desc": "Karaoke night with lyrics on your wall.", "color": Color(1.0, 0.4, 0.7)},
+	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "desc": "Sculpt a sandbox that never spills.", "color": Color(0.9, 0.75, 0.45)},
+	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "desc": "Throw virtual clay on a floating wheel.", "color": Color(0.8, 0.45, 0.25)},
+	{"name": "Sketch to 3D", "scene": "res://scenes/sketch_3d/sketch_3d.tscn", "desc": "Sketch it, then watch it pop into 3D.", "color": Color(1.0, 0.5, 1.0)},
+	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "desc": "Plant a garden that blooms overnight.", "color": Color(0.3, 0.9, 0.3)},
+	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "desc": "Build contraptions in zero gravity.", "color": Color(0.5, 0.0, 1.0)},
+	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "desc": "An aquarium on your wall, no water needed.", "color": Color(0.1, 0.7, 0.9)},
 ]
 
 const CAT_THEMES := [
-	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "color": Color(1.0, 0.45, 0.05)},
-	{"name": "Haunted Maze", "scene": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "color": Color(0.3, 0.6, 0.2)},
-	{"name": "Web Slingshot", "scene": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "color": Color(0.8, 0.8, 0.9)},
-	{"name": "Potion Mix", "scene": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "color": Color(0.4, 0.9, 0.3)},
-	{"name": "Zombie Defense", "scene": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "color": Color(0.5, 0.9, 0.2)},
-	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "color": Color(0.9, 0.9, 0.85)},
-	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "color": Color(0.6, 0.3, 1.0)},
-	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "color": Color(0.7, 0.2, 0.9)},
-	{"name": "Candy Stack", "scene": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "color": Color(1.0, 0.7, 0.1)},
-	{"name": "Mummy Wrap", "scene": "res://scenes/hw_mummy_wrap/hw_mummy_wrap.tscn", "color": Color(0.85, 0.8, 0.65)},
-	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "color": Color(0.35, 0.1, 0.5)},
-	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "color": Color(1.0, 0.55, 0.0)},
-	{"name": "Portrait Gallery", "scene": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "color": Color(0.5, 0.2, 0.6)},
-	{"name": "Werewolf Howl", "scene": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "color": Color(0.4, 0.5, 1.0)},
-	{"name": "Hayride Shooter", "scene": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "color": Color(1.0, 0.6, 0.15)},
-	{"name": "Apple Bobbing", "scene": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "color": Color(0.9, 0.15, 0.2)},
-	{"name": "Phantom Piano", "scene": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "color": Color(0.75, 0.6, 1.0)},
-	{"name": "Goblin Archery", "scene": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "color": Color(0.2, 0.8, 0.3)},
-	{"name": "Haunted Mirror Maze", "scene": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "color": Color(0.6, 0.9, 1.0)},
-	{"name": "Witch Hat Toss", "scene": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "color": Color(0.55, 0.25, 0.9)},
-	{"name": "Monster Feed", "scene": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "color": Color(0.3, 1.0, 0.4)},
-	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "color": Color(0.15, 0.1, 0.35)},
+	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "desc": "Smash every pumpkin before time runs out.", "color": Color(1.0, 0.45, 0.05)},
+	{"name": "Haunted Maze", "scene": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "desc": "Escape a maze that rearranges itself.", "color": Color(0.3, 0.6, 0.2)},
+	{"name": "Web Slingshot", "scene": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "desc": "Slingshot through giant spider webs.", "color": Color(0.8, 0.8, 0.9)},
+	{"name": "Potion Mix", "scene": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "desc": "Brew the perfect potion - don't blow up the lab.", "color": Color(0.4, 0.9, 0.3)},
+	{"name": "Zombie Defense", "scene": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "desc": "Barricade your room against the horde.", "color": Color(0.5, 0.9, 0.2)},
+	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "desc": "Match the skeleton's dance moves.", "color": Color(0.9, 0.9, 0.85)},
+	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "desc": "Race broomsticks through the night sky.", "color": Color(0.6, 0.3, 1.0)},
+	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "desc": "Dance-battle classic movie monsters.", "color": Color(0.7, 0.2, 0.9)},
+	{"name": "Candy Stack", "scene": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "desc": "Stack candy as high as physics allows.", "color": Color(1.0, 0.7, 0.1)},
+	{"name": "Mummy Wrap", "scene": "res://scenes/hw_mummy_wrap/hw_mummy_wrap.tscn", "desc": "Wrap the mummy before it wakes up.", "color": Color(0.85, 0.8, 0.65)},
+	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "desc": "Dodge swooping bats in your hallway.", "color": Color(0.35, 0.1, 0.5)},
+	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "desc": "Carve jack-o'-lanterns with light.", "color": Color(1.0, 0.55, 0.0)},
+	{"name": "Portrait Gallery", "scene": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "desc": "Portraits whose eyes follow you. Creepy.", "color": Color(0.5, 0.2, 0.6)},
+	{"name": "Werewolf Howl", "scene": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "desc": "Howl in tune to wake the pack.", "color": Color(0.4, 0.5, 1.0)},
+	{"name": "Hayride Shooter", "scene": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "desc": "Shoot targets from a rolling hayride.", "color": Color(1.0, 0.6, 0.15)},
+	{"name": "Apple Bobbing", "scene": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "desc": "Bob for apples, AR style.", "color": Color(0.9, 0.15, 0.2)},
+	{"name": "Phantom Piano", "scene": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "desc": "Play a piano that plays itself back.", "color": Color(0.75, 0.6, 1.0)},
+	{"name": "Goblin Archery", "scene": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "desc": "Outshoot goblins in the dark forest.", "color": Color(0.2, 0.8, 0.3)},
+	{"name": "Haunted Mirror Maze", "scene": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "desc": "A mirror maze full of lying reflections.", "color": Color(0.6, 0.9, 1.0)},
+	{"name": "Witch Hat Toss", "scene": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "desc": "Toss rings onto the witch hats.", "color": Color(0.55, 0.25, 0.9)},
+	{"name": "Monster Feed", "scene": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "desc": "Feed the monster before it feeds on you.", "color": Color(0.3, 1.0, 0.4)},
+	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "desc": "Survive until dawn in the haunted house.", "color": Color(0.15, 0.1, 0.35)},
 ]
 
-
-const GAMES_PER_PAGE := 20
-const GRID_COLS := 5
-const VP_SIZE := Vector2(1600, 1000)
-const QUAD_SIZE := Vector2(2.4, 1.5)
-const QUAD_POS := Vector3(0, 1.6, -2.0)
-# v0.8.0 input hardening tuning.
-const GAZE_DWELL_TIME := 1.2  # seconds of gaze hover before dwell-select fires
-const GAZE_HINT_DELAY_MSEC := 10000  # no input this long -> show the gaze hint
-const PANEL_DISTANCE := 2.0  # panel recenter distance from the camera (m)
-const STATUS_REFRESH := 0.5  # input-status line refresh interval (s)
-const SETTINGS_PATH := "user://nexus_settings.cfg"
-const ROOM_KIT_PATH := "res://scripts/shared/room_kit.gd"
-const COSTUME_SCENE := "res://scenes/halloween/costume_picker.tscn"
-const TAB_NAMES := ["GAMES", "UTILITIES", "CREATE", "THEMES"]
-
-## v0.9.0 Launcher 2.1 category skins: neon GAMES / holographic UTILITIES /
-## studio CREATE / halloween THEMES. Applied to tabs, card borders, and
-## launch transitions (title-card accent).
+## v0.9.0 Launcher 2.1 category accents (kept for the in-game title card
+## tint + MoodLUT tab mapping only — the launcher itself is category-free).
 const CAT_SKINS := [
 	{"edge": Color(1.0, 0.25, 0.85), "tab": Color(0.45, 0.08, 0.32), "glow": Color(1.0, 0.45, 0.95)},
 	{"edge": Color(0.35, 0.85, 1.0), "tab": Color(0.08, 0.28, 0.42), "glow": Color(0.55, 0.92, 1.0)},
 	{"edge": Color(1.0, 0.65, 0.25), "tab": Color(0.42, 0.22, 0.08), "glow": Color(1.0, 0.8, 0.45)},
 	{"edge": Color(0.7, 0.3, 1.0), "tab": Color(0.26, 0.1, 0.42), "glow": Color(1.0, 0.55, 0.15)},
 ]
-const HUB_EXTRAS_PATH := "res://scripts/hub_extras.gd"
+
+# v0.9.3 flat palette (Design Director: constants only, StyleBoxFlat, zero
+# radius, opaque; magenta used sparingly).
+const COL_BG := Color(0.039, 0.055, 0.102)        # #0A0E1A
+const COL_PANEL := Color(0.071, 0.094, 0.169)     # #12182B
+const COL_TEXT := Color(0.910, 0.957, 1.0)        # #E8F4FF
+const COL_ACCENT := Color(0.0, 0.941, 1.0)        # #00F0FF
+const COL_MAGENTA := Color(1.0, 0.169, 0.839)     # #FF2BD6
+const COL_DIM := Color(0.561, 0.639, 0.749)       # #8FA3BF
+const COL_DARK_TEXT := Color(0.0, 0.075, 0.094)   # #001318
+
+const VP_SIZE := Vector2(1600, 1000)
+const QUAD_SIZE := Vector2(1.6, 1.0)  # v0.9.3: was 2.4x1.5 (the photo bug)
+const PANEL_DISTANCE := 2.0  # DO NOT CHANGE (Headset Specialist: math verified)
+const MIN_PANEL_DIST := 0.8  # emergency push-out threshold (m)
+const REFRAME_ANGLE_DEG := 30.0  # off-axis recenter threshold (deg)
+const GAZE_DWELL_TIME := 1.2  # seconds of gaze hover before dwell-select fires
+const GAZE_HINT_DELAY_MSEC := 10000  # no input this long -> show the gaze hint
+const STATUS_REFRESH := 0.5  # diagnostics + auto-frame tick interval (s)
+const SETTINGS_PATH := "user://nexus_settings.cfg"
+const ROOM_KIT_PATH := "res://scripts/shared/room_kit.gd"
+const DIAG_PING_URL := "https://nexus-log-relay.brio-00c.workers.dev/report"
+const ROW_H := 64.0
+const ROW_SEP := 8.0
+const CLICK_DEDUPE_MSEC := 120
+const CLICK_DEDUPE_PX := 8.0
+const SCROLL_REPEAT_DELAY := 0.12  # hold-to-repeat step interval (s)
+const SCROLL_REPEAT_ROWS := 3
 
 var _current_game: Node = null
-var _page := 0
-var _tab := 0  # 0 = GAMES, 1 = UTILITIES, 2 = CREATE, 3 = THEMES
 
 # v0.9.2: current game identity for Next/Prev nav + telemetry.
 var _current_game_name := ""
 var _current_game_index := -1
 var _master_games: Array = []  # CAT_GAMES + CAT_UTILITIES + CAT_CREATE + CAT_THEMES
+var _scene_tab := {}  # scene path -> category index 0..3 (MoodLUT + title tint)
 
 var _panel_root: Node3D = null
 var _viewport: SubViewport = null
 var _quad: MeshInstance3D = null
-var _grid: GridContainer = null
+var _game_scroll: ScrollContainer = null
+var _game_list: VBoxContainer = null
 var _game_buttons: Array[Button] = []
-var _tab_buttons: Array[Button] = []
-var _nav_prev: Button = null
-var _nav_next: Button = null
-var _page_label: Label = null
-var _costumes_button: Button = null
+var _scroll_up: Button = null
+var _scroll_down: Button = null
+var _scroll_dir := 0
+var _scroll_accum := 0.0
 var _updater: UpdateChecker = null
-var _version_label: Label = null
 var _update_status: Label = null
 var _changelog_overlay: Control = null
 var _changelog_title: Label = null
@@ -170,6 +176,7 @@ var _room_buttons: HBoxContainer = null
 var _roomkit_cache: GDScript = null
 
 var _pointers: Array[XRUIPointer] = []
+var _direct_input: DirectUIInput = null
 var _controllers: Array[XRController3D] = []
 var _xr_origin: Node3D = null
 var _menu_prev := {}
@@ -177,8 +184,10 @@ var _menu_prev := {}
 var _xr_camera: Camera3D = null
 var _gaze_reticle: MeshInstance3D = null
 var _gaze_reticle_mat: StandardMaterial3D = null
-var _input_status: Label = null
+var _diag_label: Label = null
 var _input_hint: Label = null
+var _test_btn: Button = null
+var _conn_label: Label = null
 var _version_badge: Label = null
 var _menu_open_msec := 0
 var _last_input_msec := 0
@@ -188,25 +197,46 @@ var _gaze_dwell := 0.0
 var _status_accum := 0.0
 var _trigger_prev := {}
 var _recenter_timer: Timer = null
-# v0.9.0 Launcher 2.1: Spotlight hero row + key-art + category skins.
-var _spotlight_row: HBoxContainer = null
-var _spotlight_art: TextureRect = null
-var _spotlight_name: Label = null
-var _spotlight_desc: Label = null
-var _spotlight_play: Button = null
-var _spotlight_entry := {}
-var _extras_table_cache: Array = []
-var _depth_toggle: CheckButton = null
+# v0.9.3 staged boot + click dedupe + diagnostics.
+var _stage := 0
+var _boot_msec := 0
+var _first_frame_msec := 0
+var _last_click_msec := 0
+var _last_click_pos := Vector2.INF
+var _no_beam_since_msec := 0
+var _ping_http: HTTPRequest = null
+var _ping_timer: Timer = null
+var _ping_in_flight := false
 
+
+# ------------------------------------------------------------ staged boot ---
 
 func _ready() -> void:
+	# STAGE 0 (synchronous): panel + quad + LOADING label only. First frame
+	# must land <2s after process start — no textures, no shaders, no audio,
+	# no list building here.
+	_boot_msec = Time.get_ticks_msec()
 	_build_panel()
+	_build_stage0_ui()
+	RenderingServer.frame_post_draw.connect(_on_first_frame, CONNECT_ONE_SHOT)
+	call_deferred("_stage1")
+
+
+func _on_first_frame() -> void:
+	_first_frame_msec = Time.get_ticks_msec()
+	BugReporter.add_breadcrumb("first_frame")
+
+
+## STAGE 1 (first idle frame): the real launcher UI + input rigs.
+func _stage1() -> void:
+	if _stage >= 1:
+		return
+	_stage = 1
 	_build_ui()
 	_build_pointers()
 	_cache_xr_camera()
 	_build_gaze_reticle()
 	_on_menu_open()
-	_setup_updater()
 	# One-shot re-settle: the HMD pose is often still identity during _ready,
 	# so re-align the panel once tracking has had a moment to come up.
 	_recenter_timer = Timer.new()
@@ -216,24 +246,26 @@ func _ready() -> void:
 	_recenter_timer.timeout.connect(_recenter_panel)
 	add_child(_recenter_timer)
 	_recenter_timer.start()
-	# Deferred one frame so Main._ready has initialized OpenXR first (child
-	# _ready runs before the parent's) and trackers are registered.
-	call_deferred("_log_xr_input_inventory")
 	# Crash reporter: offer to send the previous session's log.
 	var crash: Dictionary = BugReporter.prompt_if_crash_pending()
 	if not crash.is_empty():
 		_show_crash_prompt(crash)
 	BugReporter.session_start("hub")
-	# Roomscale-first: walk through room capture on first run.
-	if not _room_setup_done():
-		_show_room_flow()
-	if get_node_or_null("/root/AudioKit") != null: AudioKit.play_music("menu_theme")
-	# Menu experience upgrades (aurora bg, descriptions, favorites, search):
-	# attach by path so a missing file degrades gracefully.
-	if ResourceLoader.exists("res://scripts/hub_extras.gd"):
-		var he = load("res://scripts/hub_extras.gd").new()
-		if he.has_method("attach"):
-			he.attach(self)
+	call_deferred("_stage2")
+
+
+## STAGE 2 (idle, low priority): music, updater node (button-driven checks
+## only — no auto-check at boot), telemetry warmup.
+func _stage2() -> void:
+	if _stage >= 2:
+		return
+	_stage = 2
+	if get_node_or_null("/root/AudioKit") != null:
+		AudioKit.play_music("menu_theme")
+	_setup_updater()
+	# Deferred one frame so Main._ready has initialized OpenXR first (child
+	# _ready runs before the parent's) and trackers are registered.
+	_log_xr_input_inventory()
 
 
 func _process(delta: float) -> void:
@@ -241,9 +273,12 @@ func _process(delta: float) -> void:
 	for p in _pointers:
 		if is_instance_valid(p):
 			p.xr_mode = xr
+	if _direct_input != null and is_instance_valid(_direct_input):
+		_direct_input.xr_mode = xr
 	if is_instance_valid(_gaze_reticle) and not xr:
 		_gaze_reticle.visible = false
 	_process_status(delta)
+	_process_scroll_repeat(delta)
 	if not xr:
 		return
 	_poll_controller_buttons()
@@ -268,9 +303,9 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	# H (desktop) returns to the hub. Handled here — AFTER the GUI phase — so
-	# typing "h"/"H" in a text field (e.g. the launcher's search box) types
-	# the letter instead of kicking back to the hub. The controller menu
-	# button is polled separately in _poll_controller_buttons().
+	# typing "h"/"H" in a text field types the letter instead of kicking back
+	# to the hub. The controller menu button is polled separately in
+	# _poll_controller_buttons().
 	var k := event as InputEventKey
 	if k != null and k.pressed and not k.echo and k.keycode == KEY_H:
 		_return_to_hub()
@@ -286,7 +321,9 @@ func _build_panel() -> void:
 	_viewport = SubViewport.new()
 	_viewport.name = "LauncherViewport"
 	_viewport.size = Vector2i(int(VP_SIZE.x), int(VP_SIZE.y))
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# Stops rendering while hidden during gameplay (perf); the ViewportTexture
+	# resumes on show.
+	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	_viewport.transparent_bg = true
 	_panel_root.add_child(_viewport)
 
@@ -308,16 +345,41 @@ func _build_panel() -> void:
 	_panel_root.add_child(_quad)
 
 
+## Stage-0 placeholder: flat BG + LOADING label so frame 1 is never black.
+func _build_stage0_ui() -> void:
+	var root := Control.new()
+	root.name = "Stage0UI"
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_viewport.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = COL_BG
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(bg)
+	var lab := Label.new()
+	lab.text = "LOADING…"
+	lab.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lab.add_theme_font_size_override("font_size", 64)
+	lab.add_theme_color_override("font_color", COL_DIM)
+	root.add_child(lab)
+
+
 # ------------------------------------------------------------------ UI ---
 
 func _build_ui() -> void:
+	# Drop the stage-0 placeholder.
+	for c in _viewport.get_children():
+		_viewport.remove_child(c)
+		c.queue_free()
 	var root := Control.new()
 	root.name = "UI"
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_viewport.add_child(root)
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.02, 0.03, 0.08, 0.93)
+	bg.color = COL_BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bg)
@@ -334,133 +396,115 @@ func _build_ui() -> void:
 	vbox.add_theme_constant_override("separation", 12)
 	margin.add_child(vbox)
 
+	# Header: title + version badge (the debugging lifeline — wade reads it
+	# back from the headset).
 	var header := HBoxContainer.new()
 	header.name = "HeaderRow"
 	header.alignment = BoxContainer.ALIGNMENT_CENTER
 	header.add_theme_constant_override("separation", 28)
 	vbox.add_child(header)
-
 	var title := Label.new()
 	title.name = "TitleLabel"
-	title.text = "NEXUS ARCADE"
+	title.text = "NEXUS ARCADE — built by Muse"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 64)
-	title.add_theme_color_override("font_color", Color(0, 0.94, 1))
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_color_override("font_color", COL_ACCENT)
 	header.add_child(title)
-
-	# BIG build badge, top of the menu — readable on the headset at a glance.
 	_version_badge = Label.new()
 	_version_badge.name = "VersionBadge"
-	_version_badge.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.8.0"))
-	_version_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_version_badge.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.9.3"))
 	_version_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_version_badge.add_theme_font_size_override("font_size", 40)
-	_version_badge.add_theme_color_override("font_color", Color(1, 1, 1))
-	_version_badge.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	_version_badge.add_theme_constant_override("shadow_offset_x", 2)
-	_version_badge.add_theme_constant_override("shadow_offset_y", 2)
-	var badge_bg := StyleBoxFlat.new()
-	badge_bg.bg_color = Color(0.0, 0.5, 0.8)
-	badge_bg.set_corner_radius_all(14)
-	badge_bg.content_margin_left = 22.0
-	badge_bg.content_margin_right = 22.0
-	badge_bg.content_margin_top = 8.0
-	badge_bg.content_margin_bottom = 8.0
-	_version_badge.add_theme_stylebox_override("normal", badge_bg)
+	_version_badge.add_theme_font_size_override("font_size", 20)
+	_version_badge.add_theme_color_override("font_color", COL_DIM)
 	header.add_child(_version_badge)
 
-	var tab_row := HBoxContainer.new()
-	tab_row.name = "TabRow"
-	tab_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	tab_row.add_theme_constant_override("separation", 16)
-	vbox.add_child(tab_row)
-	var tab_group := ButtonGroup.new()
-	for i in range(TAB_NAMES.size()):
-		var tb := _make_button(TAB_NAMES[i], "Tab_%d" % i, 30, Color(0.3, 0.12, 0.45))
-		tb.toggle_mode = true
-		tb.button_group = tab_group
-		tb.pressed.connect(_on_tab_pressed.bind(i))
-		tab_row.add_child(tb)
-		_tab_buttons.append(tb)
+	# The list: ScrollContainer + 75 flat rows + explicit hold-to-repeat
+	# scroll buttons (robust with injected input; synthetic clicks are
+	# press+release same-frame so they can't drag-scroll).
+	var list_frame := PanelContainer.new()
+	list_frame.name = "ListFrame"
+	list_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var lfsb := StyleBoxFlat.new()
+	lfsb.bg_color = COL_PANEL
+	lfsb.set_corner_radius_all(0)
+	list_frame.add_theme_stylebox_override("panel", lfsb)
+	vbox.add_child(list_frame)
+	var list_hbox := HBoxContainer.new()
+	list_hbox.add_theme_constant_override("separation", 12)
+	list_frame.add_child(list_hbox)
+	_game_scroll = ScrollContainer.new()
+	_game_scroll.name = "GameScroll"
+	_game_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_game_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_game_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_hbox.add_child(_game_scroll)
+	_game_list = VBoxContainer.new()
+	_game_list.name = "GameList"
+	_game_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_game_list.add_theme_constant_override("separation", int(ROW_SEP))
+	_game_scroll.add_child(_game_list)
+	_build_list_rows()
+	var scroll_col := VBoxContainer.new()
+	scroll_col.name = "ScrollCol"
+	scroll_col.add_theme_constant_override("separation", 12)
+	list_hbox.add_child(scroll_col)
+	_build_scroll_buttons(scroll_col)
 
-	_build_spotlight(vbox)
-
-	_grid = GridContainer.new()
-	_grid.name = "GameGrid"
-	_grid.columns = GRID_COLS
-	_grid.add_theme_constant_override("h_separation", 16)
-	_grid.add_theme_constant_override("v_separation", 12)
-	vbox.add_child(_grid)
-
-	var pager := HBoxContainer.new()
-	pager.name = "PagerRow"
-	pager.alignment = BoxContainer.ALIGNMENT_CENTER
-	pager.add_theme_constant_override("separation", 24)
-	vbox.add_child(pager)
-	_nav_prev = _make_button("< Prev", "NavPrev", 26)
-	_nav_prev.pressed.connect(_on_nav.bind(-1))
-	pager.add_child(_nav_prev)
-	_page_label = Label.new()
-	_page_label.name = "PageLabel"
-	_page_label.add_theme_font_size_override("font_size", 26)
-	_page_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	pager.add_child(_page_label)
-	_nav_next = _make_button("Next >", "NavNext", 26)
-	_nav_next.pressed.connect(_on_nav.bind(1))
-	pager.add_child(_nav_next)
-
-	# Check-for-updates gets its own row: large, accent-colored, unmissable.
-	# Behavior is unchanged — it queries version.json and reports inline.
-	var update_row := HBoxContainer.new()
-	update_row.name = "UpdateRow"
-	update_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	update_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(update_row)
-	var update_btn := _make_button("CHECK FOR UPDATES", "UpdateButton", 30, Color(0.0, 0.5, 0.85))
-	update_btn.custom_minimum_size = Vector2(480, 72)
+	# Kept chrome: Check for Updates (prominent) + Room setup.
+	var button_row := HBoxContainer.new()
+	button_row.name = "ButtonRow"
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(button_row)
+	var update_btn := _make_button("CHECK FOR UPDATES", "UpdateButton", 30, COL_ACCENT.darkened(0.55))
+	update_btn.custom_minimum_size = Vector2(480, 80)
 	update_btn.pressed.connect(_on_update_button)
-	update_row.add_child(update_btn)
+	button_row.add_child(update_btn)
 	_update_status = Label.new()
 	_update_status.name = "UpdateStatus"
 	_update_status.add_theme_font_size_override("font_size", 22)
 	_update_status.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	_update_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	update_row.add_child(_update_status)
-
-	var footer := HBoxContainer.new()
-	footer.name = "FooterRow"
-	footer.alignment = BoxContainer.ALIGNMENT_CENTER
-	footer.add_theme_constant_override("separation", 20)
-	vbox.add_child(footer)
+	button_row.add_child(_update_status)
 	var room_btn := _make_button("Room setup", "RoomButton", 24, Color(0.2, 0.35, 0.25))
 	room_btn.pressed.connect(_show_room_flow)
-	footer.add_child(room_btn)
-	_costumes_button = _make_button("Costumes", "CostumesButton", 24, Color(0.5, 0.2, 0.6))
-	_costumes_button.pressed.connect(_on_costumes_pressed)
-	footer.add_child(_costumes_button)
-	# v0.9.0: environment-depth occlusion toggle (default on). Persisted via
-	# VisualFX; gameplay objects only.
-	_depth_toggle = CheckButton.new()
-	_depth_toggle.name = "DepthToggle"
-	_depth_toggle.text = "Depth FX"
-	_depth_toggle.add_theme_font_size_override("font_size", 22)
-	_depth_toggle.button_pressed = VisualFX.is_depth_occlusion_enabled()
-	_depth_toggle.toggled.connect(_on_depth_toggled)
-	footer.add_child(_depth_toggle)
-	_version_label = Label.new()
-	_version_label.name = "VersionLabel"
-	_version_label.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.1.0"))
-	_version_label.add_theme_font_size_override("font_size", 22)
-	_version_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	footer.add_child(_version_label)
+	button_row.add_child(room_btn)
+
+	# Diagnostics line (ship-blocker): input state in plain words + boot +
+	# panel readouts. Refreshed every STATUS_REFRESH seconds.
+	_diag_label = Label.new()
+	_diag_label.name = "DiagInput"
+	_diag_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_diag_label.add_theme_font_size_override("font_size", 24)
+	_diag_label.add_theme_color_override("font_color", COL_TEXT)
+	_diag_label.text = "Starting..."
+	vbox.add_child(_diag_label)
+
+	# Connection self-test: POSTs a tiny ping to the relay; Brio's side can
+	# watch the relay for it as device-egress ground truth.
+	var conn_row := HBoxContainer.new()
+	conn_row.name = "ConnRow"
+	conn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	conn_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(conn_row)
+	_test_btn = _make_button("Test connection", "TestConnection", 24, Color(0.16, 0.32, 0.22))
+	_test_btn.pressed.connect(_on_test_connection)
+	conn_row.add_child(_test_btn)
+	_conn_label = Label.new()
+	_conn_label.name = "ConnLabel"
+	_conn_label.text = "Connection: not tested"
+	_conn_label.add_theme_font_size_override("font_size", 24)
+	_conn_label.add_theme_color_override("font_color", COL_DIM)
+	_conn_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	conn_row.add_child(_conn_label)
 
 	var hint := Label.new()
 	hint.name = "HintLabel"
-	hint.text = "Point the laser and pull the trigger (or pinch) to select"
+	hint.text = "Point the laser and pull the trigger"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 20)
-	hint.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	hint.add_theme_color_override("font_color", COL_DIM)
 	vbox.add_child(hint)
 
 	# Shown automatically if no controller/hand input happens within 10s of
@@ -474,17 +518,6 @@ func _build_ui() -> void:
 	_input_hint.visible = false
 	vbox.add_child(_input_hint)
 
-	# Live input-status line, bottom of the menu. Updated every STATUS_REFRESH
-	# seconds — the menu is never silently dead: this always says SOMETHING.
-	_input_status = Label.new()
-	_input_status.name = "InputStatus"
-	_input_status.text = "XR input: starting..."
-	_input_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_input_status.add_theme_font_size_override("font_size", 20)
-	_input_status.add_theme_color_override("font_color", Color(0.55, 0.78, 0.95))
-	vbox.add_child(_input_status)
-
-	_build_page()
 	_build_changelog_overlay(root)
 	_build_crash_dialog(root)
 	_build_room_dialog(root)
@@ -497,11 +530,7 @@ func _make_button(text: String, node_name: String, font_size: int, bg: Color = C
 	b.add_theme_font_size_override("font_size", font_size)
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = bg
-	normal.set_corner_radius_all(10)
-	normal.content_margin_left = 18.0
-	normal.content_margin_right = 18.0
-	normal.content_margin_top = 10.0
-	normal.content_margin_bottom = 10.0
+	normal.set_corner_radius_all(0)
 	b.add_theme_stylebox_override("normal", normal)
 	var hover := normal.duplicate() as StyleBoxFlat
 	hover.bg_color = bg.lightened(0.25)
@@ -512,202 +541,201 @@ func _make_button(text: String, node_name: String, font_size: int, bg: Color = C
 	var disabled := normal.duplicate() as StyleBoxFlat
 	disabled.bg_color = bg.darkened(0.4)
 	b.add_theme_stylebox_override("disabled", disabled)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	return b
 
 
-func _active_games() -> Array:
-	match _tab:
-		1:
-			return CAT_UTILITIES
-		2:
-			return CAT_CREATE
-		3:
-			return CAT_THEMES
-	return CAT_GAMES
-
-
-func _page_count() -> int:
-	return int(ceil(_active_games().size() / float(GAMES_PER_PAGE)))
-
-
-func _build_page() -> void:
-	for b in _game_buttons:
-		if is_instance_valid(b):
-			b.queue_free()
+## The 75-game flat list in MASTER order (CAT_GAMES + CAT_UTILITIES +
+## CAT_CREATE + CAT_THEMES — the same order the pause menu's Next/Prev
+## walks). Each row: "Name — built by Muse" + one-line desc, 64px flat.
+## Selection = instant row bg→accent + dark text swap, no tween.
+func _build_list_rows() -> void:
 	_game_buttons.clear()
-	var games := _active_games()
-	var start := _page * GAMES_PER_PAGE
-	var end := mini(start + GAMES_PER_PAGE, games.size())
-	for i in range(start, end):
+	var games := _master_game_list()
+	for i in games.size():
 		var game: Dictionary = games[i]
-		var b := _make_button(
-			str(game["name"]), "Game_%d" % (i - start), 19,
-			(game["color"] as Color).darkened(0.55))
-		b.custom_minimum_size = Vector2(240, 128)
+		var nm := str(game.get("name", "?"))
+		var b := Button.new()
+		b.name = "Game_%d" % i
+		b.custom_minimum_size = Vector2(0, ROW_H)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.clip_text = true
-		# Launcher 2.1: key-art thumbnail on top, name below (card look).
-		var art := game_card_icon(str(game["scene"]))
-		if art != null:
-			b.icon = art
-			b.expand_icon = true
-			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		_skin_card(b, _tab)
-		b.pressed.connect(_load_game.bind(str(game["scene"]), str(game["name"])))
-		_grid.add_child(b)
+		var normal := StyleBoxFlat.new()
+		normal.bg_color = COL_PANEL
+		normal.set_corner_radius_all(0)
+		b.add_theme_stylebox_override("normal", normal)
+		var hover := normal.duplicate() as StyleBoxFlat
+		hover.bg_color = COL_ACCENT
+		b.add_theme_stylebox_override("hover", hover)
+		var pressed := normal.duplicate() as StyleBoxFlat
+		pressed.bg_color = COL_ACCENT.darkened(0.2)
+		b.add_theme_stylebox_override("pressed", pressed)
+		b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		var inner := MarginContainer.new()
+		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+		inner.add_theme_constant_override("margin_left", 24)
+		inner.add_theme_constant_override("margin_right", 24)
+		b.add_child(inner)
+		var vb := VBoxContainer.new()
+		vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		vb.add_theme_constant_override("separation", 2)
+		inner.add_child(vb)
+		var name_lbl := Label.new()
+		name_lbl.text = nm
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_lbl.add_theme_font_size_override("font_size", 36)
+		name_lbl.add_theme_color_override("font_color", COL_ACCENT)
+		name_lbl.clip_text = true
+		name_lbl.max_lines_visible = 1
+		vb.add_child(name_lbl)
+		var desc_lbl := Label.new()
+		desc_lbl.text = str(game.get("desc", ""))
+		desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		desc_lbl.add_theme_font_size_override("font_size", 24)
+		desc_lbl.add_theme_color_override("font_color", COL_DIM)
+		desc_lbl.clip_text = true
+		desc_lbl.max_lines_visible = 1
+		vb.add_child(desc_lbl)
+		b.pressed.connect(_load_game.bind(str(game.get("scene", "")), nm))
+		b.mouse_entered.connect(_on_row_hover.bind(name_lbl, desc_lbl, true))
+		b.mouse_exited.connect(_on_row_hover.bind(name_lbl, desc_lbl, false))
+		_game_list.add_child(b)
 		_game_buttons.append(b)
-	var pages := _page_count()
-	_page_label.text = "Page %d / %d" % [_page + 1, maxi(pages, 1)]
-	_nav_prev.visible = _page > 0
-	_nav_next.visible = _page < pages - 1
-	_refresh_tabs()
-	_refresh_spotlight()
-	# Costumes button belongs to the THEMES (Halloween) section.
-	if is_instance_valid(_costumes_button):
-		_costumes_button.visible = _tab == 3
 
 
-func _on_tab_pressed(tab_index: int) -> void:
-	_tab = tab_index
-	_page = 0
-	_build_page()
+func _on_row_hover(name_lbl: Label, desc_lbl: Label, hovering: bool) -> void:
+	if not is_instance_valid(name_lbl) or not is_instance_valid(desc_lbl):
+		return
+	name_lbl.add_theme_color_override(
+		"font_color", COL_DARK_TEXT if hovering else COL_ACCENT)
+	desc_lbl.add_theme_color_override(
+		"font_color", COL_DARK_TEXT if hovering else COL_DIM)
 
 
-func _on_nav(direction: int) -> void:
-	_page = clampi(_page + direction, 0, _page_count() - 1)
-	_build_page()
+func _build_scroll_buttons(col: VBoxContainer) -> void:
+	_scroll_up = _make_scroll_btn("▲", -1)
+	col.add_child(_scroll_up)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(spacer)
+	_scroll_down = _make_scroll_btn("▼", 1)
+	col.add_child(_scroll_down)
 
 
-func _refresh_tabs() -> void:
-	for i in range(_tab_buttons.size()):
-		if is_instance_valid(_tab_buttons[i]):
-			_tab_buttons[i].button_pressed = (i == _tab)
-	_apply_tab_skins()
+func _make_scroll_btn(text: String, dir: int) -> Button:
+	var b := Button.new()
+	b.name = "ScrollUp" if dir < 0 else "ScrollDown"
+	b.text = text
+	b.custom_minimum_size = Vector2(120, 120)
+	b.add_theme_font_size_override("font_size", 44)
+	b.add_theme_color_override("font_color", COL_ACCENT)
+	b.add_theme_color_override("font_hover_color", COL_DARK_TEXT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = COL_PANEL
+	sb.set_corner_radius_all(0)
+	sb.border_color = COL_ACCENT
+	sb.set_border_width_all(4)
+	b.add_theme_stylebox_override("normal", sb)
+	var hov := sb.duplicate() as StyleBoxFlat
+	hov.bg_color = COL_ACCENT
+	b.add_theme_stylebox_override("hover", hov)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	# button_down/up (not pressed): injected clicks are press+release in the
+	# same frame, so tap = one step; a real hold repeats in _process.
+	b.button_down.connect(_on_scroll_press.bind(dir))
+	b.button_up.connect(_on_scroll_release)
+	return b
 
 
-## Key-art thumbnail for a game card (assets/keyart/<stem>.png), or null.
-func game_card_icon(scene_path: String) -> Texture2D:
-	var stem := scene_path.get_file().get_basename()
-	var path := "res://assets/keyart/%s.png" % stem
-	if ResourceLoader.exists(path):
-		return load(path) as Texture2D
-	return null
+func _on_scroll_press(dir: int) -> void:
+	_scroll_dir = dir
+	_scroll_accum = 0.0
+	_scroll_step(dir, 1)
 
 
-## Launcher 2.1 category skins: tab button colors per category; the active
-## tab gets the category edge glow.
-func _apply_tab_skins() -> void:
-	for i in range(_tab_buttons.size()):
-		var tb := _tab_buttons[i]
-		if tb == null or not is_instance_valid(tb):
-			continue
-		var skin: Dictionary = CAT_SKINS[clampi(i, 0, 3)]
-		var sb := tb.get_theme_stylebox("normal") as StyleBoxFlat
-		if sb != null:
-			sb.bg_color = skin["tab"]
-			if i == _tab:
-				sb.border_color = skin["edge"]
-				sb.set_border_width_all(4)
-			else:
-				sb.set_border_width_all(0)
+func _on_scroll_release() -> void:
+	_scroll_dir = 0
 
 
-## Apply the category edge border to a game card button.
-func _skin_card(b: Button, tab: int) -> void:
-	var skin: Dictionary = CAT_SKINS[clampi(tab, 0, 3)]
-	for sb_name in ["normal", "hover", "pressed"]:
-		var sb := b.get_theme_stylebox(sb_name) as StyleBoxFlat
-		if sb != null:
-			sb.border_color = skin["edge"]
-			sb.set_border_width_all(3)
+func _scroll_step(dir: int, rows: int) -> void:
+	if _game_scroll == null or not is_instance_valid(_game_scroll):
+		return
+	_game_scroll.scroll_vertical += dir * (ROW_H + ROW_SEP) * rows
 
 
-## Category accent color (title-card tint, spotlight edge).
+func _process_scroll_repeat(delta: float) -> void:
+	if _scroll_dir == 0 or not _panel_visible():
+		return
+	_scroll_accum += delta
+	while _scroll_accum >= SCROLL_REPEAT_DELAY:
+		_scroll_accum -= SCROLL_REPEAT_DELAY
+		_scroll_step(_scroll_dir, SCROLL_REPEAT_ROWS)
+
+
+# ------------------------------------------------------------- game data ---
+
+## Canonical ordered list of ALL experiences: CAT_GAMES + CAT_UTILITIES +
+## CAT_CREATE + CAT_THEMES (flat, no dividers). This is the launcher list
+## AND the pause menu's Next/Previous order — one order, one mental model.
+func _master_game_list() -> Array:
+	if _master_games.is_empty():
+		_master_games.append_array(CAT_GAMES)
+		_master_games.append_array(CAT_UTILITIES)
+		_master_games.append_array(CAT_CREATE)
+		_master_games.append_array(CAT_THEMES)
+		var tab := 0
+		for lst in [CAT_GAMES, CAT_UTILITIES, CAT_CREATE, CAT_THEMES]:
+			for g in lst:
+				_scene_tab[str((g as Dictionary).get("scene", ""))] = tab
+			tab += 1
+	return _master_games
+
+
+## Category index of a game's scene path (0..3) — replaces the old launcher
+## tab state for MoodLUT + title-card accent (correct even when Next/Prev
+## switches into a game from a different category).
+func _tab_of(scene_path: String) -> int:
+	_master_game_list()
+	return int(_scene_tab.get(scene_path, 0))
+
+
+func _master_index_of(scene_path: String) -> int:
+	var games := _master_game_list()
+	for i in games.size():
+		if str((games[i] as Dictionary).get("scene", "")) == scene_path:
+			return i
+	return -1
+
+
+## Switch to the adjacent game from the pause menu (delta -1 = prev,
+## +1 = next). Wraps around at the ends. Routes through _load_game so
+## autowiring, music, sessions and telemetry run identically to a launcher
+## launch.
+func _switch_game(delta: int) -> void:
+	var games := _master_game_list()
+	if games.is_empty() or _current_game_index < 0:
+		return
+	var n := games.size()
+	var next_idx := (_current_game_index + delta + n) % n
+	var g: Dictionary = games[next_idx]
+	_load_game(str(g["scene"]), str(g["name"]), "next" if delta > 0 else "prev")
+
+
+## Category accent color (title-card tint).
 func _skin_accent(tab: int) -> Color:
 	return CAT_SKINS[clampi(tab, 0, 3)]["edge"]
 
 
-# ------------------------------------------------- Spotlight hero row ---
-
-## The featured game, rotating daily across all 75 experiences.
-func _spotlight_game() -> Dictionary:
-	var all: Array = []
-	all.append_array(CAT_GAMES)
-	all.append_array(CAT_UTILITIES)
-	all.append_array(CAT_CREATE)
-	all.append_array(CAT_THEMES)
-	if all.is_empty():
-		return {}
-	var day := int(Time.get_unix_time_from_system() / 86400.0)
-	return all[day % all.size()]
-
-
-func _build_spotlight(vbox: VBoxContainer) -> void:
-	_spotlight_row = HBoxContainer.new()
-	_spotlight_row.name = "SpotlightRow"
-	_spotlight_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_spotlight_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(_spotlight_row)
-	_spotlight_art = TextureRect.new()
-	_spotlight_art.name = "SpotlightArt"
-	_spotlight_art.custom_minimum_size = Vector2(220, 138)
-	_spotlight_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_spotlight_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_spotlight_row.add_child(_spotlight_art)
-	var info := VBoxContainer.new()
-	info.add_theme_constant_override("separation", 4)
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_spotlight_row.add_child(info)
-	var tag := Label.new()
-	tag.text = "★ SPOTLIGHT — featured today"
-	tag.add_theme_font_size_override("font_size", 22)
-	tag.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	info.add_child(tag)
-	_spotlight_name = Label.new()
-	_spotlight_name.add_theme_font_size_override("font_size", 36)
-	_spotlight_name.add_theme_color_override("font_color", Color.WHITE)
-	info.add_child(_spotlight_name)
-	_spotlight_desc = Label.new()
-	_spotlight_desc.add_theme_font_size_override("font_size", 22)
-	_spotlight_desc.add_theme_color_override("font_color", Color(0.8, 0.88, 1.0))
-	_spotlight_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_spotlight_desc.custom_minimum_size = Vector2(700, 0)
-	info.add_child(_spotlight_desc)
-	_spotlight_play = _make_button("PLAY", "SpotlightPlay", 28, Color(0.0, 0.55, 0.3))
-	_spotlight_play.custom_minimum_size = Vector2(220, 76)
-	_spotlight_play.pressed.connect(_on_spotlight_play)
-	_spotlight_row.add_child(_spotlight_play)
-
-
-func _refresh_spotlight() -> void:
-	if _spotlight_row == null or not is_instance_valid(_spotlight_row):
-		return
-	_spotlight_entry = _spotlight_game()
-	if _spotlight_entry.is_empty():
-		_spotlight_row.visible = false
-		return
-	_spotlight_row.visible = true
-	var nm := str(_spotlight_entry.get("name", "?"))
-	_spotlight_name.text = nm
-	_spotlight_desc.text = _game_desc(nm)
-	var art := game_card_icon(str(_spotlight_entry.get("scene", "")))
-	if art != null:
-		_spotlight_art.texture = art
-
-
-func _on_spotlight_play() -> void:
-	if _spotlight_entry.is_empty():
-		return
-	_load_game(str(_spotlight_entry.get("scene", "")), str(_spotlight_entry.get("name", "")))
-
-
-func _on_costumes_pressed() -> void:
-	_load_game(COSTUME_SCENE, "Costume Picker")
-
-
-func _on_depth_toggled(on: bool) -> void:
-	VisualFX.set_depth_occlusion_enabled(on)
+## One-line description for the title card, from the inline CAT_* descs
+## (v0.9.3: hub_extras' master table is gone — no boot cost).
+func _game_desc(game_name: String) -> String:
+	for g in _master_game_list():
+		var gd: Dictionary = g
+		if str(gd.get("name", "")) == game_name:
+			return str(gd.get("desc", ""))
+	return ""
 
 
 # -------------------------------------------------------------- input ---
@@ -727,9 +755,9 @@ func _build_pointers() -> void:
 				p.xr_moved.connect(_on_pointer_moved)
 				_panel_root.add_child(p)
 				_pointers.append(p)
-	# Hand pointers: XRUIPointer discovers its XRHandTracker lazily, so hands
-	# that appear later (tracking starts/stops) are picked up automatically.
-	# Controllers and hands are independent; neither suppresses the other.
+	# Hand pointers: XRUIPointer discovers its XRHandTracker lazily via the
+	# shared static hand_ray(), so hands that appear later (tracking
+	# starts/stops) are picked up automatically.
 	for side in [XRPositionalTracker.TRACKER_HAND_LEFT, XRPositionalTracker.TRACKER_HAND_RIGHT]:
 		var hp := XRUIPointer.new()
 		hp.name = "PointerHand%d" % side
@@ -739,6 +767,15 @@ func _build_pointers() -> void:
 		hp.xr_moved.connect(_on_pointer_moved)
 		_panel_root.add_child(hp)
 		_pointers.append(hp)
+	# Belt-and-suspenders: the DirectUIInput fallback runs the same raycasts
+	# from RAW tracker poses every frame, independent of the signal path
+	# above, and draws its own yellow beams. Both paths stay live; the
+	# dedupe window in inject_click() keeps them from double-firing.
+	_direct_input = DirectUIInput.new()
+	_direct_input.name = "DirectInput"
+	_panel_root.add_child(_direct_input)
+	_direct_input.configure(_viewport, _quad, _xr_origin,
+		_fallback_moved, _fallback_clicked)
 
 
 func _on_pointer_moved(viewport_pos: Vector2) -> void:
@@ -751,6 +788,16 @@ func _on_pointer_clicked(viewport_pos: Vector2) -> void:
 	inject_click(viewport_pos)
 
 
+func _fallback_moved(viewport_pos: Vector2) -> void:
+	_note_input_event()
+	inject_motion(viewport_pos)
+
+
+func _fallback_clicked(viewport_pos: Vector2) -> void:
+	_note_input_event()
+	inject_click(viewport_pos)
+
+
 func inject_motion(viewport_pos: Vector2) -> void:
 	if _viewport == null:
 		return
@@ -759,9 +806,18 @@ func inject_motion(viewport_pos: Vector2) -> void:
 	_viewport.push_input(ev)
 
 
+## THE single injection point for clicks: the XRUIPointer signal path and
+## the DirectUIInput fallback both funnel here. A 120ms / 8px dedupe window
+## prevents the dual paths from double-firing the same press.
 func inject_click(viewport_pos: Vector2) -> void:
 	if _viewport == null:
 		return
+	var now := Time.get_ticks_msec()
+	if now - _last_click_msec < CLICK_DEDUPE_MSEC \
+			and viewport_pos.distance_to(_last_click_pos) < CLICK_DEDUPE_PX:
+		return
+	_last_click_msec = now
+	_last_click_pos = viewport_pos
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
@@ -781,6 +837,20 @@ func _xr_pointer_live() -> bool:
 	for p in _pointers:
 		if is_instance_valid(p) and p.is_source_live():
 			return true
+	return false
+
+
+## True when ANY beam (primary XRUIPointer or DirectUIInput fallback) is
+## actually drawn right now. The gaze fallback keys on this — never on
+## tracker registration — so a registered-but-useless tracker can't leave
+## the user with invisible lasers AND no gaze reticle.
+func _any_beam_drawn() -> bool:
+	for p in _pointers:
+		if is_instance_valid(p) and p.is_beam_visible():
+			return true
+	if _direct_input != null and is_instance_valid(_direct_input) \
+			and _direct_input.any_beam_visible():
+		return true
 	return false
 
 
@@ -811,8 +881,9 @@ func _panel_visible() -> bool:
 	return _panel_root != null and is_instance_valid(_panel_root) and _panel_root.visible
 
 
-## Called on every menu open: initial _ready and _return_to_hub. Resets the
-## input-event clock, hides the hint, and yaw-aligns the panel to the user.
+## Called on every menu open: initial stage 1 and _return_to_hub. Resets the
+## input-event clock, hides the hint, and yaw-aligns the panel to the user's
+## LIVE camera pose (never a stale one).
 func _on_menu_open() -> void:
 	var now := Time.get_ticks_msec()
 	_menu_open_msec = now
@@ -826,17 +897,26 @@ func _on_menu_open() -> void:
 	BugReporter.add_breadcrumb("menu_open")
 
 
+## Fresh camera, validated every call; falls back to the cached XR camera.
+func _live_camera() -> Camera3D:
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and is_instance_valid(cam):
+		return cam
+	if _xr_camera != null and is_instance_valid(_xr_camera):
+		return _xr_camera
+	return null
+
+
 ## Yaw-align the panel so it faces the user's current camera forward
-## direction at ~PANEL_DISTANCE, clamped to a comfortable height and kept out
-## of the floor. Falls back to the fixed QUAD_POS when no camera is found.
+## direction at PANEL_DISTANCE (2.0m — the distance constant is verified
+## correct; the v0.9.2 defect was placement LIFECYCLE, fixed by calling this
+## on every menu open + the 0.5s _auto_frame_panel() guard).
 func _recenter_panel() -> void:
 	if _panel_root == null or not is_instance_valid(_panel_root):
 		return
-	var cam := _xr_camera
-	if cam == null or not is_instance_valid(cam):
-		cam = get_viewport().get_camera_3d()
+	var cam := _live_camera()
 	if cam == null:
-		_panel_root.position = QUAD_POS
+		_panel_root.position = Vector3(0, 1.6, -PANEL_DISTANCE)
 		_panel_root.rotation = Vector3.ZERO
 		return
 	var cam_pos := cam.global_position
@@ -854,6 +934,38 @@ func _recenter_panel() -> void:
 	to_user.y = 0.0
 	if to_user.length() > 0.05:
 		_panel_root.rotation = Vector3(0.0, atan2(to_user.x, to_user.z), 0.0)
+
+
+## 0.5s guard while the launcher is visible (runs inside _process_status):
+## if the user walked INTO the panel (<0.8m) push it back out to 1.5m; if
+## the panel drifted >30deg off-axis, recenter. Never pulls closer.
+func _auto_frame_panel() -> void:
+	if not _panel_visible():
+		return
+	var cam := _live_camera()
+	if cam == null:
+		return
+	var cam_pos := cam.global_position
+	var center := _panel_root.global_position
+	var to_panel := center - cam_pos
+	var d := to_panel.length()
+	if d < MIN_PANEL_DIST:
+		var fwd := -cam.global_transform.basis.z
+		fwd.y = 0.0
+		if fwd.length() < 0.05:
+			fwd = Vector3(0, 0, -1)
+		fwd = fwd.normalized()
+		var target := cam_pos + fwd * 1.5
+		target.y = clampf(cam_pos.y, 1.1, 1.75)
+		_panel_root.global_position = target
+		BugReporter.add_breadcrumb("panel_pushout")
+		return
+	if d > 0.001:
+		var fwd3 := -cam.global_transform.basis.z.normalized()
+		var ang := rad_to_deg(fwd3.angle_to(to_panel / d))
+		if ang > REFRAME_ANGLE_DEG:
+			_recenter_panel()
+			BugReporter.add_breadcrumb("panel_reframe")
 
 
 ## One-line XR input inventory for the crash-log relay: the next stuck-menu
@@ -905,7 +1017,7 @@ func _poll_controller_buttons() -> void:
 			continue
 		var id := ctl.get_instance_id()
 		# NOTE (v0.9.0): the menu button in games is owned by the PauseExit
-		# autoload now (pause overlay -> Quit to Hub). The hub no longer
+		# autoload now (pause overlay -> Exit to Launcher). The hub no longer
 		# hijacks it here; this only keeps edge state fresh.
 		_menu_prev[id] = ctl.is_button_pressed("menu_button")
 		var trig_now := XRUIPointer.trigger_pressed(ctl)
@@ -935,34 +1047,42 @@ func _build_gaze_reticle() -> void:
 	_gaze_reticle.name = "GazeReticle"
 	_gaze_reticle.mesh = sph
 	_gaze_reticle.material_override = _gaze_reticle_mat
-	# Pinned to the center of the view, just in front of the recentered panel.
-	_gaze_reticle.position = Vector3(0, 0, -(PANEL_DISTANCE - 0.4))
+	# v0.9.3 fix: pinned to the camera-center ray ON the panel surface
+	# (2.0m out). The old code sat it 0.4m in front of the panel; and it now
+	# keys on "no beam actually drawn" (see _gaze_should_run), never on
+	# tracker registration.
+	_gaze_reticle.position = Vector3(0, 0, -PANEL_DISTANCE)
 	_gaze_reticle.visible = false
 	_xr_camera.add_child(_gaze_reticle)
 
 
-## The gaze fallback runs only when no controller/hand pointer is live, so it
-## never fights the lasers for hover.
+## The gaze fallback runs only when NO beam is actually drawn by either the
+## primary pointers or the DirectUIInput fallback, so it never fights the
+## lasers for hover — and a registered-but-useless tracker can no longer
+## suppress it (the v0.9.2 photo state: no lasers AND no reticle).
 func _gaze_should_run() -> bool:
 	if not get_viewport().use_xr:
 		return false
-	return not _xr_pointer_live()
+	if not _panel_visible():
+		return false
+	return not _any_beam_drawn()
 
 
 func _process_gaze(delta: float) -> void:
 	var ret := _gaze_reticle
 	if ret == null or not is_instance_valid(ret):
 		return
-	var active := _gaze_should_run() and _panel_visible()
+	var active := _gaze_should_run()
 	ret.visible = active
 	if not active:
 		_gaze_dwell = 0.0
 		_gaze_hover = null
 		return
-	if _xr_camera == null or not is_instance_valid(_xr_camera) or _quad == null:
+	var cam := _live_camera()
+	if cam == null or _quad == null:
 		return
-	var origin := _xr_camera.global_position
-	var dir := -_xr_camera.global_transform.basis.z.normalized()
+	var origin := cam.global_position
+	var dir := -cam.global_transform.basis.z.normalized()
 	var hit := XRUIPointer.ray_to_viewport(origin, dir, _quad, VP_SIZE)
 	if not bool(hit["hit"]):
 		_update_reticle_feedback(false, 0.0)
@@ -989,13 +1109,14 @@ func _process_gaze(delta: float) -> void:
 ## Trigger press while the gaze fallback is active: click whatever the
 ## camera-center ray is on.
 func _gaze_trigger_click() -> void:
-	if not _gaze_should_run() or not _panel_visible():
+	if not _gaze_should_run():
 		return
-	if _xr_camera == null or not is_instance_valid(_xr_camera) or _quad == null:
+	var cam := _live_camera()
+	if cam == null or _quad == null:
 		return
 	var hit := XRUIPointer.ray_to_viewport(
-		_xr_camera.global_position,
-		-_xr_camera.global_transform.basis.z.normalized(),
+		cam.global_position,
+		-cam.global_transform.basis.z.normalized(),
 		_quad, VP_SIZE)
 	if bool(hit["hit"]):
 		inject_click(hit["pos"])
@@ -1032,75 +1153,130 @@ func _process_status(delta: float) -> void:
 	if _status_accum < STATUS_REFRESH:
 		return
 	_status_accum = 0.0
-	if is_instance_valid(_input_status):
-		_input_status.text = _input_status_text()
+	if is_instance_valid(_diag_label):
+		_diag_label.text = _diag_text()
+	# The panel auto-frame guard rides the same 0.5s tick.
+	_auto_frame_panel()
 
 
-func _input_status_text() -> String:
+## On-screen diagnostics (ship-blocker): input state in plain words, a
+## self-test warning when nothing is live, boot timing, and a live readout
+## (live tracker count, pointer count, panel distance). wade reads this back
+## from the headset instead of us guessing.
+func _diag_text() -> String:
 	var xr := get_viewport().use_xr
-	if not xr:
-		return "XR input: none detected — desktop mouse active"
 	var ctl_l := _controller_tracked("Left")
 	var ctl_r := _controller_tracked("Right")
 	var hands := XRUIPointer.find_hand_trackers()
 	var hl := hands["left"] != null and (hands["left"] as XRHandTracker).has_tracking_data
 	var hr := hands["right"] != null and (hands["right"] as XRHandTracker).has_tracking_data
-	if not ctl_l and not ctl_r and not hl and not hr:
-		return "XR input: none detected — desktop mouse active"
 	var ctl_txt := "none"
 	if ctl_l and ctl_r:
-		ctl_txt = "L+R tracked"
+		ctl_txt = "L+R live"
 	elif ctl_l:
-		ctl_txt = "L tracked"
+		ctl_txt = "L live"
 	elif ctl_r:
-		ctl_txt = "R tracked"
-	var hand_txt := "off"
+		ctl_txt = "R live"
+	var hand_txt := "none"
 	if hl and hr:
 		hand_txt = "L+R"
 	elif hl:
 		hand_txt = "L"
 	elif hr:
 		hand_txt = "R"
-	var gaze_txt := "gaze ready" if _gaze_should_run() else "gaze standby"
-	return "Input: controllers %s · hands %s · %s" % [ctl_txt, hand_txt, gaze_txt]
+	var gaze_txt := "off (desktop mouse active)"
+	if xr:
+		gaze_txt = "standby" if _any_beam_drawn() else "ready"
+	var line1 := "Controllers: %s · Hands: %s · Gaze: %s" % [ctl_txt, hand_txt, gaze_txt]
+	# Live readout: pointer count + panel distance.
+	var ptrs := 0
+	for p in _pointers:
+		if is_instance_valid(p) and p.is_source_live():
+			ptrs += 1
+	var dist_txt := "?"
+	var cam := _live_camera()
+	if cam != null and _panel_root != null and is_instance_valid(_panel_root):
+		dist_txt = "%.1fm" % cam.global_position.distance_to(_panel_root.global_position)
+	var boot_txt := "booting…"
+	if _first_frame_msec > 0:
+		boot_txt = "first frame %.1fs" % ((_first_frame_msec - _boot_msec) / 1000.0)
+	var line2 := "Ptrs: %d · Panel: %s · Boot: %s" % [ptrs, dist_txt, boot_txt]
+	# Self-test: no beam drawn for >3s on-device = the photo state.
+	var warn := ""
+	if xr and _panel_visible():
+		var now := Time.get_ticks_msec()
+		if not _any_beam_drawn():
+			if _no_beam_since_msec == 0:
+				_no_beam_since_msec = now
+			elif now - _no_beam_since_msec > 3000:
+				warn = "\n⚠ NO INPUT SOURCE LIVE — look at a button and hold 1.2s"
+		else:
+			_no_beam_since_msec = 0
+	return line1 + "\n" + line2 + warn
+
+
+# ------------------------------------------------- connection self-test ---
+
+## "Test connection" button: POSTs a tiny JSON ping to the relay (8s
+## timeout, non-blocking, own HTTPRequest — never BugReporter's shared one)
+## and shows SUCCESS / FAILED on screen. Brio's side can watch the relay
+## for the ping as device-egress ground truth.
+func _on_test_connection() -> void:
+	if _ping_in_flight:
+		return
+	_ping_in_flight = true
+	_test_btn.disabled = true
+	_conn_label.text = "Connection: testing..."
+	if _ping_http == null:
+		_ping_http = HTTPRequest.new()
+		_ping_http.name = "DiagPingHTTP"
+		add_child(_ping_http)
+		_ping_http.request_completed.connect(_on_ping_completed)
+	if _ping_timer == null:
+		_ping_timer = Timer.new()
+		_ping_timer.wait_time = 8.0
+		_ping_timer.one_shot = true
+		_ping_timer.timeout.connect(_on_ping_timeout)
+		add_child(_ping_timer)
+	_ping_timer.start()
+	var payload := {
+		"type": "diag_ping",
+		"app": "nexus-arcade",
+		"version": str(ProjectSettings.get_setting("application/config/version", "?")),
+		"ts": Time.get_unix_time_from_system(),
+		"input": _diag_text(),
+	}
+	var err := _ping_http.request(DIAG_PING_URL,
+		PackedStringArray(["Content-Type: application/json"]),
+		HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if err != OK:
+		_on_ping_done(false, "start failed")
+
+
+func _on_ping_timeout() -> void:
+	if _ping_in_flight:
+		_on_ping_done(false, "timeout")
+
+
+func _on_ping_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if not _ping_in_flight:
+		return
+	var ok := result == HTTPRequest.RESULT_SUCCESS and response_code >= 200 and response_code < 300
+	_on_ping_done(ok, "" if ok else "code %d" % response_code)
+
+
+func _on_ping_done(ok: bool, detail: String) -> void:
+	_ping_in_flight = false
+	if _ping_timer != null:
+		_ping_timer.stop()
+	if is_instance_valid(_test_btn):
+		_test_btn.disabled = false
+	if is_instance_valid(_conn_label):
+		_conn_label.text = "Connection: SUCCESS" if ok \
+			else "Connection: FAILED (%s)" % detail
 
 
 # --------------------------------------------------------- game load ---
-
-## Canonical ordered list of ALL experiences (same order as the Spotlight
-## rotation): CAT_GAMES + CAT_UTILITIES + CAT_CREATE + CAT_THEMES. This is
-## the Next/Previous order in the pause menu — all 75, simple, no
-## favorites/search interplay.
-func _master_game_list() -> Array:
-	if _master_games.is_empty():
-		_master_games.append_array(CAT_GAMES)
-		_master_games.append_array(CAT_UTILITIES)
-		_master_games.append_array(CAT_CREATE)
-		_master_games.append_array(CAT_THEMES)
-	return _master_games
-
-
-func _master_index_of(scene_path: String) -> int:
-	var games := _master_game_list()
-	for i in games.size():
-		if str((games[i] as Dictionary).get("scene", "")) == scene_path:
-			return i
-	return -1
-
-
-## Switch to the adjacent game from the pause menu (delta -1 = prev,
-## +1 = next). Wraps around at the ends. Routes through _load_game so
-## autowiring, music, sessions and telemetry run identically to a launcher
-## launch.
-func _switch_game(delta: int) -> void:
-	var games := _master_game_list()
-	if games.is_empty() or _current_game_index < 0:
-		return
-	var n := games.size()
-	var next_idx := (_current_game_index + delta + n) % n
-	var g: Dictionary = games[next_idx]
-	_load_game(str(g["scene"]), str(g["name"]), "next" if delta > 0 else "prev")
-
 
 func _load_game(scene_path: String, game_name: String, via: String = "launcher") -> void:
 	BugReporter.session_start(game_name)
@@ -1137,6 +1313,7 @@ func _load_game(scene_path: String, game_name: String, via: String = "launcher")
 ## by default. A game opts out with `static var no_auto_wire := true`.
 func _autowire_game(scene_path: String, game_name: String) -> void:
 	var stem := scene_path.get_file().get_basename()
+	var tab := _tab_of(scene_path)
 	# 1. Genre music (activates the dormant GENRE_FOR_SCENE map).
 	if get_node_or_null("/root/AudioKit") != null:
 		AudioKit.set_active_scene(stem)
@@ -1145,14 +1322,14 @@ func _autowire_game(scene_path: String, game_name: String) -> void:
 	# 2. Passthrough mood grade (haunted green for THEMES, deep teal for
 	# dive/aquarium, natural everywhere else).
 	if get_node_or_null("/root/MoodLUT") != null:
-		MoodLUT.apply_for_game(stem, _tab)
+		MoodLUT.apply_for_game(stem, tab)
 	# 3. Juice: title card + affordance pass. The no_auto_wire opt-out skips
 	# this and the controller-skin dressing — but NEVER the pause/exit below.
 	if _current_game == null or not is_instance_valid(_current_game):
 		return
 	var opted_out := _game_opt_out()
 	if not opted_out and get_node_or_null("/root/JuiceFX") != null:
-		JuiceFX.title_card(game_name, _game_desc(game_name), _skin_accent(_tab))
+		JuiceFX.title_card(game_name, _game_desc(game_name), _skin_accent(tab))
 		JuiceFX.affordance_pass(_current_game)
 	# 4. Global pause/exit (ship-blocker) + controller skins + button legend.
 	# PauseExit attaches UNCONDITIONALLY, even for no_auto_wire games: the
@@ -1185,20 +1362,6 @@ func _game_opt_out() -> bool:
 		return false
 	var scr := _current_game.get_script() as GDScript
 	return scr != null and bool(scr.get("no_auto_wire"))
-
-
-## One-line description for the title card, from hub_extras' master table.
-func _game_desc(game_name: String) -> String:
-	if _extras_table_cache.is_empty() and ResourceLoader.exists(HUB_EXTRAS_PATH):
-		var scr: GDScript = load(HUB_EXTRAS_PATH)
-		var table: Array = scr.get("GAMES")
-		if table != null:
-			_extras_table_cache = table
-	for g in _extras_table_cache:
-		var gd: Dictionary = g
-		if str(gd.get("n", "")) == game_name:
-			return str(gd.get("d", ""))
-	return ""
 
 
 func _return_to_hub() -> void:
@@ -1286,6 +1449,10 @@ func _setup_updater() -> void:
 
 
 func _on_update_button() -> void:
+	if _updater == null:
+		# Stage 2 hasn't run yet (one idle frame after the UI builds).
+		_update_status.text = "Still starting… try again."
+		return
 	# If we have a downloaded APK pending install, tapping installs it.
 	var pending: String = str(_update_status.get_meta("apk_path", ""))
 	if pending != "":
@@ -1369,6 +1536,8 @@ func _on_update_failed(error: String) -> void:
 
 # ---------------------------------------------------------- room flow ---
 
+## Room setup is BUTTON-ONLY in v0.9.3 (no first-run auto-popup): wade
+## taps "Room setup" when he wants it.
 func _build_room_dialog(root: Control) -> void:
 	_room_dialog = Control.new()
 	_room_dialog.name = "RoomDialog"
@@ -1494,20 +1663,10 @@ func _on_room_done() -> void:
 
 # ------------------------------------------------------- test helpers ---
 
-func get_tab_button(tab_index: int) -> Button:
-	if tab_index >= 0 and tab_index < _tab_buttons.size():
-		return _tab_buttons[tab_index]
+func get_game_button(list_index: int) -> Button:
+	if list_index >= 0 and list_index < _game_buttons.size():
+		return _game_buttons[list_index]
 	return null
-
-
-func get_game_button(page_index: int) -> Button:
-	if page_index >= 0 and page_index < _game_buttons.size():
-		return _game_buttons[page_index]
-	return null
-
-
-func get_current_tab() -> int:
-	return _tab
 
 
 func get_current_game() -> Node:

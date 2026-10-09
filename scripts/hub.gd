@@ -20,7 +20,7 @@ extends Node3D
 class_name NexusHub
 
 const CAT_GAMES := [
-	{"name": "Gravity Golf", "scene": "res://scenes/golf/golf.tscn", "desc": "Putt across floating courses where every shot bends gravity.", "color": Color(0.2, 0.8, 0.3)},
+	{"name": "NEXUS GREENS", "scene": "res://scenes/minigolf/minigolf.tscn", "desc": "AAA VR minigolf: 18 holes across 3 zones, plus AR mode on your real room.", "color": Color(0.2, 0.8, 0.3)},
 	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "desc": "Command your drone swarm to outmaneuver the hive.", "color": Color(1.0, 0.3, 0.2)},
 	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "desc": "Fast-draw light-blade duels in your living room.", "color": Color(1.0, 0.9, 0.2)},
 	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "desc": "Slice incoming beats with twin energy blades.", "color": Color(1.0, 0.0, 1.0)},

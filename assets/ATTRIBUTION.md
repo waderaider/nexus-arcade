@@ -126,3 +126,15 @@ Generated in-house with Blender 4.5.14 LTS (headless) 2026-10-08.
 | Game | Model file | Pack | License | Source |
 |---|---|---|---|---|
 | hw_werewolf_howl | wolf.fbx (+ wild_animals_map.png) | CraftPix Free Wild Animal 3D Low Poly Models | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ |
+
+## NEXUS GREENS — v0.10.0 (original assets, no third-party models)
+
+| Asset | File | License | Source |
+|---|---|---|---|
+| Putter (hero) | assets/minigolf/putter.glb | Original (Blender, Brio) | Built 2026-10-09 via headless Blender pipeline |
+| Golf ball (hero) | assets/minigolf/golf_ball.glb | Original (Blender, Brio) | Built 2026-10-09 via headless Blender pipeline |
+| All SFX (12) | assets/audio/sfx/mg_*.wav | Original (procedural synthesis) | tools/gen_minigolf_audio.py — no licensed audio |
+| Hole geometry/props | (procedural, in-code) | Original | MinigolfHoleBuilder + MinigolfMechanics — no external meshes |
+| Music | (procedural, AudioKit genres) | Original (procedural synthesis) | tools/gen_audio.py genre system |
+
+No CraftPix, Quaternius, or KayKit assets were needed — the minigolf art direction (stylized clubhouse/tinkerworks/skyreef) is fully served by original procedural + Blender hero assets.

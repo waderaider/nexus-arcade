@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://nexusgreensmain"]
+
+[ext_resource type="Script" path="res://scripts/games/minigolf/minigolf_game.gd" id="1"]
+
+[node name="NEXUSGREENS" type="Node3D"]
+script = ExtResource("1")

@@ -36,7 +36,7 @@ extends RefCounted
 
 ## Accessory ids.
 const SKINS := ["none", "wand", "blaster", "wheel", "brush", "racket",
-	"sword", "rod", "mallet", "torch"]
+	"sword", "rod", "mallet", "torch", "putter"]
 
 ## Heuristic accessory per game stem (games override via controller_config).
 const SKIN_FOR_STEM := {
@@ -394,6 +394,28 @@ static func _build_accessory(skin: String) -> Node3D:
 			head.rotation_degrees.z = 90
 			root.add_child(head)
 			root.add_child(_part(_cyl(0.046, 0.046, 0.012), _mat_accent, Vector3(0.045, 0.12, -0.17)))
+		"putter":
+			# NEXUS GREENS hero putter (Blender custom, baked PBR).
+			# GLB local: head at y~0.03, grip top at y~1.1.
+			# Mount: grip at controller origin, head forward-down.
+			var putter_glb: PackedScene = load("res://assets/minigolf/putter.glb")
+			if putter_glb != null:
+				var club: Node3D = putter_glb.instantiate()
+				club.rotation_degrees = Vector3(54, 0, 0)
+				# Grip (0,1.1,0) rotated -> (0, 0.65, 0.89); shift to origin.
+				club.position = Vector3(0, -0.65, -0.89)
+				root.add_child(club)
+				# Head marker for strike detection (accessory space).
+				var head_marker := Marker3D.new()
+				head_marker.name = "ClubHead"
+				head_marker.position = Vector3(0, -0.63, -0.87)
+				root.add_child(head_marker)
+			else:
+				# Fallback: procedural putter if the GLB is missing.
+				var p_shaft := _part(_cyl(0.011, 0.011, 0.8), _mat_grip, Vector3(0, -0.3, -0.35))
+				p_shaft.rotation_degrees.x = 54
+				root.add_child(p_shaft)
+				root.add_child(_part(_box(Vector3(0.1, 0.05, 0.04)), _mat_dark, Vector3(0, -0.63, -0.87)))
 		"torch":
 			root.add_child(_part(_cyl(0.014, 0.017, 0.16), _mat_grip, Vector3(0, 0.05, -0.08)))
 			root.add_child(_part(_cyl(0.035, 0.02, 0.05), _mat_dark, Vector3(0, 0.14, -0.08)))

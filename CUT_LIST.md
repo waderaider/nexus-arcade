@@ -217,3 +217,47 @@ deletion deferred to the ship pass.
 - **Apple Bobbing** — competent but one-note-adjacent; the dunk-timing twist saves it for now.
 - **Holo Theremin** — magical toy, zero loop — survives on "demo-booth wonder" like Light Painter, but the thinnest keep.
 - **Mano Mágica** — not a game, kept as functional onboarding infra for hand input.
+
+---
+
+# NEXUS ARCADE — CUT LIST (v0.12.0)
+
+**Date:** 2026-10-12 · **Rule:** wade's order — remove ALL basic and boring games. Deeper pass than v0.11.0's 5 culls.
+Three Game Designer + QA Director auditors scored all 69 non-exempt games (10 new v0.11.0 games + NEXUS GREENS exempt) by reading actual game code against "amazing or groundbreaking, or it's cut."
+
+**Cut:** 27 games · **Survivors:** 53 games
+
+## CUT GAMES (27) — title, reason
+
+| title | reason |
+|---|---|
+| Beat Blades | Beat Saber clone with synthesized tones — weaker twin of Rhythm Boxer. |
+| Laser Tag AR | Tag 3 bots in 60s — thin single loop, no escalation, no wow. |
+| Room Racer | Tiny floor oval, 3 laps vs one AI car — flat, zero depth. |
+| AR Defender | Competent tower defense but weaker twin — Swarm Protocol owns the slot. |
+| Starforge | Weaker twin of War Table — 2 unit types on static board vs pinch-drag RTS depth. |
+| Drone Racer | Hand-guided drone through 8 fixed rings vs a clock — one thin loop. |
+| Holo Pets | Weaker twin of Dragon Ranch — generic decaying-stats pet vs growth stages + tricks. |
+| Holo Garden | Weaker twin of Holo Farm — shallow click loop vs full farm economy. |
+| AR Graffiti | Weaker twin of Light Painter — flat 2D spray decals vs 3D mid-air ribbons. |
+| AR Karaoke | Fake karaoke — pitch simulated, singing is timing taps, mic hooks stubbed. |
+| Holo Theremin | Real hand-pitch instrument but one song, no progression. |
+| AR DJ | Real mixer physics, two 4-beat drum loops — a DJ booth with no music. |
+| Zero-G Sandbox | Bare physics toy — grab/fling blocks, no hook, no wow. |
+| Pumpkin Smash | Plain whack-a-mole, one-note reflex loop. |
+| Haunted Maze | 9x9 token collectathon; ghoul patrols a fixed loop, never hunts. |
+| Web Slingshot | One-note slingshot range, static targets. |
+| Potion Mix | Color-dot sequence matching, zero challenge. |
+| Zombie Defense | One-note point-and-zap horde — weaker duplicate of Midnight Survival. |
+| Broom Flight | Fly-through-rings, no obstacles or depth. |
+| Monster Mash | Rhythm whack-a-mole to a metronome — no real music, thin. |
+| Mummy Wrap | Draw-circles-fast arm-endurance gimmick, no real challenge. |
+| Pumpkin Carve | 3D connect-the-dots tracing, one-note loop, thin payoff. |
+| Portrait Gallery | 10 rounds of find-the-moving-ghost — one observation task, flat. |
+| Apple Bobbing | Grab-the-apple-before-it-dunks, thin one-note loop. |
+| Haunted Mirror Maze | Procedural maze killed by tedious pinch-step controls, clunky UX. |
+| Witch Hat Toss | Carnival ring toss that auto-flies to the pointer — no skill depth. |
+| Monster Feed | Slow grab-food-drop-in-mouth matching loop, one-note. |
+
+## RECYCLED ASSETS
+None this cycle — cuts were outright removals per the rule; no gold-plating.

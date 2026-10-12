@@ -25,12 +25,7 @@ const CAT_GAMES := [
 	{"name": "NEXUS GREENS", "scene": "res://scenes/minigolf/minigolf.tscn", "desc": "AAA VR minigolf: 18 holes across 3 zones, plus AR mode on your real room.", "color": Color(0.2, 0.8, 0.3)},
 	{"name": "Swarm Protocol", "scene": "res://scenes/swarm/swarm.tscn", "desc": "Command your drone swarm to outmaneuver the hive.", "color": Color(1.0, 0.3, 0.2)},
 	{"name": "Neon Duel", "scene": "res://scenes/duel/duel.tscn", "desc": "Fast-draw light-blade duels in your living room.", "color": Color(1.0, 0.9, 0.2)},
-	{"name": "Beat Blades", "scene": "res://scenes/beat-blades/beat-blades.tscn", "desc": "Slice incoming beats with twin energy blades.", "color": Color(1.0, 0.0, 1.0)},
-	{"name": "Laser Tag AR", "scene": "res://scenes/laser-tag-ar/laser-tag-ar.tscn", "desc": "Classic laser tag, played across your real room.", "color": Color(1.0, 0.1, 0.1)},
-	{"name": "Room Racer", "scene": "res://scenes/room-racer/room-racer.tscn", "desc": "Race hover cars on a track mapped to your room.", "color": Color(0.0, 0.8, 1.0)},
-	{"name": "AR Defender", "scene": "res://scenes/ar-defender/ar-defender.tscn", "desc": "Defend your furniture forts against enemy waves.", "color": Color(1.0, 0.2, 0.5)},
 	{"name": "Sky Defender", "scene": "res://scenes/sky-defender/sky-defender.tscn", "desc": "Swat invading drones out of your ceiling sky.", "color": Color(0.9, 0.5, 0.1)},
-	{"name": "Drone Racer", "scene": "res://scenes/drone-racer/drone-racer.tscn", "desc": "Thread FPV drones through rings around your home.", "color": Color(0.3, 0.7, 1.0)},
 	{"name": "Spell Duel", "scene": "res://scenes/spell-duel/spell-duel.tscn", "desc": "Duel rival wizards with gesture-cast spells.", "color": Color(0.7, 0.2, 1.0)},
 	{"name": "Rhythm Boxer", "scene": "res://scenes/rhythm-boxer/rhythm-boxer.tscn", "desc": "Punch targets to the beat, round after round.", "color": Color(1.0, 0.2, 0.2)},
 	{"name": "Marble Run", "scene": "res://scenes/marble-run/marble-run.tscn", "desc": "Build wild marble tracks across your tables.", "color": Color(0.25, 0.5, 1.0)},
@@ -41,7 +36,6 @@ const CAT_GAMES := [
 	{"name": "Time Freeze", "scene": "res://scenes/time-freeze/time-freeze.tscn", "desc": "Freeze time, reposition, then let chaos resume.", "color": Color(0.5, 0.85, 1.0)},
 	{"name": "Air Drums", "scene": "res://scenes/air-drums/air-drums.tscn", "desc": "Play a full drum kit on thin air.", "color": Color(1.0, 0.35, 0.15)},
 	{"name": "Shadow Puppets", "scene": "res://scenes/shadow-puppet/shadow-puppet.tscn", "desc": "Cast shadow creatures onto your walls.", "color": Color(1.0, 0.65, 0.3)},
-	{"name": "Starforge", "scene": "res://scenes/starforge/starforge.tscn", "desc": "Forge a star system, planet by planet.", "color": Color(0.8, 0.4, 1.0)},
 	{"name": "Holo Dungeon", "scene": "res://scenes/holo-dungeon/holo-dungeon.tscn", "desc": "A dungeon crawler that unfolds in your room.", "color": Color(0.4, 0.2, 0.6)},
 	{"name": "AR Escape Room", "scene": "res://scenes/ar-escape-room/ar-escape-room.tscn", "desc": "Solve the room to escape the room.", "color": Color(0.7, 0.5, 0.2)},
 	{"name": "AR Billiards", "scene": "res://scenes/ar-billiards/ar-billiards.tscn", "desc": "Pool on your coffee table - no table required.", "color": Color(0.1, 0.6, 0.25)},
@@ -74,8 +68,6 @@ const CAT_UTILITIES := [
 	## v0.11.0 CULLS: Star Map + Plant Doctor removed (see CUT_LIST.md).
 	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "desc": "Watch live airplanes cross your sky in AR.", "color": Color(0.4, 0.8, 1.0)},
 	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "desc": "I spy, played with your whole house.", "color": Color(0.2, 0.9, 1.0)},
-	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "desc": "Adopt a pet that lives on your furniture.", "color": Color(1.0, 0.6, 0.8)},
-	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "desc": "Spin tracks on floating decks.", "color": Color(0.8, 0.0, 0.8)},
 	{"name": "Couch Morph", "scene": "res://scenes/couch_morph/couch_morph.tscn", "desc": "Reskin your couch: spaceship, lava isle, pirate deck.", "color": Color(0.9, 0.4, 1.0)},
 	{"name": "Mano Mágica", "scene": "res://scenes/mano_magica/mano_magica.tscn", "desc": "Learn hand tracking: pinch, grab, throw, sculpt, conduct, pet.", "color": Color(1.0, 0.75, 0.3)},
 ]
@@ -83,39 +75,20 @@ const CAT_UTILITIES := [
 const CAT_CREATE := [
 	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "desc": "Draw with light and leave glowing trails.", "color": Color(1.0, 0.3, 0.9)},
 	## v0.11.0 CULL: Holo Piano removed (no game loop — see CUT_LIST.md).
-	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "desc": "Make music just by waving your hands.", "color": Color(0.55, 0.3, 1.0)},
-	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "desc": "Tag your walls with zero cleanup.", "color": Color(0.5, 1.0, 0.2)},
-	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "desc": "Karaoke night with lyrics on your wall.", "color": Color(1.0, 0.4, 0.7)},
 	{"name": "Sand Shaper", "scene": "res://scenes/sand-shaper/sand-shaper.tscn", "desc": "Sculpt a sandbox that never spills.", "color": Color(0.9, 0.75, 0.45)},
 	{"name": "Clay Shaper", "scene": "res://scenes/clay-shaper/clay-shaper.tscn", "desc": "Throw virtual clay on a floating wheel.", "color": Color(0.8, 0.45, 0.25)},
 	{"name": "Sketch to 3D", "scene": "res://scenes/sketch_3d/sketch_3d.tscn", "desc": "Sketch it, then watch it pop into 3D.", "color": Color(1.0, 0.5, 1.0)},
-	{"name": "Holo Garden", "scene": "res://scenes/holo-garden/holo-garden.tscn", "desc": "Plant a garden that blooms overnight.", "color": Color(0.3, 0.9, 0.3)},
-	{"name": "Zero-G Sandbox", "scene": "res://scenes/zero-g-sandbox/zero-g-sandbox.tscn", "desc": "Build contraptions in zero gravity.", "color": Color(0.5, 0.0, 1.0)},
 	{"name": "Holo Aquarium", "scene": "res://scenes/holo-aquarium/holo-aquarium.tscn", "desc": "An aquarium on your wall, no water needed.", "color": Color(0.1, 0.7, 0.9)},
 ]
 
 const CAT_THEMES := [
-	{"name": "Pumpkin Smash", "scene": "res://scenes/hw_pumpkin_smash/hw_pumpkin_smash.tscn", "desc": "Smash every pumpkin before time runs out.", "color": Color(1.0, 0.45, 0.05)},
-	{"name": "Haunted Maze", "scene": "res://scenes/hw_haunted_maze/hw_haunted_maze.tscn", "desc": "Escape a maze that rearranges itself.", "color": Color(0.3, 0.6, 0.2)},
-	{"name": "Web Slingshot", "scene": "res://scenes/hw_web_slingshot/hw_web_slingshot.tscn", "desc": "Slingshot through giant spider webs.", "color": Color(0.8, 0.8, 0.9)},
-	{"name": "Potion Mix", "scene": "res://scenes/hw_potion_mix/hw_potion_mix.tscn", "desc": "Brew the perfect potion - don't blow up the lab.", "color": Color(0.4, 0.9, 0.3)},
-	{"name": "Zombie Defense", "scene": "res://scenes/hw_zombie_defense/hw_zombie_defense.tscn", "desc": "Barricade your room against the horde.", "color": Color(0.5, 0.9, 0.2)},
 	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "desc": "Match the skeleton's dance moves.", "color": Color(0.9, 0.9, 0.85)},
-	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "desc": "Race broomsticks through the night sky.", "color": Color(0.6, 0.3, 1.0)},
-	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "desc": "Dance-battle classic movie monsters.", "color": Color(0.7, 0.2, 0.9)},
 	## v0.11.0 CULL: Candy Stack removed (one-note loop — see CUT_LIST.md).
-	{"name": "Mummy Wrap", "scene": "res://scenes/hw_mummy_wrap/hw_mummy_wrap.tscn", "desc": "Wrap the mummy before it wakes up.", "color": Color(0.85, 0.8, 0.65)},
 	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "desc": "Dodge swooping bats in your hallway.", "color": Color(0.35, 0.1, 0.5)},
-	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "desc": "Carve jack-o'-lanterns with light.", "color": Color(1.0, 0.55, 0.0)},
-	{"name": "Portrait Gallery", "scene": "res://scenes/hw_portrait_gallery/hw_portrait_gallery.tscn", "desc": "Portraits whose eyes follow you. Creepy.", "color": Color(0.5, 0.2, 0.6)},
 	{"name": "Werewolf Howl", "scene": "res://scenes/hw_werewolf_howl/hw_werewolf_howl.tscn", "desc": "Howl in tune to wake the pack.", "color": Color(0.4, 0.5, 1.0)},
 	{"name": "Hayride Shooter", "scene": "res://scenes/hw_hayride_shooter/hw_hayride_shooter.tscn", "desc": "Shoot targets from a rolling hayride.", "color": Color(1.0, 0.6, 0.15)},
-	{"name": "Apple Bobbing", "scene": "res://scenes/hw_apple_bobbing/hw_apple_bobbing.tscn", "desc": "Bob for apples, AR style.", "color": Color(0.9, 0.15, 0.2)},
 	{"name": "Phantom Piano", "scene": "res://scenes/hw_phantom_piano/hw_phantom_piano.tscn", "desc": "Play a piano that plays itself back.", "color": Color(0.75, 0.6, 1.0)},
 	{"name": "Goblin Archery", "scene": "res://scenes/hw_goblin_archery/hw_goblin_archery.tscn", "desc": "Outshoot goblins in the dark forest.", "color": Color(0.2, 0.8, 0.3)},
-	{"name": "Haunted Mirror Maze", "scene": "res://scenes/hw_mirror_maze/hw_mirror_maze.tscn", "desc": "A mirror maze full of lying reflections.", "color": Color(0.6, 0.9, 1.0)},
-	{"name": "Witch Hat Toss", "scene": "res://scenes/hw_hat_toss/hw_hat_toss.tscn", "desc": "Toss rings onto the witch hats.", "color": Color(0.55, 0.25, 0.9)},
-	{"name": "Monster Feed", "scene": "res://scenes/hw_monster_feed/hw_monster_feed.tscn", "desc": "Feed the monster before it feeds on you.", "color": Color(0.3, 1.0, 0.4)},
 	{"name": "Midnight Survival", "scene": "res://scenes/hw_midnight_survival/hw_midnight_survival.tscn", "desc": "Survive until dawn in the haunted house.", "color": Color(0.15, 0.1, 0.35)},
 ]
 

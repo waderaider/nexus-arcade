@@ -41,12 +41,37 @@
   .step h4 { color: #00ffff; margin-bottom: 8px; }
   .step p, .step ol { color: #a0a0cc; }
   .step ol { margin-left: 20px; }
+
+  .topnav { position: sticky; top: 0; z-index: 100; background: rgba(10,10,26,0.95); border-bottom: 1px solid #2a2a4a; text-align: center; padding: 12px; }
+  .topnav a { color: #a0a0cc; text-decoration: none; margin: 0 18px; font-weight: bold; font-size: 1.05em; }
+  .topnav a:hover, .topnav a.active { color: #00ffff; }
+  .ue5 { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+  .ue5 h2 { text-align: center; font-size: 2em; margin-bottom: 10px; color: #76b900; }
+  .ue5 .subtitle { text-align: center; color: #666688; margin-bottom: 30px; }
+  .task { background: #151528; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
+  .task h3 { color: #76b900; margin-bottom: 10px; }
+  .task ul { margin-left: 5px; list-style: none; }
+  .task li { color: #a0a0cc; padding: 6px 0; border-bottom: 1px solid #1e1e38; }
+  .task li:last-child { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; margin-right: 8px; }
+  .pill.todo { background: #3a3a1a; color: #ffdd44; }
+  .pill.ready { background: #1a3a2a; color: #00ff88; }
+  .pill.soon { background: #2a2a4a; color: #a0a0cc; }
+  .task .note { color: #666688; font-size: 0.85em; margin-top: 12px; }
+  .task a { color: #00ffff; }
   footer { text-align: center; padding: 40px 20px; color: #555577; font-size: 0.9em; }
   footer a { color: #00ffff; }
 </style>
 </head>
 <body>
-<div class="hero">
+<div class="topnav">
+  <a href="#top">NEXUS ARCADE</a>
+  <a href="#games">Games</a>
+  <a href="#install">Install</a>
+  <a href="#ue5">🎮 UE5 RTX Demo — Your Tasks</a>
+</div>
+
+<div class="hero" id="top">
   <h1>NEXUS ARCADE</h1>
   <p class="built-by">built by Muse</p>
   <p>75 cutting-edge mixed reality games and utilities for Meta Quest 3, organized into GAMES, UTILITIES, CREATE, and THEMES screens. Your room is the arcade. Hand tracking, spatial anchors, real 3D models, haptics, and PBR graphics throughout.</p>
@@ -85,7 +110,7 @@
   </div>
 </div>
 
-<div class="games">
+<div class="games" id="games">
   <h2>46 Games, Utilities & Creations</h2>
   <div class="subtitle">Browse by screen: GAMES &bull; UTILITIES &bull; CREATE &bull; THEMES</div>
   <div class="subtitle">The ARCADE tab &mdash; full-featured MR experiences</div>
@@ -155,12 +180,56 @@
   </div>
 </div>
 
-<div class="install">
+<div class="install" id="install">
   <h2>How to Install</h2>
   <div class="step"><h4>1. Enable Developer Mode</h4><p>Meta Horizon app &rarr; Menu &rarr; Devices &rarr; your Quest 3 &rarr; Developer Mode &rarr; ON.</p></div>
   <div class="step"><h4>2. Install the APK</h4><ol><li>Download SideQuest from sidequestvr.com</li><li>Connect Quest 3 via USB</li><li>In SideQuest, click Install APK (folder icon)</li><li>Select the downloaded file</li></ol><p style="margin-top:10px;">Or via ADB: <code>adb install NexusArcade-v0.12.0.apk</code></p></div>
   <div class="step"><h4>3. Launch</h4><p>Quest 3: Apps &rarr; Unknown Sources &rarr; NEXUS ARCADE</p></div>
   <div class="step"><h4>4. Stay updated</h4><p>The in-app <b>Check for Updates</b> button in the hub notifies you when a new version drops.</p></div>
+</div>
+
+
+<div class="ue5" id="ue5">
+  <h2>&#127918; MARIGOLD UE5 RTX Demo — Your Tasks</h2>
+  <div class="subtitle">One-chapter ray-traced demo of the candle-lit Ofrenda, built for your RTX 5070 Ti and streamed to Quest 3 via Virtual Desktop.<br>Your PC is the build host — here's everything on your plate.</div>
+
+  <div class="task">
+    <h3>Step 1 — Install these now <span class="pill todo">YOUR TURN</span></h3>
+    <ul>
+      <li><span class="pill todo">TODO</span><b>Unreal Engine 5.7.x</b> — Epic Games Launcher &rarr; Unreal Engine &rarr; Library &rarr; install latest 5.7.x (~50GB). Start this first; it's the long pole.</li>
+      <li><span class="pill todo">TODO</span><b>MetaXR plugin v203.0</b> — developer.meta.com &rarr; Downloads &rarr; Unreal Engine 5 Integration.</li>
+      <li><span class="pill todo">TODO</span><b>NVIDIA DLSS 4.5 plugin</b> (UE 5.7 build) — developer.nvidia.com/rtx/dlss. Super Resolution only; Frame Generation stays OFF (not VR-safe).</li>
+      <li><span class="pill todo">TODO</span><b>Visual Studio 2022</b> (free Community) with the <b>"Game development with C++"</b> workload — required to package. Install while the engine downloads.</li>
+      <li><span class="pill todo">TODO</span><b>Virtual Desktop Streamer</b> on the PC — skip if already set up for the Godot PC build.</li>
+    </ul>
+    <p class="note">Needs: <b>120GB free</b> on your fastest drive, a free Epic Games account, a free Meta developer account. <b>Freeze rule: stay on UE 5.7.x</b> — decline any 5.8 update (DLSS plugin is version-pinned).</p>
+  </div>
+
+  <div class="task">
+    <h3>Step 2 — Files you'll get from us <span class="pill soon">IN PROGRESS</span></h3>
+    <ul>
+      <li><span class="pill soon">SOON</span><b>Project files</b> — the <b>.uproject</b> + one-click <b>"Build Demo Content"</b> script. The crew is generating these now; not yet delivered.</li>
+      <li><span class="pill ready">READY</span><b>35 models + 38 audio files</b> — staged with licenses verified; they ship inside the project package.</li>
+    </ul>
+    <p class="note">You'll get an email the moment the project package is ready to download.</p>
+  </div>
+
+  <div class="task">
+    <h3>Step 3 — Build it (when the files arrive)</h3>
+    <ul>
+      <li><span class="pill todo">TODO</span><b>Open the .uproject</b> — first open compiles shaders: 30–90 min unattended on the 5070 Ti. Walk away.</li>
+      <li><span class="pill todo">TODO</span><b>Run "Build Demo Content"</b> (one click) — imports all assets, builds materials, constructs the Ofrenda-night scene, wires the 25 candle lights, sets Lumen / MegaLights / DLSS.</li>
+      <li><span class="pill todo">TODO</span><b>Package &rarr; Windows .exe</b> — 20–60 min the first time; faster after that.</li>
+    </ul>
+  </div>
+
+  <div class="task">
+    <h3>Step 4 — What comes back to us</h3>
+    <ul>
+      <li>Screenshots / logs if the build script throws errors — we fix the script, you re-run. No reinstall needed.</li>
+      <li><b>Week 4:</b> first playable .exe &rarr; you QA it over Virtual Desktop. <b>Your verdict gates everything</b> — demo only becomes a full port if you say the visuals earn it.</li>
+    </ul>
+  </div>
 </div>
 
 <footer>

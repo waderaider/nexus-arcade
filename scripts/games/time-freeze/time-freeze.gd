@@ -80,6 +80,8 @@ func _room_point(p: Vector3) -> Vector3:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "time-freeze")
 	ARUpgradeKit.apply_anchor(self, "time-freeze_main")
 	_ensure_camera()
 	_ensure_environment()

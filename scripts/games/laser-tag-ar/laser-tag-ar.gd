@@ -54,6 +54,8 @@ var _wall_spawn_idx := 0
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "laser-tag-ar")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_floor()

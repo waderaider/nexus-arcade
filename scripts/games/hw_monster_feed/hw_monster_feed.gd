@@ -21,6 +21,7 @@ var fed := 0
 var grumbles := 0
 var monster: Node3D = null
 var mouth: MeshInstance3D = null
+var _jaw: Node3D = null  # v0.11.0 jaw-hinge pivot
 var bounce_t := 0.0
 var shake_t := 0.0
 var chew_t := 0.0
@@ -55,6 +56,8 @@ var _tray_legs: Array = []
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_monster_feed")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_room()
@@ -207,10 +210,77 @@ func _build_room() -> void:
 
 
 func _build_monster() -> void:
+	# v0.11.0 T1 art swap (Design Director): the 8-sphere blob monster is
+	# rebuilt on Monster Lab kit parts (staged GLBs); feeding = jaw-hinge.
+	# The mouth anchor stays at local (0, 0.88, 0.44) so feed detection,
+	# chew timing and HUD are untouched.
 	monster = Node3D.new()
 	monster.name = "Monster"
 	monster.position = Vector3(0.0, 0.0, -1.7)
 	add_child(monster)
+	var kit := ArtKit.spawn_model(
+		"res://assets/models/monster_lab/torso_bulky.glb", monster,
+		Vector3(0.0, 0.80, 0.0), 1.15)
+	if kit == null:
+		_build_monster_primitive()
+		return
+	# Head (horned) + angry eyes + extra spike pack.
+	var head := ArtKit.spawn_model(
+		"res://assets/models/monster_lab/head_horned.glb", monster,
+		Vector3(0.0, 1.52, 0.06), 1.1)
+	if head != null:
+		ArtKit.spawn_model(
+			"res://assets/models/monster_lab/eyes_angry.glb", head,
+			Vector3(0.0, 0.18, 0.32), 1.0)
+		ArtKit.spawn_model(
+			"res://assets/models/monster_lab/pack_horns_spikes.glb", head,
+			Vector3(0.0, 0.30, -0.05), 0.9)
+	# Claw arms.
+	for side in [-1.0, 1.0]:
+		var arm := ArtKit.spawn_model(
+			"res://assets/models/monster_lab/limbs_arm_claw.glb", monster,
+			Vector3(side * 0.52, 0.95, 0.10), 1.0)
+		if arm != null:
+			arm.rotation_degrees.z = side * -30.0
+	# Stubby legs.
+	for side in [-1.0, 1.0]:
+		ArtKit.spawn_model(
+			"res://assets/models/monster_lab/limbs_leg_stubby.glb", monster,
+			Vector3(side * 0.24, 0.16, 0.05), 1.0)
+	# Mouth interior (static dark maw at the classic anchor).
+	mouth = MeshInstance3D.new()
+	var mshape := SphereMesh.new()
+	mshape.radius = 0.14
+	mshape.height = 0.20
+	mouth.mesh = mshape
+	mouth.scale = Vector3(1.3, 0.45, 0.5)
+	mouth.position = Vector3(0.0, 0.88, 0.44)
+	mouth.material_override = GraphicsPolish.pbr(Color(0.35, 0.05, 0.10), 0.0, 0.9)
+	monster.add_child(mouth)
+	# JAW-HINGE: pivot at the back of the jaw; the lower jaw swings open
+	# when fed (chew_t drives it in _update_monster).
+	_jaw = Node3D.new()
+	_jaw.name = "JawHinge"
+	_jaw.position = Vector3(0.0, 0.78, 0.28)
+	monster.add_child(_jaw)
+	var jawmesh := ArtKit.spawn_model(
+		"res://assets/models/monster_lab/hopper-round.glb", _jaw,
+		Vector3(0.0, -0.06, 0.22), 0.85)
+	if jawmesh == null:
+		var jm := MeshInstance3D.new()
+		var js := SphereMesh.new()
+		js.radius = 0.16
+		js.height = 0.16
+		jm.mesh = js
+		jm.scale = Vector3(1.25, 0.5, 1.1)
+		jm.position = Vector3(0.0, -0.06, 0.22)
+		jm.material_override = GraphicsPolish.pbr(Color(0.45, 0.25, 0.75), 0.05, 0.7)
+		_jaw.add_child(jm)
+	GraphicsPolish.make_point_light(monster, Vector3(0, 2.2, 1.0), Color(0.7, 0.5, 1.0), 0.8, 4.0)
+
+
+## Pre-v0.11.0 procedural blob monster (fallback only).
+func _build_monster_primitive() -> void:
 	var fur := GraphicsPolish.pbr(Color(0.45, 0.25, 0.75), 0.05, 0.7)
 	var body := MeshInstance3D.new()
 	var s := SphereMesh.new()
@@ -228,7 +298,6 @@ func _build_monster() -> void:
 	belly.position = Vector3(0.0, 0.92, 0.28)
 	belly.material_override = GraphicsPolish.pbr(Color(0.85, 0.75, 0.95), 0.0, 0.8)
 	monster.add_child(belly)
-	# Horns.
 	for side in [-1.0, 1.0]:
 		var horn := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
@@ -240,7 +309,6 @@ func _build_monster() -> void:
 		horn.rotation_degrees.z = side * -25.0
 		horn.material_override = GraphicsPolish.pbr_preset(Color(0.88, 0.86, 0.80), "matte")
 		monster.add_child(horn)
-	# Googly eyes.
 	for side in [-1.0, 1.0]:
 		var white := MeshInstance3D.new()
 		var ws := SphereMesh.new()
@@ -258,7 +326,7 @@ func _build_monster() -> void:
 		pupil.position = Vector3(side * 0.18, 1.28, 0.53)
 		pupil.material_override = GraphicsPolish.pbr(Color(0.05, 0.05, 0.08), 0.0, 0.4)
 		monster.add_child(pupil)
-	# Mouth (opens when fed).
+	# Mouth (opens when fed) — the primitive build keeps the old scale-chew.
 	mouth = MeshInstance3D.new()
 	var mshape := SphereMesh.new()
 	mshape.radius = 0.14
@@ -268,7 +336,7 @@ func _build_monster() -> void:
 	mouth.position = Vector3(0.0, 0.88, 0.44)
 	mouth.material_override = GraphicsPolish.pbr(Color(0.35, 0.05, 0.10), 0.0, 0.9)
 	monster.add_child(mouth)
-	# Stubby arms and feet.
+	_jaw = null
 	for side in [-1.0, 1.0]:
 		var arm := MeshInstance3D.new()
 		var cap := CapsuleMesh.new()
@@ -288,8 +356,6 @@ func _build_monster() -> void:
 		foot.material_override = fur
 		monster.add_child(foot)
 	GraphicsPolish.make_point_light(monster, Vector3(0, 2.2, 1.0), Color(0.7, 0.5, 1.0), 0.8, 4.0)
-
-
 func _build_tray() -> void:
 	var tray := MeshInstance3D.new()
 	var tb := BoxMesh.new()
@@ -527,9 +593,17 @@ func _update_monster(delta: float) -> void:
 		monster.position.x = lerpf(monster.position.x, 0.0, minf(1.0, 8.0 * delta))
 	if chew_t > 0.0:
 		chew_t -= delta
-		mouth.scale.y = 0.45 + absf(sin(elapsed * 18.0)) * 0.5
+		# v0.11.0: feeding = jaw-hinge. The lower jaw swings open/closed;
+		# the primitive fallback keeps the old mouth-scale chew.
+		if _jaw != null and is_instance_valid(_jaw):
+			_jaw.rotation.x = -absf(sin(elapsed * 18.0)) * 0.55
+		elif mouth != null and is_instance_valid(mouth):
+			mouth.scale.y = 0.45 + absf(sin(elapsed * 18.0)) * 0.5
 	else:
-		mouth.scale.y = lerpf(mouth.scale.y, 0.45, minf(1.0, 8.0 * delta))
+		if _jaw != null and is_instance_valid(_jaw):
+			_jaw.rotation.x = lerpf(_jaw.rotation.x, 0.0, minf(1.0, 8.0 * delta))
+		elif mouth != null and is_instance_valid(mouth):
+			mouth.scale.y = lerpf(mouth.scale.y, 0.45, minf(1.0, 8.0 * delta))
 
 
 # ------------------------------------------------------------------ flow ---

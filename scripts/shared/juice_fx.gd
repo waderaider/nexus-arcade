@@ -21,6 +21,7 @@ const _SQUASH := 0.7
 
 
 var _active_card: CanvasLayer = null
+var _active_card_fade: Control = null  # CanvasLayer has no modulate; fade this
 var _card_timer: SceneTreeTimer = null
 var _skip_was_down := false
 
@@ -120,15 +121,20 @@ func title_card(title: String, subtitle: String = "", accent: Color = Color(0.2,
 	layer.name = "JuiceTitleCard"
 	layer.layer = 90
 	host.add_child(layer)
+	# Godot 4 CanvasLayer has no `modulate` — fade a full-rect Control root.
+	var fade := Control.new()
+	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(fade)
 	var dim := ColorRect.new()
 	dim.color = Color(0.01, 0.02, 0.05, 0.72)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(dim)
+	fade.add_child(dim)
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(center)
+	fade.add_child(center)
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 18)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -163,17 +169,18 @@ func title_card(title: String, subtitle: String = "", accent: Color = Color(0.2,
 	skip.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	vbox.add_child(skip)
 	# Entrance: bar sweeps in, title pops.
-	layer.modulate.a = 0.0
-	var tw := layer.create_tween()
+	fade.modulate.a = 0.0
+	bar.scale = Vector2(0.05, 1.0)
+	var tw := fade.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(layer, "modulate:a", 1.0, 0.35)
-	tw.tween_property(bar, "scale:x", 1.0, 0.5).from(Vector2(0.05, 1.0))\
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(fade, "modulate:a", 1.0, 0.35)
+	tw.tween_property(bar, "scale:x", 1.0, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	# Fanfare haptic + sting SFX.
 	Haptics.play_sequence("fanfare")
 	if get_node_or_null("/root/AudioKit") != null:
 		AudioKit.play_sfx("fanfare", 1.0, -4.0)
 	_active_card = layer
+	_active_card_fade = fade
 	_card_timer = tree.create_timer(TITLE_CARD_TIME)
 	_card_timer.timeout.connect(_on_card_timeout)
 
@@ -187,10 +194,15 @@ func dismiss_title_card() -> void:
 	_card_timer = null
 	if _active_card != null and is_instance_valid(_active_card):
 		var layer := _active_card
+		var fade := _active_card_fade
 		_active_card = null
-		var tw := layer.create_tween()
-		tw.tween_property(layer, "modulate:a", 0.0, 0.3)
-		tw.tween_callback(layer.queue_free)
+		_active_card_fade = null
+		if fade != null and is_instance_valid(fade):
+			var tw := fade.create_tween()
+			tw.tween_property(fade, "modulate:a", 0.0, 0.3)
+			tw.tween_callback(layer.queue_free)
+		else:
+			layer.queue_free()
 
 
 ## 0.4s fade-to-black sting on game exit (reverse of the title card).

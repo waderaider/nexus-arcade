@@ -49,6 +49,8 @@ var _dodge_y_hi := 2.6
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "hw_bat_dodge")
 	GraphicsPolish.make_light_rig(self)
 	_ensure_fallback_camera()
 	_build_moon()

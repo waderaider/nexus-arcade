@@ -38,6 +38,24 @@ var _clash_cooldown := 0.0
 var _record_cooldown := 0.0
 var _hit_stop_active := false
 
+# v0.11.0: combat pause profile — the floating ❚❚ hides while fighting and
+# the menu button needs a 0.45s hold (PauseExit reads these statics).
+static var pause_profile := "combat"
+
+# v0.11.0 onboarding: 3-step practice-dummy beat before FIGHT (~20s,
+# skippable via trigger). Kills the confusion-driven pause-spam.
+var _onboarding := false
+var _onboard_step := 0  # 1 = swing, 2 = parry, 3 = rules/FIGHT
+var _dummy: DuelOpponent = null
+var _onboard_nag_t := 0.0
+
+# v0.11.0 teaching feedback: round-1 hint ribbon + blocked/whiff coaching.
+var _hint_label: Label3D = null
+var _hint_hit_done := false
+var _hint_parry_done := false
+var _consec_blocked := 0
+var _unanswered_hits := 0
+
 # v0.7.0 RoomKit: real room layout (cached; empty without XR room data).
 var _room_walls: Array = []
 var _room_tables: Array = []
@@ -55,9 +73,17 @@ func _ready() -> void:
 	_player = PlayerBlade.new()
 	_player.name = "PlayerBlade"
 	add_child(_player)
-	_spawn_opponent()
 	_announce("NEON DUEL", 2.0)
-	_start_match()
+	# v0.11.0 Audio Director T1: per-game SFX map (duel_* family).
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("duel", {
+		"swing": d + "duel_swing.wav", "clash": d + "duel_clash.wav",
+		"parry": d + "duel_parry.wav", "block": d + "duel_block.wav",
+		"hit": d + "duel_hit.wav",
+	})
+	AudioKit.set_active_scene("duel")
+	AudioKit.set_intensity(0)  # onboarding/menu: calm
+	_start_onboarding()  # v0.11.0: 3-step practice beat, then _start_match()
 	_apply_room_layout()
 
 
@@ -144,6 +170,11 @@ func _process(delta: float) -> void:
 	_billboard_hud()
 	_update_announce(delta)
 
+	# v0.11.0 onboarding: the practice beat runs instead of combat.
+	if _onboarding:
+		_update_onboarding(delta)
+		return
+
 	# Rematch: press R / click / XR right-hand pinch after the match ends.
 	if match_over and (Input.is_key_pressed(KEY_R) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
 			or (ARUpgradeKit.is_xr_active() and ARUpgradeKit.pinch_just_pressed(self, ARUpgradeKit.HAND_RIGHT))):
@@ -165,6 +196,91 @@ func _process(delta: float) -> void:
 	_check_opponent_blade_vs_player()
 
 
+# ---------------------------------------------------------- onboarding
+## v0.11.0 (ship-blocker): 3-step practice-dummy beat before FIGHT.
+## Step 1: swing to strike (one registered hit; POWER flash teaches the
+##   3 m/s speed gate). Step 2: raise the off forearm — the dummy swings
+##   slowly until one PARRIED!. Step 3: rules ("first to 3") -> FIGHT.
+## ~20s total, skippable any time via trigger/pinch/click.
+func _start_onboarding() -> void:
+	_onboarding = true
+	_onboard_step = 0
+	is_fighting = false
+	match_over = false
+	_dummy = DuelOpponent.create(Color(0.35, 0.85, 1.0))
+	_dummy.name = "TrainingDummy"
+	_dummy.passive = true
+	add_child(_dummy)
+	if _head != null:
+		var fwd: Vector3 = -_head.global_transform.basis.z
+		fwd.y = 0
+		if fwd.length() < 0.01:
+			fwd = Vector3.FORWARD
+		var dp: Vector3 = _head.global_position + fwd.normalized() * 1.8
+		dp.y = 0.0
+		_dummy.global_position = dp
+		_dummy.initialize(_head)
+	_opponent = _dummy  # hit/parry checks run against the dummy
+	_onboard_step = 1
+	_onboard_nag_t = 0.0
+	_announce("PRACTICE DUMMY\nSwing your %s hand — FAST!" % _blade_word(), 30.0)
+
+
+func _update_onboarding(delta: float) -> void:
+	# Skippable via trigger / pinch / click (desktop).
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+			or ARUpgradeKit.pinch_just_pressed(self, ARUpgradeKit.HAND_RIGHT):
+		_finish_onboarding()
+		return
+	_player_hit_cooldown -= delta
+	_opp_hit_cooldown -= delta
+	_clash_cooldown -= delta
+	_record_cooldown -= delta
+	# The standard hit/parry checks run against the dummy; the onboarding
+	# branches in on_player_hit/on_player_block/on_player_hurt advance steps.
+	_record_player_attacks()
+	_check_player_blade_vs_opponent()
+	_check_blade_clash()
+	_check_opponent_blade_vs_player()
+	# Nag loop on step 2 until the parry lands.
+	if _onboard_step == 2:
+		_onboard_nag_t += delta
+		if _onboard_nag_t > 6.0:
+			_onboard_nag_t = 0.0
+			_announce("Raise your %s forearm!" % _buckler_word(), 2.0)
+
+
+## Step 1 complete -> step 2: the dummy starts its slow training swing.
+func _advance_to_parry_step() -> void:
+	_onboard_step = 2
+	_onboard_nag_t = 0.0
+	if _dummy != null and is_instance_valid(_dummy):
+		_dummy.training_swing = true
+	_announce("NOW BLOCK!\nRaise your %s forearm!" % _buckler_word(), 30.0)
+
+
+## Steps complete -> the real match (spawns the adaptive red opponent).
+func _finish_onboarding() -> void:
+	_onboarding = false
+	_onboard_step = 0
+	if _dummy != null and is_instance_valid(_dummy):
+		_dummy.queue_free()
+	_dummy = null
+	_opponent = null
+	_spawn_opponent()
+	_announce("FIRST TO 3 HITS\nFIGHT!", 2.0)
+	AudioKit.set_intensity(2)  # v0.11.0: combat intensity on FIGHT
+	_start_match()
+
+
+func _blade_word() -> String:
+	return "LEFT" if GameSettings.dominant_hand == "left" else "RIGHT"
+
+
+func _buckler_word() -> String:
+	return "RIGHT" if GameSettings.dominant_hand == "left" else "LEFT"
+
+
 # ---------------------------------------------------------- match flow
 func _start_match() -> void:
 	player_score = 0
@@ -178,6 +294,7 @@ func _start_match() -> void:
 		ARUpgradeKit.save_anchor("duel_main", _arena_ring.global_transform)
 	_reset_round_positions()
 	_refresh_hud()
+	_show_hint_ribbon()
 	_countdown()
 
 
@@ -187,7 +304,24 @@ func _start_round() -> void:
 	is_fighting = false
 	_reset_round_positions()
 	_refresh_hud()
+	_show_hint_ribbon()
 	_countdown()
+
+
+## v0.11.0: round-1 controls recap ribbon. Visible during round 1 until the
+## player has landed one hit AND one parry (then it has done its job).
+func _show_hint_ribbon() -> void:
+	_hint_hit_done = false
+	_hint_parry_done = false
+	if _hint_label != null:
+		_hint_label.text = "%s hand: blade · %s forearm: parry · Fast swings score" % [
+			_blade_word(), _buckler_word()]
+		_hint_label.visible = (current_round == 1)
+
+
+func _update_hint_ribbon() -> void:
+	if _hint_label != null and _hint_hit_done and _hint_parry_done:
+		_hint_label.visible = false
 
 
 func _reset_round_positions() -> void:
@@ -201,17 +335,30 @@ func _countdown() -> void:
 	if _countdown_active:
 		return
 	_countdown_active = true
+	AudioKit.stinger("countdown")  # v0.11.0 T1
 	for step in ["3", "2", "1", "FIGHT!"]:
 		_announce(step, 0.75)
-		await get_tree().create_timer(0.7).timeout
+		await get_tree().create_timer(0.7, false).timeout
 	_countdown_active = false
 	is_fighting = true
 
 
 ## Player's blade landed on the opponent.
 func on_player_hit(headshot: bool) -> void:
+	if _onboarding:
+		# Step 1: one registered hit completes the swing lesson.
+		if _onboard_step == 1:
+			_burst_fx(_dummy.head_center, Color(0.2, 0.9, 1.0), 10)
+			_advance_to_parry_step()
+		return
 	if not is_fighting or match_over:
 		return
+	_hint_hit_done = true
+	_unanswered_hits = 0
+	_consec_blocked = 0
+	_update_hint_ribbon()
+	AudioKit.play_game_sfx("hit")  # v0.11.0 T1
+	Haptics.impact(1.0, "both")
 	player_score += 1
 	_report_player_success(1.5 if headshot else 1.0)
 	_announce("HEADSHOT!" if headshot else _pick_praise(), 0.8)
@@ -222,8 +369,21 @@ func on_player_hit(headshot: bool) -> void:
 
 ## Opponent's blade reached the player's torso.
 func on_player_hurt() -> void:
+	if _onboarding:
+		# Step 2: taking the slow swing = didn't raise the buckler. Teach.
+		if _onboard_step == 2:
+			_announce("Ouch! Raise your %s forearm!" % _buckler_word(), 1.5)
+		return
 	if not is_fighting or match_over:
 		return
+	# v0.11.0 whiff coaching: 2 unanswered hits -> flash the buckler and say
+	# the words (turns silent failure into teaching).
+	_unanswered_hits += 1
+	if _unanswered_hits >= 2:
+		_unanswered_hits = 0
+		_announce("RAISE %s ARM TO PARRY!" % _buckler_word(), 1.5)
+		if _player != null:
+			_player.flash_buckler()
 	opponent_score += 1
 	_report_player_setback(1.0)
 	_announce("HIT!", 0.8)
@@ -233,9 +393,23 @@ func on_player_hurt() -> void:
 
 ## Buckler parried the opponent's blade: no score, small difficulty reward.
 func on_player_block() -> void:
+	if _onboarding:
+		# Step 2 complete -> rules -> FIGHT.
+		if _onboard_step == 2:
+			if _dummy != null and is_instance_valid(_dummy):
+				_burst_fx(_player.buckler_position, Color(0.4, 1.0, 1.0), 20)
+			AudioKit.play_game_sfx("parry")  # v0.11.0 T1: parry teaching
+			Haptics.impact(0.5, "both")
+			_finish_onboarding()
+		return
 	if not is_fighting or match_over:
 		return
+	_hint_parry_done = true
+	_unanswered_hits = 0
+	_update_hint_ribbon()
 	_report_player_success(0.4)
+	AudioKit.play_game_sfx("block")  # v0.11.0 T1: forearm block
+	Haptics.impact(0.6, "both")
 	_announce("PARRIED!", 0.7)
 
 
@@ -258,7 +432,7 @@ func _check_round_end() -> void:
 	else:
 		current_round += 1
 		is_fighting = false
-		await get_tree().create_timer(1.8).timeout
+		await get_tree().create_timer(1.8, false).timeout
 		if not match_over:
 			_start_round()
 
@@ -266,9 +440,12 @@ func _check_round_end() -> void:
 func _end_match(player_won: bool) -> void:
 	match_over = true
 	is_fighting = false
+	AudioKit.set_intensity(0)  # v0.11.0 T1: back to calm
 	if player_won:
 		wins_total += 1
 		_save_records()
+		AudioKit.stinger("levelup")  # v0.11.0 T1: round-win stinger
+		Haptics.play_sequence("levelup")
 		_announce("VICTORY!\nPress R or click to rematch", 30.0)
 		if _head:
 			_burst_fx(_head.global_position + (-_head.global_transform.basis.z) * 1.2,
@@ -305,6 +482,10 @@ func _record_player_attacks() -> void:
 	var speed := _player.blade.tip_velocity.length()
 	if speed < 3.0:
 		return
+	# v0.11.0: a qualifying swing flashes POWER on the blade (teaches the
+	# 3 m/s gate; the onboarding beat's core signal).
+	_player.blade.power_flash()
+	AudioKit.play_game_sfx("swing")  # v0.11.0 T1: whiff != clash
 	if tip.distance_to(_opponent.body_center) > 2.4:
 		return
 	var zone := _compute_buckets(tip)
@@ -343,6 +524,12 @@ func _check_player_blade_vs_opponent() -> void:
 		_opponent.clash_blade()
 		_burst_fx(hit_point, Color.WHITE, 14)
 		_player_hit_cooldown = 0.3
+		# v0.11.0 blocked coaching: 3 consecutive blocks -> teach the counter.
+		if not _onboarding:
+			_consec_blocked += 1
+			if _consec_blocked >= 3:
+				_consec_blocked = 0
+				_announce("BLOCKED — swing around him!", 1.5)
 		return
 
 	if _opponent.current_state == DuelOpponent.State.BLOCK:
@@ -370,6 +557,8 @@ func _check_blade_clash() -> void:
 	_player.blade.clash()
 	_opponent.clash_blade()
 	_burst_fx(mid, Color.WHITE, 16)
+	AudioKit.play_game_sfx("clash")  # v0.11.0 T1
+	Haptics.impact(0.8, "both")
 	_clash_cooldown = 0.3
 
 
@@ -472,7 +661,7 @@ func _burst_fx(pos: Vector3, color: Color, count: int) -> void:
 	add_child(particles)
 	particles.global_position = pos
 	# Free after the burst finishes.
-	var t := get_tree().create_timer(1.2)
+	var t := get_tree().create_timer(1.2, false)
 	t.timeout.connect(particles.queue_free)
 
 
@@ -492,6 +681,16 @@ func _build_hud() -> void:
 	_announce_label.modulate = Color(1.0, 0.9, 0.4)
 	_announce_label.outline_size = 10
 	add_child(_announce_label)
+	# v0.11.0: round-1 hint ribbon (static in-world Label3D — unaffected by
+	# the static-panel rule). Fades after the first hit AND first parry.
+	_hint_label = Label3D.new()
+	_hint_label.name = "HintRibbon"
+	_hint_label.font_size = 48
+	_hint_label.pixel_size = 0.004
+	_hint_label.modulate = Color(0.75, 0.9, 1.0)
+	_hint_label.outline_size = 6
+	_hint_label.visible = false
+	add_child(_hint_label)
 
 
 func _billboard_hud() -> void:
@@ -503,6 +702,9 @@ func _billboard_hud() -> void:
 	_score_label.look_at(head_pos, Vector3.UP)
 	_announce_label.global_position = head_pos + fwd * 1.6
 	_announce_label.look_at(head_pos, Vector3.UP)
+	if _hint_label != null and _hint_label.visible:
+		_hint_label.global_position = head_pos + fwd * 1.45 + Vector3.UP * 0.18
+		_hint_label.look_at(head_pos, Vector3.UP)
 
 
 func _update_announce(delta: float) -> void:

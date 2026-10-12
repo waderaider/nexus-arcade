@@ -105,6 +105,8 @@ var _room_card_wall: Dictionary = {}
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "holo_chef")
 	ARUpgradeKit.apply_anchor(self, "holo_chef_main")
 	_ensure_camera()
 	_ensure_environment()

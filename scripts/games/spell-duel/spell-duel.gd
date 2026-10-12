@@ -108,6 +108,8 @@ func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "spell-duel")
 	ARUpgradeKit.apply_anchor(self, "spell-duel_main")
 	_ensure_camera()
 	_ensure_env()
@@ -172,10 +174,55 @@ func _build_arena() -> void:
 
 
 func _build_wizard() -> void:
+	# v0.11.0 T1 art swap (Design Director): the primitive capsule/cone/box
+	# wizard is now a real Quaternius KnightCharacter (CC0) + Sword, Helmet
+	# and ShoulderPads. (NOT KayKit Mage.glb — ar-defender owns it.)
+	# Proportions are preserved: cast origins at y~1.2-1.5 still work.
 	wizard = Node3D.new()
 	wizard.name = "Wizard"
 	wizard.position = Vector3(0.0, 0.0, -3.0)
 	add_child(wizard)
+	var knight := ArtKit.spawn_model(
+		"res://assets/models/spell-duel/KnightCharacter.glb", wizard)
+	if knight != null:
+		knight.name = "Knight"
+		# Quaternius parts are modeled in character-local space: parent them
+		# at identity and they land on the body.
+		var helm := ArtKit.spawn_model(
+			"res://assets/models/spell-duel/Helmet1.glb", knight)
+		if helm != null:
+			helm.name = "Helmet"
+		var pads := ArtKit.spawn_model(
+			"res://assets/models/spell-duel/ShoulderPads.glb", knight)
+		if pads != null:
+			pads.name = "ShoulderPads"
+		var sword := ArtKit.spawn_model(
+			"res://assets/models/spell-duel/Sword.glb", knight)
+		if sword != null:
+			sword.name = "Sword"
+		# Idle animation when the FBX ships one (safe no-op otherwise).
+		ArtKit.play_anim(knight, ["idle", "breath"], 1.0)
+		# Arcane focus orb at the raised-hand height: the cast telegraph
+		# (replaces the old staff tip glow; wizard_hat_mat pulses it).
+		staff_tip = MeshInstance3D.new()
+		var tipm := SphereMesh.new()
+		tipm.radius = 0.07
+		tipm.height = 0.14
+		staff_tip.mesh = tipm
+		wizard_hat_mat = GraphicsPolish.glow(Color(1.0, 0.4, 0.8), 2.0)
+		staff_tip.material_override = wizard_hat_mat
+		staff_tip.position = Vector3(0.45, 1.5, 0.25)
+		wizard.add_child(staff_tip)
+		wizard_mat = null
+	else:
+		# Fallback: the original procedural wizard (primitive build kept so
+		# the game never breaks when staged models are missing).
+		_build_wizard_primitive()
+	ai_hp_fg = _make_hp_bar(wizard, Vector3(0.0, 2.65, 0.0), Color(1.0, 0.25, 0.25))
+
+
+## Pre-v0.11.0 procedural wizard (fallback only).
+func _build_wizard_primitive() -> void:
 	var body := MeshInstance3D.new()
 	var cap := CapsuleMesh.new()
 	cap.radius = 0.28
@@ -220,7 +267,6 @@ func _build_wizard() -> void:
 	staff_tip.material_override = GraphicsPolish.glow(Color(1.0, 0.4, 0.8), 2.0)
 	staff_tip.position = Vector3(0.45, 1.85, 0.0)
 	wizard.add_child(staff_tip)
-	ai_hp_fg = _make_hp_bar(wizard, Vector3(0.0, 2.65, 0.0), Color(1.0, 0.25, 0.25))
 
 
 func _build_player() -> void:

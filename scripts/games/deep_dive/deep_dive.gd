@@ -125,6 +125,13 @@ var xr_has := [false, false]
 var xr_stroke_cd := [0.0, 0.0]
 var xr_prev_hand := Vector3.ZERO
 var xr_has_hand := false
+# v0.11.0 Comfort D: Glide mode + dash-teleport + vignette.
+var _vig_state := {}
+var _glide_trig_prev := false
+var _last_trig_t := -10.0
+var _dash_cd := 0.0
+var _dash_flash := 0.0
+var _glide_was_trig := false
 
 var hud_air_bar: MeshInstance3D = null
 var hud_air_bg: MeshInstance3D = null
@@ -193,11 +200,15 @@ func _ready() -> void:
 	_build_whale() # v0.9.0: whale encounter + ambient manta/dolphins
 	_build_hud()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0.0, 1.4, 0.0), 2.5, 60)
+	# v0.11.0 Comfort C: motion vignette, camera-attached.
+	if camera != null:
+		_vig_state = VisualFX.make_comfort_vignette(camera)
 	_set_msg("DIVE START — find 5 treasure chests", 3.0)
 	# v0.9.0: per-game SFX map (AudioKit contract).
 	ArtKit.register_game_sfx(self, {
 		"bite": "hit", "chest": "chest", "pearl": "coin", "bubble": "bubble",
 		"whale": "splash", "win": "fanfare", "low_air": "buzzer",
+		"glide": "dive_glide", "dash": "teleport",
 	})
 	ArtKit.set_intensity(self, 0)
 	_apply_room_layout()
@@ -242,6 +253,25 @@ func _ensure_light() -> void:
 	GraphicsPolish.make_point_light(self, Vector3(0, 3.4, 0), Color(0.35, 0.65, 1.0), 1.3, 10.0)
 
 
+## v0.11.0 (Animator): cheap caustic interference shader for the seabed.
+static func _make_caustic_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_opaque;
+uniform vec4 tint : source_color = vec4(0.55, 0.85, 0.95, 1.0);
+void fragment() {
+	vec2 uv = UV * 9.0;
+	float a = sin(uv.x * 3.1 + TIME * 0.6) * sin(uv.y * 2.7 - TIME * 0.8);
+	float b = sin((uv.x + uv.y) * 4.3 + TIME * 0.4);
+	float c = pow(abs(a * 0.6 + b * 0.4), 3.0);
+	ALBEDO = tint.rgb;
+	ALPHA = c * 0.22;
+}
+"""
+	return sh
+
+
 func _build_seabed() -> void:
 	var sand := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -250,6 +280,17 @@ func _build_seabed() -> void:
 	sand.material_override = GraphicsPolish.pbr(Color(0.42, 0.35, 0.22), 0.0, 0.95)
 	sand.position = Vector3(0.0, 0.0, 0.0)
 	add_child(sand)
+	# v0.11.0 (Animator water): caustic shimmer — a scrolling interference
+	# pattern just above the sand (1 draw, unshaded, no lights).
+	var caustic := MeshInstance3D.new()
+	var cplane := PlaneMesh.new()
+	cplane.size = Vector2(11.0, 11.0)
+	caustic.mesh = cplane
+	var csh := ShaderMaterial.new()
+	csh.shader = _make_caustic_shader()
+	caustic.material_override = csh
+	caustic.position = Vector3(0, 0.02, 0)
+	add_child(caustic)
 	# Scattered shell glints.
 	for i in 7:
 		var shell := MeshInstance3D.new()
@@ -507,6 +548,7 @@ func _make_shark() -> Node3D:
 # v0.9.0: whale encounter — the signature moment. A huge animated whale
 # crosses the room with sub-bass rumble you feel in the controllers.
 var _whale: Node3D = null
+var _whale_shadow: MeshInstance3D = null  # v0.11.0 (Animator): whale shadow
 var _whale_t := 18.0
 var _whale_from := Vector3.ZERO
 var _whale_to := Vector3.ZERO
@@ -523,6 +565,20 @@ func _build_whale() -> void:
 	_whale.scale = Vector3.ONE * 0.22
 	_whale.visible = false
 	add_child(_whale)
+	# v0.11.0 (Animator): the whale casts a soft moving shadow on the sand
+	# (cheap dark disc, no real shadow mapping).
+	_whale_shadow = MeshInstance3D.new()
+	var shm := PlaneMesh.new()
+	shm.size = Vector2(2.2, 1.1)
+	_whale_shadow.mesh = shm
+	var shmat := StandardMaterial3D.new()
+	shmat.albedo_color = Color(0, 0, 0, 0.35)
+	shmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_whale_shadow.material_override = shmat
+	_whale_shadow.position = Vector3(0, 0.03, 0)
+	_whale_shadow.visible = false
+	add_child(_whale_shadow)
 	ArtKit.play_anim(_whale, ["swim"], 0.55)
 	# Ambient manta + dolphins (cheap: 3 extra draw calls total).
 	_manta = _load_model("Manta ray")
@@ -543,6 +599,12 @@ func _build_whale() -> void:
 func _update_whale(delta: float) -> void:
 	if _whale == null:
 		return
+	# v0.11.0 (Animator): shadow tracks the whale on the sand.
+	if _whale_shadow != null:
+		_whale_shadow.visible = _whale.visible
+		if _whale.visible:
+			_whale_shadow.position = Vector3(_whale.position.x, 0.03, _whale.position.z)
+			_whale_shadow.rotation.y = _whale.rotation.y
 	# Ambient manta circles high; dolphins arc around the room.
 	if _manta != null:
 		_manta_a += delta * 0.25
@@ -781,33 +843,65 @@ func _process(delta: float) -> void:
 	_update_hud()
 
 
+## v0.11.0 Comfort D: Gentle Glide — aim the dominant hand forward, hold
+## trigger: glide toward the aim at <= 1.6 m/s with smooth accel/decel.
+## Vignette ramps with speed. Release trigger -> drift to stop. Seated-safe.
+func _handle_glide(delta: float) -> void:
+	var hand := ARUpgradeKit.HAND_RIGHT \
+		if GameSettings.dominant_hand == "right" else ARUpgradeKit.HAND_LEFT
+	var ray := ARUpgradeKit.pointer_ray(self, hand)
+	var dir: Vector3 = ray[1]
+	var trigger := InputMap.has_action("trigger_click") \
+		and Input.is_action_pressed("trigger_click")
+	_dash_trigger_check(trigger, dir, delta)
+	var target := Vector3.ZERO
+	if trigger:
+		if not _glide_was_trig:
+			AudioKit.play_game_sfx("glide")
+		target = dir * 1.6
+	_glide_was_trig = trigger
+	vel = vel.lerp(target, minf(1.0, 2.5 * delta))
+	_vig_state["dt"] = delta
+	VisualFX.comfort_vignette(_vig_state, vel.length(), 1.6)
+
+
+## Dash-teleport (both move styles): double-trigger within 0.45s = instant
+## 4m dash along the aim ray with a fade blink, 1.0s cooldown.
+func _dash_trigger_check(trigger: bool, dir: Vector3, delta: float) -> void:
+	_dash_cd = maxf(0.0, _dash_cd - delta)
+	if trigger and not _glide_trig_prev:
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - _last_trig_t < 0.45 and _dash_cd <= 0.0:
+			_dash_cd = 1.0
+			_dash_flash = 0.25
+			AudioKit.play_game_sfx("dash")
+			global_position += dir * 4.0
+			var p := ARUpgradeKit.clamp_to_room(global_position, 0.4)
+			p.y = clampf(p.y, 0.35, 2.6)
+			global_position = p
+			vel = Vector3.ZERO
+			Haptics.play_sequence("teleport")
+		_last_trig_t = now
+	_glide_trig_prev = trigger
+	# Fade blink: brief full vignette on dash.
+	if _dash_flash > 0.0:
+		_dash_flash -= delta
+		var q: MeshInstance3D = _vig_state.get("quad")
+		if q != null and is_instance_valid(q):
+			var m := q.get_surface_override_material(0) as StandardMaterial3D
+			if m != null:
+				m.albedo_color.a = clampf(_dash_flash / 0.25, 0.0, 1.0)
+
+
 func _handle_swim(delta: float) -> void:
 	var pp := _player_pos()
 	var wish := Vector3.ZERO
 	if ARUpgradeKit.is_xr_active() and camera != null:
-		# Paddling: downward hand strokes push you forward.
-		for h in [ARUpgradeKit.HAND_LEFT, ARUpgradeKit.HAND_RIGHT]:
-			var hand: Vector3 = ARUpgradeKit.pointer_position(self, h)
-			if xr_has[h] and delta > 0.0:
-				xr_vel[h] = xr_vel[h].lerp((hand - xr_prev[h]) / delta, 0.45)
-			xr_prev[h] = hand
-			xr_has[h] = true
-			xr_stroke_cd[h] = maxf(0.0, xr_stroke_cd[h] - delta)
-			if xr_vel[h].y < -1.1 and xr_stroke_cd[h] <= 0.0:
-				xr_stroke_cd[h] = 0.45
-				var fwd: Vector3 = -camera.global_transform.basis.z
-				vel += fwd.normalized() * STROKE_IMPULSE
-				GraphicsPolish.spawn_sparks(self, hand, Color(0.5, 0.9, 1.0), 6)
-				Haptics.tick()
-		# Right-hand yaw steers.
-		var rh: Vector3 = ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT)
-		var rel: Vector3 = rh - pp
-		var flat := Vector3(rel.x, 0.0, rel.z)
-		if flat.length() > 0.08:
-			var fwd2: Vector3 = -global_transform.basis.z
-			fwd2.y = 0.0
-			var yaw_ang := fwd2.normalized().signed_angle_to(flat.normalized(), Vector3.UP)
-			rotation.y += clampf(-yaw_ang * 1.6, -1.2, 1.2) * delta
+		# v0.11.0 Comfort D: Glide mode is a separate code path from paddling.
+		if GameSettings.move_style == "glide":
+			_handle_glide(delta)
+		else:
+			_handle_paddle(delta, pp)
 	else:
 		var fwd3: Vector3 = -global_transform.basis.z
 		if dragging:
@@ -839,6 +933,39 @@ func _handle_swim(delta: float) -> void:
 	global_position = p
 	if camera != null:
 		camera.position = camera.position.lerp(cam_base, minf(delta * 2.0, 1.0))
+
+
+
+## v0.11.0 Comfort D: classic paddling, extracted from _handle_swim.
+func _handle_paddle(delta: float, pp: Vector3) -> void:
+	# Dash-teleport also works in paddle style (double-trigger within 0.45s).
+	var hand_dom := ARUpgradeKit.HAND_RIGHT if GameSettings.dominant_hand == "right" else ARUpgradeKit.HAND_LEFT
+	var ray := ARUpgradeKit.pointer_ray(self, hand_dom)
+	var trigger := InputMap.has_action("trigger_click") and Input.is_action_pressed("trigger_click")
+	_dash_trigger_check(trigger, ray[1], delta)
+	# Paddling: downward hand strokes push you forward.
+	for h in [ARUpgradeKit.HAND_LEFT, ARUpgradeKit.HAND_RIGHT]:
+		var hand: Vector3 = ARUpgradeKit.pointer_position(self, h)
+		if xr_has[h] and delta > 0.0:
+			xr_vel[h] = xr_vel[h].lerp((hand - xr_prev[h]) / delta, 0.45)
+		xr_prev[h] = hand
+		xr_has[h] = true
+		xr_stroke_cd[h] = maxf(0.0, xr_stroke_cd[h] - delta)
+		if xr_vel[h].y < -1.1 and xr_stroke_cd[h] <= 0.0:
+			xr_stroke_cd[h] = 0.45
+			var fwd: Vector3 = -camera.global_transform.basis.z
+			vel += fwd.normalized() * STROKE_IMPULSE
+			GraphicsPolish.spawn_sparks(self, hand, Color(0.5, 0.9, 1.0), 6)
+			Haptics.tick()
+	# Right-hand yaw steers.
+	var rh: Vector3 = ARUpgradeKit.pointer_position(self, ARUpgradeKit.HAND_RIGHT)
+	var rel: Vector3 = rh - pp
+	var flat := Vector3(rel.x, 0.0, rel.z)
+	if flat.length() > 0.08:
+		var fwd2: Vector3 = -global_transform.basis.z
+		fwd2.y = 0.0
+		var yaw_ang := fwd2.normalized().signed_angle_to(flat.normalized(), Vector3.UP)
+		rotation.y += clampf(-yaw_ang * 1.6, -1.2, 1.2) * delta
 
 
 func _update_chests(delta: float) -> void:

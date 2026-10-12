@@ -134,6 +134,16 @@ func _recolor(root: Node, albedo: Color, metallic: float = 0.0, roughness: float
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "mech_pilot_main")
+	# v0.11.0 Audio Director T2: per-game SFX map.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("mech_pilot", {
+		"step": d + "mech_step.wav",
+		"fire": d + "mech_fire.wav",
+		"alarm": d + "mech_alarm.wav",
+		"jump": d + "mech_jump.wav"
+	})
+	AudioKit.set_active_scene("mech_pilot")
+	AudioKit.set_intensity(2)
 	_ensure_camera()
 	_ensure_environment()
 	_ensure_light()
@@ -703,6 +713,8 @@ func _fire_blast(power: float) -> void:
 		_set_msg("ENERGY LOW", 0.8)
 		return
 	energy = maxf(0.0, energy - BLAST_COST * (0.4 + 0.6 * power))
+	AudioKit.play_game_sfx("fire")  # v0.11.0 T2
+	Haptics.sub_bass(0.4, "both")
 	var from: Vector3 = camera.global_position + Vector3(0, -0.15, 0) + (-camera.global_transform.basis.z).normalized() * 0.7
 	var root := MeshInstance3D.new()
 	var sph := SphereMesh.new()

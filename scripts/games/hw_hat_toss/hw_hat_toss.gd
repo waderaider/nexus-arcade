@@ -47,6 +47,8 @@ var _imp_lunge_t := -1.0
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_hat_toss")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_room()

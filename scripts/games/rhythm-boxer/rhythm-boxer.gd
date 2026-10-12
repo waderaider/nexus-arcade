@@ -35,6 +35,7 @@ var orbs: Array = []
 var hud_score: Label3D = null
 var hud_combo: Label3D = null
 var hud_bpm: Label3D = null
+var _eq_strips: Array = []  # v0.11.0 (Animator): beat-reactive EQ strips
 var hud_msg: Label3D = null
 var hp_fg: MeshInstance3D = null
 var beat_ring: MeshInstance3D = null
@@ -54,6 +55,15 @@ var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
+	# v0.11.0 Audio Director T2: per-game SFX map (boxer_* family) + beat clock.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("rhythm-boxer", {
+		"hit": d + "boxer_hit.wav", "combo": d + "boxer_combo.wav",
+		"bell": d + "boxer_bell.wav", "block": d + "boxer_block.wav",
+		"miss": "whoosh",
+	})
+	AudioKit.set_active_scene("rhythm-boxer")
+	AudioKit.set_intensity(2)
 	ARUpgradeKit.apply_anchor(self, "rhythm-boxer_main")
 	_ensure_camera()
 	_ensure_env()
@@ -111,6 +121,19 @@ func _build_arena() -> void:
 		lane.material_override = GraphicsPolish.glow(Color(1.0, 0.4, 0.4), 1.2)
 		lane.position = Vector3(sx, 1.4, (SPAWN_Z + HIT_Z) / 2.0)
 		add_child(lane)
+	# v0.11.0 (Animator): beat-reactive EQ strips on the arena edge.
+	for i in 8:
+		var strip := MeshInstance3D.new()
+		var sm := BoxMesh.new()
+		sm.size = Vector3(0.5, 0.06, 0.06)
+		strip.mesh = sm
+		var smat := GraphicsPolish.glow(Color(1.0, 0.35, 0.6), 1.0)
+		strip.material_override = smat
+		var a := TAU * float(i) / 8.0
+		strip.position = Vector3(cos(a) * 3.2, 0.05, -1.6 + sin(a) * 3.2)
+		strip.rotation.y = -a
+		add_child(strip)
+		_eq_strips.append({"mat": smat, "phase": float(i) / 8.0})
 	# Beat ring at the hit zone.
 	beat_ring = MeshInstance3D.new()
 	var tm := TorusMesh.new()
@@ -187,6 +210,7 @@ func _reset() -> void:
 			o["node"].queue_free()
 	orbs.clear()
 	hud_msg.text = ""
+	AudioKit.beat_start(bpm)  # v0.11.0: beat-reactive ambient reads the phase
 
 
 func _process(delta: float) -> void:
@@ -198,6 +222,13 @@ func _process(delta: float) -> void:
 	while elapsed >= next_beat:
 		_on_beat()
 		next_beat += beat_interval
+	# v0.11.0 (Animator): EQ strips pulse with the beat clock (never against it).
+	var phase := AudioKit.get_beat_phase()
+	if phase >= 0.0:
+		for e in _eq_strips:
+			var m: StandardMaterial3D = e["mat"]
+			var off := fmod(phase + float(e["phase"]), 1.0)
+			m.emission_energy_multiplier = 0.6 + 2.2 * maxf(0.0, 1.0 - off * 3.0)
 	_update_orbs(delta)
 	_update_hands(delta)
 	_update_gloves()
@@ -372,6 +403,11 @@ func _try_punch(punch_pos: Vector3) -> void:
 		max_combo = maxi(max_combo, combo)
 		var mult := 1.0 + minf(combo, 40) / 20.0
 		score += int((100 if perfect else 40) * mult)
+		AudioKit.play_game_sfx("hit")  # v0.11.0 T2
+		Haptics.impact(0.7, "both")
+		if combo > 0 and combo % 10 == 0:
+			AudioKit.play_game_sfx("combo")
+			Haptics.play_sequence("trick_loop")
 		GraphicsPolish.spawn_sparks(self, node.position, Color(1.0, 0.9, 0.3) if perfect else Color(0.6, 0.9, 1.0), 30 if perfect else 16)
 		var lbl := GraphicsPolish.make_label("PERFECT!" if perfect else "GOOD", 40, Color(1.0, 0.9, 0.3) if perfect else Color(0.7, 0.9, 1.0))
 		lbl.position = node.position + Vector3(0, 0.35, 0)
@@ -384,12 +420,15 @@ func _try_punch(punch_pos: Vector3) -> void:
 
 
 func _register_miss(o: Dictionary) -> void:
+	AudioKit.play_game_sfx("miss")  # v0.11.0 T2
 	combo = 0
 	hp = maxf(0.0, hp - MISS_DMG)
 	var node: MeshInstance3D = o["node"]
 	GraphicsPolish.spawn_sparks(self, Vector3(float(o["x"]), float(o["y"]), HIT_Z), Color(1.0, 0.2, 0.2), 14)
 	if hp <= 0.0:
 		state = "gameover"
+		AudioKit.beat_stop()
+		AudioKit.play_game_sfx("bell")
 		hud_msg.text = "GAME OVER - Score %d  Max combo x%d  (R to retry)" % [score, max_combo]
 		ARUpgradeKit.save_anchor("rhythm-boxer_main", global_transform)
 

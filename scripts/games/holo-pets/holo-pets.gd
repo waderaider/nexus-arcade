@@ -77,6 +77,8 @@ var name_label: Label3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "holo-pets")
 	_add_light_rig()
 	_build_environment()
 	_build_pet()

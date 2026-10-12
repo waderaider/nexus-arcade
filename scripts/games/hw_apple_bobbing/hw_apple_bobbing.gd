@@ -44,6 +44,8 @@ var barrel_stage: Node3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_apple_bobbing")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	barrel_stage = Node3D.new()

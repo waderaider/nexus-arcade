@@ -15,7 +15,7 @@ const KIND_STICKY := "sticky"
 const KIND_COLORS := {
 	"spring": Color(1.0, 0.65, 0.20),  # amber
 	"vacuum": Color(0.25, 0.45, 1.0),  # deep blue
-	"sticky": Color(0.55, 0.85, 0.30),  # honey green
+	"sticky": Color(0.20, 0.85, 0.70),  # v0.11.0 Comfort: teal (was honey-green; deuteranopia risk vs amber)
 }
 
 var kind := KIND_SPRING
@@ -51,14 +51,37 @@ func _build() -> void:
 	pad.material_override = pmat
 	pad.position = Vector3(0, 0.015, 0)
 	add_child(pad)
-	# The charm: glowing octahedron floating at 1.2m (scaled for minigolf scale).
+	# v0.11.0 Comfort: SHAPE-CODED charms (never color-only —
+	# deuteranopia-safe: spring=coil stack, vacuum=ring, sticky=blob).
 	_charm = MeshInstance3D.new()
-	var oct := SphereMesh.new()
-	oct.radial_segments = 4
-	oct.rings = 2
-	oct.radius = 0.04
-	oct.height = 0.08
-	_charm.mesh = oct
+	match kind:
+		KIND_SPRING:
+			# Coil: three stacked tori.
+			var coil := Node3D.new()
+			for i in 3:
+				var t := MeshInstance3D.new()
+				var tm := TorusMesh.new()
+				tm.inner_radius = 0.028
+				tm.outer_radius = 0.045
+				t.mesh = tm
+				t.position.y = (i - 1) * 0.035
+				coil.add_child(t)
+			_charm.add_child(coil)
+		KIND_VACUUM:
+			# Ring: single flat torus (a halo).
+			var ring := TorusMesh.new()
+			ring.inner_radius = 0.05
+			ring.outer_radius = 0.075
+			_charm.mesh = ring
+			_charm.rotation.x = PI / 2.0
+		_:
+			# Blob: icosphere (sticky).
+			var blob := SphereMesh.new()
+			blob.radial_segments = 8
+			blob.rings = 4
+			blob.radius = 0.045
+			blob.height = 0.09
+			_charm.mesh = blob
 	var cmat := StandardMaterial3D.new()
 	cmat.albedo_color = col
 	cmat.emission_enabled = true

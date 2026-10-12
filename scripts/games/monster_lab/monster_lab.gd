@@ -140,6 +140,8 @@ var _tank_roots: Array = []
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "monster_lab")
 	rng.randomize()
 	# v0.9.0: per-game SFX map (systems-agent AudioKit contract; guarded).
 	ArtKit.game_sfx_map(self, {

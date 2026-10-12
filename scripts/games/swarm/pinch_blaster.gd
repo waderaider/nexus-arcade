@@ -101,6 +101,7 @@ func _fire_ray(origin: Vector3, dir: Vector3) -> void:
 			SwarmEnemy.spawn_pop(get_parent(), hit["position"], Color(0.2, 0.95, 1.0), 1.5)
 
 	_draw_tracer(origin, end)
+	AudioKit.play_game_sfx("shoot")  # v0.11.0 T1 (tick per burst, not per frame)
 
 
 func _draw_tracer(from_world: Vector3, to_world: Vector3) -> void:

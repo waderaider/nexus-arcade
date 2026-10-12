@@ -47,6 +47,8 @@ var _range_set: Array = []
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "hw_web_slingshot")
 	rng.randomize()
 	_add_light_rig()
 	_ensure_fallback_camera()

@@ -163,3 +163,57 @@ wizard_academy
 zero-g-sandbox
 
 gravity-golf
+
+
+---
+
+# NEXUS ARCADE — CUT LIST (v0.11.0)
+
+**Date:** 2026-10-12 · **Rule:** wade's permanent quality bar — any game that is boring
+(not amazing, not groundbreaking) is REMOVED outright. Not merged, not parked.
+Game Designer scored the 75 survivors against telemetry + the bar; the 5 below
+failed. Telemetry note: no quit-in-<30s events this cycle, so these are expert
+judgment (telemetry overrules opinion when it exists; it doesn't this week).
+
+**Cut:** 5 games · **Survivors:** 70 games (before the 10 new pitches land = 80)
+
+## CUT GAMES (5) — id, title, reason
+
+| id | title | reason |
+|---|---|---|
+| holo-piano | Holo Piano | Playable 2-octave synth piano, zero game loop — no score, no progression, no goal. Phantom Piano (Simon-style sequences, 3-strikes run) is the stronger twin. |
+| star-map | Star Map | Passive planetarium: ~200 emissive stars, click-for-facts. No gameplay loop; a pleasant screensaver, not a game. Fails "fun in the first 60 seconds" (nothing to DO). |
+| plant_doctor | Plant Doctor | Well-built (828 lines) and honest, but a utility not a game: photograph plant → pick species card → read care facts. Precedent: AR Measure cut as "useful but boring, not a wow." |
+| qr_hunt | QR Treasure Hunt | Requires printing 5 QR codes and hiding them before the first 60 seconds can even start — setup friction kills it. DEMO mode degrades to tapping labeled buttons. The fantasy is better served by Eye Spy AR, which needs no setup. |
+| hw_candy_stack | Candy Stack | Pinch falling candy onto a plate for 90s — one-note dexterity loop with no escalation beyond "taller." Precedent: hw_candy_run cut as "one-note catch loop." |
+
+## RECYCLED ASSETS (cut game → survivor)
+
+| from (cut) | files | to (survivor) | note |
+|---|---|---|---|
+| holo-piano | synth engine (procedural, in-script) | Phantom Piano | stronger twin keeps the piano fantasy; synth code pattern recyclable for future music toys |
+| star-map | constellation star data (~200 entries, in-script) | — | data recyclable into future ceiling-sky scenes; no staged assets |
+| plant_doctor | shelf_B_large.gltf (+textures), species-card UI pattern | holo-garden | plant shelf becomes garden dressing; card UI pattern recyclable |
+| qr_hunt | clue-chain logic (in-script) | eye_spy | Eye Spy AR owns the no-setup treasure-hunt fantasy; chain logic recyclable |
+| hw_candy_stack | candy meshes + pinch-stack physics (in-script) | — | recyclable into future dexterity games; no staged assets |
+
+## SCENES PENDING REMOVAL
+
+The .tscn wrappers below are now dangling (removed from the hub list in v0.11.0).
+Scripts + scenes left in-tree this cycle (never loaded; zero perf cost) — physical
+deletion deferred to the ship pass.
+
+| scene dir |
+|---|
+| scenes/holo-piano/ |
+| scenes/star-map/ |
+| scenes/plant_doctor/ |
+| scenes/qr_hunt/ |
+| scenes/hw_candy_stack/ |
+
+## KEPT BUT ON WATCH (next telemetry digest adjudicates)
+
+- **Portrait Gallery** — real loop + scoring, but thin on VR-native feel (a screen game in a room).
+- **Apple Bobbing** — competent but one-note-adjacent; the dunk-timing twist saves it for now.
+- **Holo Theremin** — magical toy, zero loop — survives on "demo-booth wonder" like Light Painter, but the thinnest keep.
+- **Mano Mágica** — not a game, kept as functional onboarding infra for hand input.

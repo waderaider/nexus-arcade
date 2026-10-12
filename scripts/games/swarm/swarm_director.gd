@@ -42,7 +42,20 @@ var _turret_count := 0
 var _game_over := false
 
 
+const STEM := "swarm"
+
+
 func _ready() -> void:
+	# v0.11.0 Audio Director T1: per-game SFX map (swarm_* family).
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx(STEM, {
+		"die": d + "swarm_die.wav", "wave": d + "swarm_wave.wav",
+		"base_hit": d + "swarm_base_hit.wav",
+		"overdrive": d + "swarm_overdrive.wav",
+		"shoot": "laser", "powerup": "powerup",
+	})
+	AudioKit.set_active_scene(STEM)
+	AudioKit.set_intensity(0)
 	add_to_group("swarm_director")
 	if core != null:
 		core.core_destroyed.connect(_on_core_destroyed)
@@ -58,12 +71,16 @@ func skip_build_phase() -> void:
 func on_enemy_killed(_enemy: SwarmEnemy) -> void:
 	score += 10 + wave * 2
 	energy = minf(MAX_ENERGY, energy + 6.0)
+	AudioKit.play_game_sfx("die")  # v0.11.0 T1
+	Haptics.impact(0.4, "both")
 	AILib.report_win()  # difficulty_scale() eases up as the player dominates
 
 
 ## Called by SwarmEnemy when it reaches the Core.
 func on_enemy_reached_core(_enemy: SwarmEnemy) -> void:
 	difficulty = minf(1.0, difficulty + 0.02)
+	AudioKit.play_game_sfx("base_hit")  # v0.11.0 T1
+	Haptics.sub_bass(0.5, "both")
 	AILib.report_death()  # difficulty_scale() eases down as the player struggles
 
 
@@ -164,6 +181,9 @@ func _start_build() -> void:
 
 func _start_wave() -> void:
 	wave += 1
+	AudioKit.play_game_sfx("wave")  # v0.11.0 T1
+	AudioKit.set_intensity(mini(2, wave / 3))  # v0.11.0 T1: 0->1->2 by wave
+	Haptics.play_sequence("rumble")
 	phase = Phase.WAVE
 	_to_spawn = 4 + wave * 2 + int(round(difficulty * 4.0))
 	_spawn_timer = 0.5

@@ -51,7 +51,8 @@ func _process(delta: float) -> void:
 
 
 func _update_blade(delta: float) -> void:
-	var right := _get_right_hand()
+	# Blade follows the DOMINANT hand (GameSettings.dominant_hand).
+	var right := _get_blade_hand()
 	if right:
 		blade_active = true
 		blade.visible = true
@@ -101,7 +102,8 @@ func _update_blade(delta: float) -> void:
 
 
 func _update_buckler() -> void:
-	var left := _get_left_hand()
+	# Buckler sits on the OFF hand's forearm.
+	var left := _get_buckler_hand()
 	if left:
 		buckler_active = true
 		_buckler.visible = true
@@ -114,14 +116,15 @@ func _update_buckler() -> void:
 			_buckler.global_transform = Transform3D(
 				Basis.looking_at(n.normalized()), p)
 	elif Input.is_key_pressed(KEY_SPACE):
-		# Desktop block: disc left of the camera.
+		# Desktop block: disc on the buckler-hand side of the camera.
 		var cam := get_viewport().get_camera_3d()
 		if cam:
 			buckler_active = true
 			_buckler.visible = true
+			var side := -1.0 if GameSettings.dominant_hand == "right" else 1.0
 			var p: Vector3 = cam.global_position \
 				+ (-cam.global_transform.basis.z) * 0.45 \
-				+ (-cam.global_transform.basis.x) * 0.28 \
+				+ (cam.global_transform.basis.x) * (0.28 * side) \
 				+ Vector3.DOWN * 0.15
 			buckler_position = p
 			_buckler.global_position = p
@@ -135,12 +138,22 @@ func _update_buckler() -> void:
 		_buckler.visible = false
 
 
-func _get_right_hand() -> Node3D:
-	return _get_hand("RightHand")
+func _get_blade_hand() -> Node3D:
+	return _get_hand(GameSettings.blade_hand_name())
 
 
-func _get_left_hand() -> Node3D:
-	return _get_hand("LeftHand")
+func _get_buckler_hand() -> Node3D:
+	# v0.11.0 Comfort: one-hand assist — buckler rides the DOMINANT hand
+	# (same as the blade), so one hand strikes and parries.
+	if GameSettings.one_hand_duel:
+		return _get_hand(GameSettings.blade_hand_name())
+	return _get_hand(GameSettings.buckler_hand_name())
+
+
+## v0.11.0: flash the buckler disc (whiff teaching: "RAISE LEFT ARM TO PARRY").
+func flash_buckler() -> void:
+	if _buckler != null and is_instance_valid(_buckler):
+		ArtKit.hit_flash(_buckler)
 
 
 func _get_hand(hand_name: String) -> Node3D:

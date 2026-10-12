@@ -46,6 +46,8 @@ var piano_stage: Node3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_phantom_piano")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	piano_stage = Node3D.new()

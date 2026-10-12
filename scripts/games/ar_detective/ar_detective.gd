@@ -181,6 +181,17 @@ var _room_has := false
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "ar_detective_main")
+	# v0.11.0 Audio Director T2: per-game SFX map.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("ar_detective", {
+		"clue": d + "detect_clue.wav",
+		"magnify": d + "detect_magnify.wav",
+		"dust": d + "detect_dust.wav",
+		"shutter": d + "spectral_shutter.wav",
+		"solve": "success"
+	})
+	AudioKit.set_active_scene("ar_detective")
+	AudioKit.set_intensity(0)
 	_ensure_camera()
 	_ensure_environment()
 	_ensure_light()
@@ -1111,6 +1122,8 @@ func _collect_clue(i: int) -> void:
 	holder.set_meta("collected", true)
 	collected += 1
 	Haptics.tick()
+	AudioKit.play_game_sfx("clue")  # v0.11.0 T2
+	Haptics.confirm()
 	var pos: Vector3 = holder.global_position
 	GraphicsPolish.spawn_sparks(self, pos, Color(1.0, 0.8, 0.3), 18)
 	var glow_mat: StandardMaterial3D = holder.get_meta("glow_mat")

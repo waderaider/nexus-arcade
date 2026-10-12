@@ -1,0 +1,33 @@
+=== v0.11.0 pitches 6-10 gate run 20261012_165127 ===
+parse OK scripts/games/nullg_league/nullg_game.gd
+parse OK scripts/games/nullg_league/nullg_agent.gd
+parse OK scripts/games/nullg_league/nullg_disc.gd
+parse OK scripts/games/nullg_league/nullg_avatar.gd
+parse OK scripts/games/chrono_heist/chrono_world.gd
+parse OK scripts/games/chrono_heist/chrono_recorder.gd
+parse OK scripts/games/chrono_heist/chrono_game.gd
+parse OK scripts/games/siege_engineer/siege_builder.gd
+parse OK scripts/games/siege_engineer/siege_castle.gd
+parse OK scripts/games/siege_engineer/siege_game.gd
+parse OK scripts/games/spectral_files/spectral_ghost.gd
+parse OK scripts/games/spectral_files/spectral_tools.gd
+parse OK scripts/games/spectral_files/spectral_game.gd
+parse OK scripts/games/terraform/terraform_world.gd
+parse OK scripts/games/terraform/terraform_sim.gd
+parse OK scripts/games/terraform/terraform_game.gd
+parse OK scripts/shared/ambient_kit.gd
+parse OK scripts/shared/juice_fx.gd
+parse OK scripts/shared/controller_skins.gd
+parse OK scripts/shared/audio_kit.gd
+parse OK scripts/shared/mood_lut.gd
+scene OK nullg_league/nullg_league (120f)
+scene OK chrono_heist/chrono_heist (120f)
+scene OK siege_engineer/siege_engineer (120f)
+scene OK spectral_files/spectral_files (120f)
+scene OK terraform/terraform (120f)
+OK   nullg_league: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   chrono_heist: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   siege_engineer: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   spectral_files: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   terraform: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+=== ALL GATES GREEN ===

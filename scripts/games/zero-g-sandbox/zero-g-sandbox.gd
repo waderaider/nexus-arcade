@@ -29,6 +29,8 @@ var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "zero-g-sandbox")
 	_rng.randomize()
 	_ensure_camera()
 	_build_light()

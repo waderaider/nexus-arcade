@@ -26,6 +26,8 @@ var cur_points := PackedVector3Array()
 var cur_node: MeshInstance3D = null
 var cur_mat: StandardMaterial3D = null
 var cur_length := 0.0
+var _tick_accum := 0.0  # v0.11.0 T2: haptic tick travel accumulator
+var _stroke_embers: Array = []  # v0.11.0 (Animator): pooled stroke embers
 
 var palette: Array = [
 	Color(0.2, 0.9, 1.0), Color(1.0, 0.35, 0.6), Color(0.5, 1.0, 0.3),
@@ -54,6 +56,26 @@ func _ready() -> void:
 	_build_ui()
 	_load_strokes()
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 1.3, -1), 2.0, 30)
+	# v0.11.0 Audio Director T2: per-game SFX map (paint_* family).
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("light-painter", {
+		"stroke": d + "paint_stroke.wav", "color": d + "paint_color.wav",
+		"clear": d + "paint_clear.wav",
+	})
+	AudioKit.set_active_scene("light-painter")
+	AudioKit.set_intensity(0)
+	# v0.11.0 (Animator): pooled stroke-ember quads.
+	for i in 20:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.025, 0.025)
+		q.mesh = qm
+		var m := GraphicsPolish.glow(Color(1.0, 0.7, 0.3), 1.5)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		q.material_override = m
+		q.visible = false
+		add_child(q)
+		_stroke_embers.append({"node": q, "mat": m, "life": 0.0})
 	_apply_room_layout()
 
 
@@ -170,6 +192,19 @@ func _process(delta: float) -> void:
 		_save_strokes()
 	_update_ui()
 	GraphicsPolish.pulse_glow(cursor_mat, 1.8, 0.8, _time, 4.0)
+	# v0.11.0 (Animator): stroke embers drift up and fade.
+	for e in _stroke_embers:
+		var life: float = float(e["life"])
+		if life <= 0.0:
+			continue
+		life -= delta
+		e["life"] = life
+		var qn: MeshInstance3D = e["node"]
+		if life <= 0.0:
+			qn.visible = false
+			continue
+		qn.position.y += 0.05 * delta
+		(e["mat"] as StandardMaterial3D).albedo_color.a = clampf(life / 1.2, 0.0, 1.0)
 
 
 func _poll_keys() -> void:
@@ -241,6 +276,7 @@ func _poll_gestures() -> void:
 
 
 func _begin_stroke() -> void:
+	AudioKit.play_game_sfx("stroke")  # v0.11.0 T2
 	painting = true
 	cur_points = PackedVector3Array()
 	cur_length = 0.0
@@ -305,6 +341,7 @@ func _ribbon_mesh(points: PackedVector3Array, width: float) -> ArrayMesh:
 
 
 func _cycle_color() -> void:
+	AudioKit.play_game_sfx("color")  # v0.11.0 T2
 	color_idx = (color_idx + 1) % palette.size()
 	var c: Color = palette[color_idx]
 	cursor_mat.albedo_color = c
@@ -317,6 +354,7 @@ func _cycle_color() -> void:
 
 
 func _clear_canvas() -> void:
+	AudioKit.play_game_sfx("clear")  # v0.11.0 T2
 	for s in strokes:
 		(s["node"] as Node3D).queue_free()
 	strokes.clear()

@@ -99,6 +99,8 @@ func _room_miss_fx(p: Vector3) -> void:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "beat-blades")
 	# AR: restore this game's persisted spatial anchor, if one was saved.
 	ARUpgradeKit.apply_anchor(self, "beat-blades_main")
 	_ensure_fallback_camera()

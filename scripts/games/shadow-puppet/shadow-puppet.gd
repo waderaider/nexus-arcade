@@ -61,6 +61,8 @@ var _theater: Node3D = null # container for screen + frame + scenery (re-based t
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "shadow-puppet")
 	ARUpgradeKit.apply_anchor(self, "shadow-puppet_main")
 	_ensure_camera()
 	_ensure_environment()

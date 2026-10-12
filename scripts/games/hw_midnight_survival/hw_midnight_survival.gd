@@ -50,6 +50,8 @@ var _clock_node: Node3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.wave_ready(self, "hw_midnight_survival")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_room()

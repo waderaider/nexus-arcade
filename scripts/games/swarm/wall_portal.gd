@@ -65,4 +65,6 @@ func spawn_enemy(wave: int, difficulty: float, core: SwarmCore, director: SwarmD
 	enemy.global_position = global_position + fwd * 0.5
 	enemy.setup(core, director, wave, difficulty)
 	SwarmEnemy.spawn_pop(get_parent(), enemy.global_position, Color(1.0, 0.3, 0.9), 2.0)
+	# v0.11.0 VFX: portal traverse burst as the enemy pushes through.
+	VFX.portal_burst(get_parent(), enemy.global_position, Color(1.0, 0.3, 0.9), 0.5)
 	return enemy

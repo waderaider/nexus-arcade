@@ -69,6 +69,8 @@ var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "sketch_3d")
 	# AR: restore this game's persisted spatial anchor, if one was saved.
 	ARUpgradeKit.apply_anchor(self, ANCHOR_NAME)
 	_camera_mode = ARCamera.is_available()

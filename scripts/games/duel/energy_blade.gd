@@ -194,6 +194,12 @@ func clash() -> void:
 		_sfx.play()
 
 
+## v0.11.0: "POWER" flash — a qualifying swing (tip speed >= 3 m/s) flashes
+## the blade WITHOUT the clash sound. The onboarding beat's teaching signal.
+func power_flash() -> void:
+	_flash = maxf(_flash, 0.55)
+
+
 func set_hum(freq_hz: float, volume: float) -> void:
 	# Hum volume only; pitch tracks swing speed via pitch_scale on the player blade.
 	if _hum:

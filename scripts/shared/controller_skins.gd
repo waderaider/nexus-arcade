@@ -53,16 +53,49 @@ const SKIN_FOR_STEM := {
 
 ## Heuristic button legends for well-known games (merged over generics).
 const BUTTONS_FOR_STEM := {
-	"laser-tag-ar": {"trigger": "Fire", "grip": "Reload", "thumbstick": "Move"},
-	"spell-duel": {"trigger": "Cast spell", "grip": "Charge", "thumbstick": "Move"},
-	"wizard_academy": {"trigger": "Cast", "grip": "Grab potion", "thumbstick": "Move"},
-	"ar-fishing": {"trigger": "Cast / Reel", "grip": "Grab", "thumbstick": "Move"},
-	"beat-blades": {"trigger": "Dash", "grip": "Grab", "thumbstick": "Move"},
-	"duel": {"trigger": "Strike", "grip": "Block", "thumbstick": "Step"},
-	"drone-racer": {"trigger": "Boost", "grip": "Brake", "thumbstick": "Steer"},
-	"room-racer": {"trigger": "Accelerate", "grip": "Brake", "thumbstick": "Steer"},
-	"light-painter": {"trigger": "Paint", "grip": "New stroke", "thumbstick": "Color"},
-	"sky-defender": {"trigger": "Shoot", "grip": "Shield", "thumbstick": "Move"},
+	"laser-tag-ar": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch/click fires — trigger never read
+	"spell-duel": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch-draw casts — trigger never read
+	"wizard_academy": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch-hold/palm casts — trigger never read
+	"ar-fishing": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch-flick/yank casts — trigger never read
+	"beat-blades": {"trigger": "", "grip": "", "thumbstick": ""},  # v0.11.0 audit: pinch/motion-driven, no buttons read
+	"duel": {"trigger": "", "grip": "", "thumbstick": ""},  # v0.11.0 audit: blade follows hand, buckler auto — no buttons read
+	"drone-racer": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch-hold boosts — trigger never read
+	"room-racer": {"trigger": "", "grip": "", "thumbstick": ""},  # v0.11.0 audit: A/D/mouse/W driven, pinch only restarts
+	"light-painter": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch-hold paints — trigger never read
+	"sky-defender": {"trigger": "", "grip": "", "thumbstick": ""},  # ship-pass audit: pinch/click fires — trigger never read
+	"war_table": {"trigger": "Select / order troops", "grip": "Raise terrain", "menu": "Pause"},
+	"kaiju_siege": {"trigger": "Atomic breath (hold BOTH)", "grip": "", "menu": "Pause"},  # ship-pass audit: stomp is a downward slam motion — grip never read
+	"starship_bridge": {"trigger": "Fire / press console", "thumbstick": "Helm throttle", "menu": "Pause"},
+	"phantom_thief": {"trigger": "Grab artifact", "menu": "Pause"},
+	"runewright": {"trigger": "Trace rune (hold) / cast (tap)", "grip": "Clear rune", "menu": "Pause"},
+	"nullg_league": {"trigger": "Thrust (hold) / grab & throw disc", "grip": "Air brake (grab air)", "menu": "Pause"},
+	"chrono_heist": {"trigger": "Grab / release / pull", "grip": "Grab (alt hand)", "menu": "Pause"},
+	"siege_engineer": {"trigger": "Grab part / pull lever", "grip": "Grab (alt hand)", "menu": "Pause"},
+	"spectral_files": {"trigger": "Use tool / take photo", "grip": "Cycle tool", "menu": "Pause"},
+	"terraform": {"trigger": "Use tool (hold to sculpt)", "grip": "Next tool", "menu": "Pause"},
+}
+
+## Honest motion-control descriptions (v0.11.0, UI spec §2.3.1). Rendered as
+## an optional 2-line 32px block under the CONTROLS title, before the
+## "Grip style" line. Audit basis: direct code reads of each game's script
+## (2026-10-12) — pinch_just_pressed / pinch_active / mouse / hand-tracker
+## reads only. No button is named that the code doesn't read.
+const HOWTO_FOR_STEM := {
+	"laser-tag-ar": "Point and pinch (or click) to fire your laser.\nMove your body to dodge — no buttons needed.",
+	"spell-duel": "Pinch-hold and draw: CIRCLE = fireball · ZIGZAG = lightning · FLICK = shield.\nNo buttons needed.",
+	"wizard_academy": "Pinch-hold to levitate and grab · palm-out to shield.\nNo buttons needed.",
+	"ar-fishing": "Pinch-hold and flick to cast · yank fast to hook · hold to reel.\nNo buttons needed.",
+	"beat-blades": "Swipe through notes with either hand as they cross the hit zone.\nPinch (or click) to slice — no buttons needed.",
+	"duel": "Swing your dominant hand to strike — the blade follows your hand.\nRaise your other hand to block with the buckler.",
+	"drone-racer": "Your pointer hand guides the drone · pinch-hold to boost.\nNo buttons needed.",
+	"room-racer": "Steer with A/D or arrows (desktop) · W to boost.\nPinch or click to restart after a race.",
+	"light-painter": "Pinch-hold to paint in the air · second-hand pinch changes color.\nNo buttons needed.",
+	"sky-defender": "Aim with your pointer · pinch (or click) to fire.\nNo buttons needed.",
+	"nullg_league": "Hold RIGHT trigger to thrust · LEFT trigger or grip to brake.\nPush off walls to launch · grab the disc, flick to throw.",
+	"chrono_heist": "Trigger (or grip) to grab and release objects.\nYour ghost-yous replay your loops — don't touch them.",
+	"siege_engineer": "Trigger (or grip) to grab parts · snap them together.\nPull the lever to loose · watch the castle fall.",
+	"spectral_files": "Trigger to use the held tool · grip cycles tools.\nFind 3 evidence, then name the ghost in your journal.",
+	"terraform": "Trigger (hold) to sculpt · grip for next tool.\nTap palette orbs to pick tools · re-tap to cycle modes.",
 }
 
 const GENERIC_BUTTONS := {
@@ -85,10 +118,17 @@ static func config_for(game: Node, scene_stem: String) -> Dictionary:
 		"uses_controllers": true,
 		"skin": "auto",
 		"buttons": GENERIC_BUTTONS.duplicate(),
+		"howto": "",
 	}
 	var stem_buttons: Dictionary = BUTTONS_FOR_STEM.get(scene_stem, {})
 	for k in stem_buttons:
 		(cfg["buttons"] as Dictionary)[k] = stem_buttons[k]
+	# v0.11.0: honest motion-control text (UI spec §2.3.1). The duel copy
+	# respects the dominant-hand setting (blade/buckler swap).
+	var howto := str(HOWTO_FOR_STEM.get(scene_stem, ""))
+	if scene_stem == "duel" and GameSettings.dominant_hand == "left":
+		howto = howto.replace("RIGHT", "§R§").replace("LEFT", "RIGHT").replace("§R§", "LEFT")
+	cfg["howto"] = howto
 	if game != null:
 		var scr := game.get_script() as GDScript
 		if scr != null:
@@ -232,6 +272,18 @@ static func legend_control(cfg: Dictionary, game_name: String = "") -> VBoxConta
 	title.add_theme_font_size_override("font_size", 44)
 	title.add_theme_color_override("font_color", Color(0.4, 0.95, 1.0))
 	vbox.add_child(title)
+	# v0.11.0: honest motion-control text (HOWTO_FOR_STEM), 2 lines max,
+	# 32px, under the title and before the "Grip style" line (UI spec §2.3.1).
+	var howto := str(cfg.get("howto", "")).strip_edges()
+	if howto != "":
+		var hl := Label.new()
+		var lines := howto.split("\n")
+		hl.text = "\n".join(lines.slice(0, 2))
+		hl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hl.add_theme_font_size_override("font_size", 32)
+		hl.add_theme_color_override("font_color", Color(1.0, 0.9, 0.55))
+		hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(hl)
 	var skin := Label.new()
 	skin.text = "Grip style: " + str(cfg.get("skin", "none"))
 	skin.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

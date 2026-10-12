@@ -138,3 +138,31 @@ Generated in-house with Blender 4.5.14 LTS (headless) 2026-10-08.
 | Music | (procedural, AudioKit genres) | Original (procedural synthesis) | tools/gen_audio.py genre system |
 
 No CraftPix, Quaternius, or KayKit assets were needed — the minigolf art direction (stylized clubhouse/tinkerworks/skyreef) is fully served by original procedural + Blender hero assets.
+
+## v0.11.0 new games — pitches 1–5 (licenses verified)
+
+| Game | Model file | Pack | License | Source |
+|---|---|---|---|---|
+| war_table | king.glb, queen.glb, peasant_1/2/3/4.glb | CraftPix Medieval People | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ |
+| war_table | Banner_1/2, Barrel, Crate_Wooden, Torch_Metal, Stall_Empty, Chest_Wood, CandleStick_Triple (+ textures) | Quaternius fantasypropsmegakit | CC0 1.0 | https://quaternius.com |
+| kaiju_siege | Building_Large_2, Building_Medium_2_001, Building_Small_1, Brick_Plain_3, Brick_CornerColumn_Center, Cornice_Brick_Center, Metal_FirstFloor_Wall_1, Brick_TopTrim, Entrance_Concrete_2x1 (+ textures, downscaled) | Quaternius downtowncitymegakit | CC0 1.0 | https://quaternius.com |
+| kaiju_siege | bat.glb, dragon.glb | Quaternius animatedmonster | CC0 1.0 | https://quaternius.com (animated Flying/Attack/Death) |
+| starship_bridge | frigate_01/03.glb, corvette_02/04.glb | CraftPix Battle Spaceships | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ |
+| starship_bridge | spaceship_1/3/5.glb | Quaternius spaceships | CC0 1.0 | https://quaternius.com |
+| phantom_thief | knight.glb | Quaternius knightcharacter | CC0 1.0 | https://quaternius.com (animated Walking/Run/Idle/Death) |
+| runewright | bat.glb, dragon.glb, slime.glb, skeleton.glb | Quaternius animatedmonster | CC0 1.0 | https://quaternius.com (animated Walk/Running/Flying/Attack/Death) |
+
+All converted FBX→GLB in-house via the headless Blender 4.5.14 pipeline (no geometry changes). Downtown-city and fantasy-prop PNG textures downscaled to ≤512/256px for the Quest 3 APK budget.
+
+## v0.11.0 new games — pitches 6–10 (licenses verified)
+
+| Game | Model file | Pack | License | Source |
+|---|---|---|---|---|
+| spectral_files | sheet_ghost.glb | Blender hero (in-house original) | Generated in-house with Blender (no encumbrance) | ~/workspace/asset-staging/blender/make_sheet_ghost.py |
+| spectral_files | ghost_bat.glb, ghost_dragon.glb, ghost_slime.glb, ghost_skeleton.glb | Quaternius animatedmonster | CC0 1.0 | https://quaternius.com (animated; converted FBX→GLB in-house) |
+| siege_engineer | peasant_1.glb, peasant_2.glb (tabletop crew fidgets, 0.3 scale) | CraftPix Medieval People | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ (converted FBX→GLB in-house; shared with war_table) |
+| terraform | flora_bush_1/2/3.glb, flora_flower_1/2/3/4.glb, flora_grass_1.glb, flora_mushroom_1/2.glb, flora_stones_1.glb, flora_stone_1.glb | CraftPix Shrubs Flowers Mushrooms | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ (converted FBX→GLB in-house) |
+| terraform | fauna_bear/boar/deer_1/deer_2/fox/owl/rabbit/squirrel/wolf.glb | CraftPix Wild Animals | CraftPix free license (royalty-free, unlimited personal/commercial) | https://craftpix.net/file-licenses/ (converted FBX→GLB in-house) |
+| nullg_league, chrono_heist | — | — | — | No staged assets: capsule avatars / vault geometry built in code (minimal-geometry design) |
+
+All 33 staged FBX converted to GLB in-house via the headless Blender 4.5.14 pipeline (~/workspace/asset-staging/blender/convert_staged_fbx.py): materials rewired to each pack's PNG atlas, importer's bogus +90° X rotation zeroed on CraftPix house parts, Quest-safe tri counts (all <3k). GLB is Godot-native — no FBX import risk at export.

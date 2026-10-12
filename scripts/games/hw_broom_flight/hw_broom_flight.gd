@@ -50,6 +50,8 @@ var _moon: MeshInstance3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.racer_ready(self, "hw_broom_flight")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_witch()

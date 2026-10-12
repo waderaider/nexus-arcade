@@ -1,0 +1,44 @@
+=== v0.11.0 pitches 6-10 gate run 20261012_165001 ===
+FAIL: parse scripts/games/nullg_league/nullg_game.gd :: SCRIPT ERROR: Compile Error: Identifier not found: JuiceFX
+ERROR: Failed to load script "res://scripts/games/nullg_league/nullg_game.gd" with error "Compilation failed".
+parse OK scripts/games/nullg_league/nullg_agent.gd
+FAIL: parse scripts/games/nullg_league/nullg_disc.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/nullg_league/nullg_disc.gd" with error "Compilation failed".
+parse OK scripts/games/nullg_league/nullg_avatar.gd
+FAIL: parse scripts/games/chrono_heist/chrono_world.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/chrono_heist/chrono_world.gd" with error "Compilation failed".
+parse OK scripts/games/chrono_heist/chrono_recorder.gd
+FAIL: parse scripts/games/chrono_heist/chrono_game.gd :: SCRIPT ERROR: Compile Error: Identifier not found: JuiceFX
+ERROR: Failed to load script "res://scripts/games/chrono_heist/chrono_game.gd" with error "Compilation failed".
+FAIL: parse scripts/games/siege_engineer/siege_builder.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/siege_engineer/siege_builder.gd" with error "Compilation failed".
+parse OK scripts/games/siege_engineer/siege_castle.gd
+FAIL: parse scripts/games/siege_engineer/siege_game.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/siege_engineer/siege_game.gd" with error "Compilation failed".
+FAIL: parse scripts/games/spectral_files/spectral_ghost.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/spectral_files/spectral_ghost.gd" with error "Compilation failed".
+FAIL: parse scripts/games/spectral_files/spectral_tools.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/spectral_files/spectral_tools.gd" with error "Compilation failed".
+FAIL: parse scripts/games/spectral_files/spectral_game.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/games/spectral_files/spectral_game.gd" with error "Compilation failed".
+parse OK scripts/games/terraform/terraform_world.gd
+parse OK scripts/games/terraform/terraform_sim.gd
+FAIL: parse scripts/games/terraform/terraform_game.gd :: SCRIPT ERROR: Compile Error: Identifier not found: JuiceFX
+ERROR: Failed to load script "res://scripts/games/terraform/terraform_game.gd" with error "Compilation failed".
+parse OK scripts/shared/ambient_kit.gd
+FAIL: parse scripts/shared/juice_fx.gd :: SCRIPT ERROR: Compile Error: Identifier not found: AudioKit
+ERROR: Failed to load script "res://scripts/shared/juice_fx.gd" with error "Compilation failed".
+parse OK scripts/shared/controller_skins.gd
+parse OK scripts/shared/audio_kit.gd
+parse OK scripts/shared/mood_lut.gd
+scene OK nullg_league/nullg_league (120f)
+scene OK chrono_heist/chrono_heist (120f)
+scene OK siege_engineer/siege_engineer (120f)
+scene OK spectral_files/spectral_files (120f)
+scene OK terraform/terraform (120f)
+OK   nullg_league: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   chrono_heist: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   siege_engineer: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   spectral_files: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+OK   terraform: named=['grip', 'menu', 'trigger'] read=['grip', 'menu', 'trigger']
+=== GATES RED ===

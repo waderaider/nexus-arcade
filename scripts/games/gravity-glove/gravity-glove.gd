@@ -107,6 +107,8 @@ func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "gravity-glove")
 	ARUpgradeKit.apply_anchor(self, "gravity-glove_main")
 	_ensure_camera()
 	_ensure_environment()

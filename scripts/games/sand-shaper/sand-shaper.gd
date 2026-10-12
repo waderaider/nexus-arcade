@@ -43,6 +43,8 @@ var _room_bounds: Rect2 = Rect2(-2, -2, 4, 4)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "sand-shaper")
 	if not ARUpgradeKit.apply_anchor(self, "sand-shaper_main"):
 		ARUpgradeKit.place_on_table(self, 1.0, TABLE_Y)
 	heights.resize(verts * verts)

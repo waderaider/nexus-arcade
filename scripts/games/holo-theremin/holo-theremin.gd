@@ -61,6 +61,8 @@ var _room_anchored := false
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "holo-theremin")
 	_room_anchored = ARUpgradeKit.apply_anchor(self, "holo-theremin_main")
 	_build_camera()
 	_build_environment()

@@ -58,6 +58,8 @@ var _throw_pos := Vector3(0.35, 1.15, 0.9)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "ar-darts")
 	ARUpgradeKit.apply_anchor(self, "ar-darts_main")
 	_ensure_camera()
 	_ensure_environment()

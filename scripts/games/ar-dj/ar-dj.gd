@@ -96,6 +96,8 @@ var _room_table_top_y := -1.0 ## real tabletop height, -1 = unknown
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "ar-dj")
 	_add_light_rig()
 	_build_environment()
 	_build_table()

@@ -52,6 +52,8 @@ var _room_table_anchor: Dictionary = {}
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_goblin_archery")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_room()
@@ -410,12 +412,41 @@ func _update_arrows(delta: float) -> void:
 # ---------------------------------------------------------------- goblins --
 
 func _spawn_goblin() -> void:
+	# v0.11.0 T1 art swap (Design Director): Blender goblin hero (939 tris,
+	# vertex-colored) replaces the sphere+cone blob. Golden = same hero with
+	# a metallic-gold override (reads as a "golden statue" bonus variant).
 	var golden := randf() < 0.12
 	var base_y := 0.42
 	var root := Node3D.new()
 	root.position = _goblin_spawn_pos()
 	root.scale = Vector3.ONE * 0.01
 	add_child(root)
+	var hero := ArtKit.spawn_model(
+		"res://assets/models/hw_goblin_archery/goblin_hero.glb", root)
+	var eye_mat: StandardMaterial3D = null
+	if hero != null:
+		if golden:
+			var gold := GraphicsPolish.pbr(Color(1.0, 0.78, 0.25), 0.9, 0.25)
+			for mi in hero.find_children("*", "MeshInstance3D", true, false):
+				(mi as MeshInstance3D).material_override = gold
+			GraphicsPolish.make_point_light(root, Vector3(0, 0.6, 0),
+				Color(1.0, 0.8, 0.2), 0.8, 2.5)
+	else:
+		eye_mat = _build_goblin_primitive(root, golden)
+	goblins.append({
+		"node": root, "hero": hero, "eye_mat": eye_mat, "pop": 0.0,
+		"life": randf_range(4.0, 7.0), "golden": golden,
+		"base_y": base_y, "phase": randf() * TAU,
+	})
+	# v0.11.0 (Animator): goblins pop up with 150ms anticipation crouch +
+	# overshoot — the pop is telegraphed, never a spawn-pop.
+	AnimFluidity.anticipate_then(root, Callable(), 0.15)
+	if pop_player != null:
+		pop_player.play()
+
+
+## Pre-v0.11.0 procedural goblin (fallback only).
+func _build_goblin_primitive(root: Node3D, golden: bool) -> StandardMaterial3D:
 	var skin := GraphicsPolish.pbr(Color(0.95, 0.75, 0.15), 0.35, 0.35) if golden else GraphicsPolish.pbr(Color(0.25, 0.70, 0.22), 0.05, 0.6)
 	var body := MeshInstance3D.new()
 	var s := SphereMesh.new()
@@ -424,7 +455,6 @@ func _spawn_goblin() -> void:
 	body.mesh = s
 	body.material_override = skin
 	root.add_child(body)
-	# Pointy ears.
 	for side in [-1.0, 1.0]:
 		var ear := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
@@ -436,7 +466,6 @@ func _spawn_goblin() -> void:
 		ear.rotation_degrees.z = side * -70.0
 		ear.material_override = skin
 		root.add_child(ear)
-	# Glowing eyes.
 	var eye_mat := GraphicsPolish.glow(Color(1.0, 0.25, 0.10) if not golden else Color(1.0, 0.85, 0.20), 1.6)
 	for side in [-1.0, 1.0]:
 		var eye := MeshInstance3D.new()
@@ -447,7 +476,6 @@ func _spawn_goblin() -> void:
 		eye.position = Vector3(side * 0.10, 0.08, 0.21)
 		eye.material_override = eye_mat
 		root.add_child(eye)
-	# Warty nose.
 	var nose := MeshInstance3D.new()
 	var ns := SphereMesh.new()
 	ns.radius = 0.05
@@ -458,13 +486,7 @@ func _spawn_goblin() -> void:
 	root.add_child(nose)
 	if golden:
 		GraphicsPolish.make_point_light(root, Vector3(0, 0.6, 0), Color(1.0, 0.8, 0.2), 0.8, 2.5)
-	goblins.append({
-		"node": root, "eye_mat": eye_mat, "pop": 0.0,
-		"life": randf_range(4.0, 7.0), "golden": golden,
-		"base_y": base_y, "phase": randf() * TAU,
-	})
-	if pop_player != null:
-		pop_player.play()
+	return eye_mat
 
 
 func _goblin_spawn_pos() -> Vector3:
@@ -514,7 +536,15 @@ func _update_goblins(delta: float) -> void:
 		g["pop"] = pop
 		GraphicsPolish.ease_scale(node, Vector3.ONE, 7.0, delta)
 		node.position.y = float(g["base_y"]) + sin(elapsed * 3.0 + float(g["phase"])) * 0.05
-		GraphicsPolish.pulse_glow(g["eye_mat"] as StandardMaterial3D, 1.2, 0.8, elapsed + float(g["phase"]), 3.0)
+		# v0.11.0 (Animator): hero idle fidget — breathing + golden smug blink.
+		var hero_v: Node3D = g["hero"]
+		if hero_v != null and is_instance_valid(hero_v):
+			AnimFluidity.breathe(hero_v, elapsed, float(g["phase"]), 0.025)
+			if bool(g["golden"]):
+				var blink_cyc := fmod((elapsed + float(g["phase"])) / 4.2, 1.0)
+				hero_v.scale.y = 0.82 if blink_cyc < 0.08 else 1.0
+		elif g["eye_mat"] != null:
+			GraphicsPolish.pulse_glow(g["eye_mat"] as StandardMaterial3D, 1.2, 0.8, elapsed + float(g["phase"]), 3.0)
 		var life := float(g["life"]) - delta
 		g["life"] = life
 		if life <= 0.0:

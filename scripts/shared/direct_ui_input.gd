@@ -12,6 +12,10 @@ class_name DirectUIInput
 ## It draws its OWN bright-yellow beams from the raw tracker poses, so the
 ## user always sees where they're pointing even if XRUIPointer is fully dead
 ## (no signals, stale node refs, thin lasers — the v0.9.2 photo state).
+## v0.11.0: beams are HOVER-ONLY — drawn only while the ray actually hits the
+## target quad (kills beam clutter during gameplay; XRUIPointer's own lasers
+## remain the always-on aim indicator). `source_filter` ("auto"/"controllers"/
+## "hands") follows the GameSettings input_method preference (set by hosts).
 ##
 ## Both paths stay live simultaneously; click dedupe lives in the click_cb
 ## target (hub.inject_click / PauseExit._inject_click — one 120ms / 8px
@@ -31,6 +35,10 @@ const MAX_SOURCES := 4  # 2 controllers + 2 hands
 ## Set by the host every frame from get_viewport().use_xr (same contract as
 ## XRUIPointer.xr_mode).
 var xr_mode := false
+
+## v0.11.0: which sources to track — "auto" (all), "controllers", "hands".
+## PauseExit sets this from the GameSettings input_method preference.
+var source_filter := "auto"
 
 var _viewport: SubViewport = null
 var _quad: MeshInstance3D = null
@@ -139,8 +147,11 @@ func _process(_delta: float) -> void:
 	_discover_origin()
 	# Collect live sources: name-agnostic controller discovery (kills the
 	# stale-LeftController/RightController-path failure), then hands.
+	# v0.11.0: source_filter follows the input_method preference.
+	var want_ctl := source_filter != "hands"
+	var want_hand := source_filter != "controllers"
 	var sources: Array = []
-	if _origin != null and is_instance_valid(_origin):
+	if want_ctl and _origin != null and is_instance_valid(_origin):
 		for ctl in _origin.find_children("*", "XRController3D", true, false):
 			var c := ctl as XRController3D
 			if c == null or not is_instance_valid(c):
@@ -153,7 +164,7 @@ func _process(_delta: float) -> void:
 					"pressed": XRUIPointer.trigger_pressed(c)})
 			if sources.size() >= MAX_SOURCES:
 				break
-	if sources.size() < MAX_SOURCES:
+	if want_hand and sources.size() < MAX_SOURCES:
 		for side_key in ["left", "right"]:
 			var side := XRPositionalTracker.TRACKER_HAND_LEFT \
 				if side_key == "left" else XRPositionalTracker.TRACKER_HAND_RIGHT
@@ -180,7 +191,13 @@ func _process(_delta: float) -> void:
 		if pressed and not was and _click_cb.is_valid():
 			_click_cb.call(hit["pos"])
 		_prev_pressed[key] = pressed
-		_place_beam(used, s["origin"], end_point, hit_ok)
+		# v0.11.0: beams are hover-only — drawn only while the ray hits the
+		# target quad (no beam clutter during gameplay).
+		if hit_ok:
+			_place_beam(used, s["origin"], end_point, true)
+		else:
+			_beams[used].visible = false
+			_dots[used].visible = false
 		used += 1
 	# Hide beams whose source went inactive this frame.
 	for i in range(used, MAX_SOURCES):

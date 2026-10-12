@@ -48,6 +48,8 @@ var _mode_selected := false
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "minigolf")
 	_build_hole_registry()
 	_seater = MinigolfSeater.new()
 	add_child(_seater)

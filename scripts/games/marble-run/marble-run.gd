@@ -47,6 +47,8 @@ var _start_pad: MeshInstance3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.racer_ready(self, "marble-run")
 	ARUpgradeKit.apply_anchor(self, "marble-run_main")
 	_ensure_camera()
 	_ensure_environment()

@@ -137,6 +137,16 @@ const DUEL_CAST_CD := 0.8
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "wizard_academy_main")
+	# v0.11.0 Audio Director T2: per-game SFX map.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("wizard_academy", {
+		"cast": d + "wiz_cast.wav",
+		"hit": d + "wiz_hit.wav",
+		"brew": d + "wiz_brew.wav",
+		"fail": "fail"
+	})
+	AudioKit.set_active_scene("wizard_academy")
+	AudioKit.set_intensity(1)
 	_ensure_camera()
 	_ensure_environment()
 	_ensure_light()
@@ -1623,7 +1633,8 @@ func _cast_from_duel_path() -> void:
 	if kind == "none":
 		return
 	duel_cast_cd = DUEL_CAST_CD
-	Haptics.pulse(0.85, 0.14)
+	AudioKit.play_game_sfx("cast")  # v0.11.0 T2
+	Haptics.pulse(0.4, 0.15, "both")
 	match kind:
 		"fireball":
 			_duel_spawn_fireball(Vector3(0.0, 1.5, 2.0), duel_wizard.position + Vector3(0, 1.2, 0), true)

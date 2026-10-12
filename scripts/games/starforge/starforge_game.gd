@@ -99,6 +99,8 @@ func _room_wreckage(pos: Vector3, color: Color) -> void:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "starforge")
 	_rng.randomize()
 	_add_polish_light_rig()
 	_build_board()

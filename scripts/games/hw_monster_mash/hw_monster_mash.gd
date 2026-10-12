@@ -60,6 +60,8 @@ const MONSTER_COLORS := [
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_monster_mash")
 	GraphicsPolish.make_light_rig(self)
 	_ensure_fallback_camera()
 	mouse_pos = get_viewport().get_visible_rect().size * 0.5

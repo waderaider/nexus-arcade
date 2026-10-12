@@ -30,6 +30,9 @@ const MOODS := ["natural", "haunted_green", "deep_teal", "sunset_gold"]
 ## Scene stems that get the deep-teal underwater grade.
 const TEAL_GAMES := ["deep_dive", "holo-aquarium"]
 
+## Scene stems that get the haunted-green grade (v0.11.0).
+const HAUNTED_GAMES := ["spectral_files"]
+
 var _current := "natural"
 var _lut_cache: Dictionary = {}
 var _fading := false
@@ -48,7 +51,7 @@ func apply_mood(mood: String, fade: float = 1.2) -> void:
 ## Mood pick for a launched game. Called by the hub auto-wirer.
 func apply_for_game(scene_stem: String, tab: int) -> void:
 	var mood := "natural"
-	if tab == 3:
+	if tab == 3 or scene_stem in HAUNTED_GAMES:
 		mood = "haunted_green"
 	elif scene_stem in TEAL_GAMES:
 		mood = "deep_teal"

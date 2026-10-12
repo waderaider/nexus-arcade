@@ -72,6 +72,8 @@ var _screen_rig: Node3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "ar-karaoke")
 	# Restore the persisted stage placement (no-op when no anchor was saved).
 	ARUpgradeKit.apply_anchor(self, "ar-karaoke_main")
 	# Wall-mounted screen rig (stays at identity until room data arrives).
@@ -683,7 +685,8 @@ func _update_lyric_look(active: bool) -> void:
 		var start: float = w["start"]
 		var end: float = w["end"]
 		if dl < 0:
-			label.modulate = Color(0.35, 0.38, 0.48, 0.55)
+			# v0.11.0 Comfort: past-words dimmed but readable (4.6:1, was 2.4:1).
+			label.modulate = Color(0.62, 0.66, 0.78, 0.85)
 		elif dl > 0:
 			label.modulate = COL_FUTURE
 		else:

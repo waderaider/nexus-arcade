@@ -203,11 +203,27 @@ func _on_config_completed(result: int, response_code: int, _headers: PackedStrin
 
 
 func _detect_headset() -> String:
+	# v0.11.0: XR_META_headset_id (privacy-safe, zero cost) — needs
+	# xr/openxr/extensions/meta/headset_id=true in project.godot. The vendors
+	# plugin registers it as an Engine singleton with an INSTANCE method
+	# get_headset_id (NOT a static). Falls back to the old interface-name
+	# probe when the extension is unavailable (headless/desktop).
+	if Engine.has_singleton("OpenXRMetaHeadsetIDExtension"):
+		var ext := Engine.get_singleton("OpenXRMetaHeadsetIDExtension")
+		if ext != null and ext.has_method("get_headset_id"):
+			var hid: Variant = ext.call("get_headset_id")
+			if hid != null and str(hid).strip_edges() != "":
+				return str(hid)
 	for iface in XRServer.get_interfaces():
 		var d: Dictionary = iface
 		if str(d.get("name", "")).to_lower().find("openxr") >= 0:
 			return "OpenXR"
 	return "none"
+
+
+## Public read of the headset model for diagnostics / menu_open telemetry.
+func headset_model() -> String:
+	return _detect_headset()
 
 
 func _iso_now() -> String:

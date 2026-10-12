@@ -78,6 +78,8 @@ var scroll_label: Label3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "ar-escape-room")
 	# Restore the persisted room placement (no-op when no anchor was saved).
 	ARUpgradeKit.apply_anchor(self, "ar-escape-room_main")
 	_build_environment()

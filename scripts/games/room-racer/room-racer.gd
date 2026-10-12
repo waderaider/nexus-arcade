@@ -74,6 +74,8 @@ func _fit_track_to_room() -> void:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.racer_ready(self, "room-racer")
 	_ensure_camera()
 	_build_light_and_floor()
 	_track_center = ARUpgradeKit.clamp_to_room(CENTER)

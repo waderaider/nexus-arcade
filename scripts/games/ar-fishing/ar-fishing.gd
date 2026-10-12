@@ -56,6 +56,8 @@ var _pond_center: Vector3 = POND_CENTER
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "ar-fishing")
 	ARUpgradeKit.apply_anchor(self, "ar-fishing_main")
 	_ensure_camera()
 	_ensure_environment()

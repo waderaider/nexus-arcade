@@ -7,6 +7,17 @@ extends RefCounted
 class_name GraphicsPolish
 
 
+## v0.11.0: global particle-count multiplier, driven by GameSettings quality
+## tiers (Low 0.4 ... Ultra 1.2). All shared spawners below multiply their
+## `amount` through it, so the graphics setting measurably changes rendering.
+static var particle_scale := 1.0
+
+
+## Scale a raw particle count through the current quality multiplier.
+static func scaled_amount(base: int) -> int:
+	return maxi(1, int(round(base * particle_scale)))
+
+
 ## PBR material factory.
 static func pbr(color: Color, metallic: float = 0.0, roughness: float = 0.5) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -95,7 +106,7 @@ static func make_point_light(parent: Node3D, pos: Vector3, color: Color, energy:
 ## One-shot spark burst at a position. Frees itself when done.
 static func spawn_sparks(parent: Node, pos: Vector3, color: Color = Color(1.0, 0.8, 0.2), amount: int = 24) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = scaled_amount(amount)
 	p.lifetime = 0.6
 	p.one_shot = true
 	p.explosiveness = 0.9
@@ -125,7 +136,7 @@ static func spawn_sparks(parent: Node, pos: Vector3, color: Color = Color(1.0, 0
 ## Confetti burst (slower, colorful, low gravity).
 static func spawn_confetti(parent: Node, pos: Vector3, amount: int = 60) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = scaled_amount(amount)
 	p.lifetime = 2.0
 	p.one_shot = true
 	p.explosiveness = 0.85
@@ -161,7 +172,7 @@ static func spawn_confetti(parent: Node, pos: Vector3, amount: int = 60) -> GPUP
 ## Ambient floating dust motes around an area (looping, subtle).
 static func spawn_ambient_motes(parent: Node3D, center: Vector3, radius: float = 2.0, amount: int = 40) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = scaled_amount(amount)
 	p.lifetime = 6.0
 	p.preprocess = 6.0
 	p.position = center

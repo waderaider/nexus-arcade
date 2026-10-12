@@ -15,6 +15,11 @@ const MAX_DOME_R := 38.0
 const CONFIG_FILE := "user://nexus_config.cfg"
 const TRAIL_POINTS := 10
 const LABEL_COUNT := 8
+# v0.11.0 perf (Tech-Demo): cap spawned aircraft — unbounded spawn is a
+# draw-call blowout risk (each plane = ~7 draw calls). Nearest 12 only.
+const MAX_PLANES := 12
+# v0.11.0 label LOD: only the nearest 4 aircraft get info cards.
+const LABEL_LOD_COUNT := 4
 
 const CITIES := [
 	{"name": "San Diego", "lat": 32.7157, "lon": -117.1611},
@@ -69,6 +74,13 @@ func _ready() -> void:
 	add_child(_http)
 	_http.request_completed.connect(_on_poll_done)
 	GraphicsPolish.spawn_ambient_motes(self, Vector3(0, 6.0, 0), 12.0, 30)
+	# v0.11.0 Audio Director T2: per-game SFX map (traffic_* family).
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("sky_traffic", {
+		"ping": d + "traffic_ping.wav", "pass": d + "traffic_pass.wav",
+	})
+	AudioKit.set_active_scene("sky_traffic")
+	AudioKit.set_intensity(0)
 	_build_roar()
 	_update_status("Connecting to sky data...")
 	_poll() ## first poll immediately
@@ -398,6 +410,9 @@ func _on_poll_done(result: int, code: int, _headers: PackedStringArray, body: Pa
 func _ingest(list: Array) -> void:
 	var seen := {}
 	var count := 0
+	# v0.11.0: nearest-first — sort valid contacts by distance so the
+	# MAX_PLANES cap keeps the closest aircraft, not arbitrary ones.
+	var contacts: Array = []
 	for a in list:
 		if not (a is Dictionary):
 			continue
@@ -407,6 +422,17 @@ func _ingest(list: Array) -> void:
 		var hex: String = str(d.get("hex", ""))
 		if hex == "":
 			continue
+		d["_dist"] = _dist_nm(float(d["lat"]), float(d["lon"]))
+		contacts.append(d)
+	contacts.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return float(x["_dist"]) < float(y["_dist"]))
+	# The cap counts tracked + new aircraft together: only the nearest
+	# MAX_PLANES contacts are marked seen (spawned or updated). Anything
+	# beyond the cap ages out through the normal 2-missed-polls despawn.
+	var kept := 0
+	for d in contacts:
+		if kept >= MAX_PLANES:
+			break
+		var hex: String = str(d.get("hex", ""))
 		seen[hex] = true
 		_missed.erase(hex)
 		count += 1
@@ -415,11 +441,15 @@ func _ingest(list: Array) -> void:
 			var rec: Dictionary = _aircraft[hex]
 			rec["target"] = pos
 			rec["data"] = d
-			rec["dist"] = _dist_nm(float(d["lat"]), float(d["lon"]))
+			rec["dist"] = float(d["_dist"])
 			_push_trail(rec, pos)
 			_refresh_marker(rec)
 		else:
 			_aircraft[hex] = _spawn_aircraft(d, pos)
+			# v0.11.0 T2: ping per new plane (only if it made the nearest set).
+			if kept < LABEL_LOD_COUNT:
+				AudioKit.play_game_sfx("ping")
+		kept += 1
 	# Drop aircraft that vanished from the feed (2 missed polls).
 	for hex in _aircraft.keys():
 		if not seen.has(hex):
@@ -607,6 +637,7 @@ func _despawn(hex: String) -> void:
 
 
 func _update_labels() -> void:
+	# v0.11.0 label LOD: cards only for the nearest LABEL_LOD_COUNT aircraft.
 	# Labels only for the LABEL_COUNT nearest aircraft.
 	var keys := _aircraft.keys()
 	keys.sort_custom(func(a: String, b: String) -> bool: return float((_aircraft[a] as Dictionary)["dist"]) < float((_aircraft[b] as Dictionary)["dist"]))
@@ -614,7 +645,7 @@ func _update_labels() -> void:
 	for hex in keys:
 		var rec: Dictionary = _aircraft[hex]
 		var label: Label3D = rec["label"]
-		if shown < LABEL_COUNT:
+		if shown < LABEL_LOD_COUNT:
 			var d: Dictionary = rec["data"]
 			var cs: String = str(d.get("flight", "")).strip_edges()
 			if cs == "":

@@ -73,6 +73,8 @@ var _room_bounds: Rect2 = Rect2(-2.0, -2.0, 4.0, 4.0)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_haunted_maze")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_floor()

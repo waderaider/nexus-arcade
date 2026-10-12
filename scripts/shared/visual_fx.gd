@@ -143,6 +143,63 @@ func vignette(parent: Control, amount: float = 0.45) -> TextureRect:
 
 ## (h) Ambient floating dust motes (looping, subtle).
 ## Reuses GraphicsPolish.spawn_ambient_motes.
+## v0.11.0 Comfort spec (C): dynamic motion vignette for smooth locomotion.
+## One camera-attached quad with a radial-gradient feathered dark edge.
+## opacity = GameSettings.vignette_strength() x motion_factor (0 when still,
+## ramps with speed), eased 0.4s. One cheap transparent quad. Call every
+## frame with the current speed: VisualFX.comfort_vignette(_vig, speed, 1.6).
+## Returns the quad (creates + attaches on first call; pass camera's parent).
+func comfort_vignette(state: Dictionary, speed: float, max_speed: float) -> Dictionary:
+	var target := 0.0
+	var strength: float = GameSettings.vignette_strength()
+	if strength > 0.0 and max_speed > 0.0:
+		target = strength * clampf(speed / max_speed, 0.0, 1.0)
+	var cur := float(state.get("opacity", 0.0))
+	# Ease 0.4s toward target (frame-rate independent).
+	cur = lerpf(cur, target, minf(1.0, state.get("dt", 0.016) / 0.4))
+	state["opacity"] = cur
+	var quad: MeshInstance3D = state.get("quad")
+	if quad != null and is_instance_valid(quad):
+		var mat := quad.get_surface_override_material(0) as StandardMaterial3D
+		if mat != null:
+			mat.albedo_color.a = cur
+	return state
+
+
+## Builds the camera-attached vignette quad. Call once; then drive with
+## comfort_vignette(state, speed, max_speed) each frame (set state["dt"]).
+func make_comfort_vignette(camera_parent: Node3D) -> Dictionary:
+	var state := {"opacity": 0.0, "dt": 0.016, "quad": null}
+	if camera_parent == null:
+		return state
+	var quad := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(2.2, 2.2)
+	quad.mesh = qm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Radial-gradient feathered dark edge, baked into a tiny ImageTexture
+	# (8x8, computed once — no texture asset needed).
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var dx := (x / 31.0 - 0.5) * 2.0
+			var dy := (y / 31.0 - 0.5) * 2.0
+			var r := sqrt(dx * dx + dy * dy)
+			var a := clampf((r - 0.55) / 0.45, 0.0, 1.0)
+			img.set_pixel(x, y, Color(0, 0, 0, a))
+	var tex := ImageTexture.create_from_image(img)
+	mat.albedo_texture = tex
+	mat.albedo_color = Color(0, 0, 0, 0)
+	mat.no_depth_test = true
+	quad.set_surface_override_material(0, mat)
+	quad.position = Vector3(0, 0, -0.5)
+	camera_parent.add_child(quad)
+	state["quad"] = quad
+	return state
+
+
 func ambient_dust(parent: Node3D, radius: float = 2.5, amount: int = 36) -> GPUParticles3D:
 	return GraphicsPolish.spawn_ambient_motes(parent, Vector3.ZERO, radius, mini(amount, 60))
 

@@ -68,6 +68,16 @@ var _room_dungeon_center := Vector2.ZERO
 
 func _ready() -> void:
 	_add_light_rig()
+	# v0.11.0 Audio Director T2: per-game SFX map.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("holo-dungeon", {
+		"sword": d + "dung_sword.wav",
+		"door": d + "dung_door.wav",
+		"key": d + "dung_key.wav",
+		"chest": "chest"
+	})
+	AudioKit.set_active_scene("holo-dungeon")
+	AudioKit.set_intensity(1)
 	_ensure_fallback_camera()
 	_load_run()
 	_build_hud()
@@ -325,6 +335,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 
 
 func _attack_enemy(e: Dictionary) -> void:
+	AudioKit.play_game_sfx("sword")  # v0.11.0 T2
 	var node: MeshInstance3D = e["node"]
 	if not is_instance_valid(node):
 		return

@@ -27,27 +27,32 @@ func _ace_routine(ball: MinigolfBall, hole: MinigolfHole) -> void:
 	var cup := hole.cup_position()
 	var zone: String = hole.zone
 
-	# t=0.00 — The Drop: rattle + reverence.
+	# t=0.00 — The Drop: rattle + reverence. v0.11.0 VFX: deeper, longer
+	# slow-mo (0.15x, 0.6 s) with a heartbeat under it and a faint
+	# anticipation glint — "slow it down before you blow it up".
 	_sfx3d("cup_rattle", cup)
 	_jfx().hit_stop(3)
+	Haptics.heartbeat(2)
 	_duck_audio(true)
 	var saved_scale := Engine.time_scale
-	Engine.time_scale = 0.25
+	Engine.time_scale = 0.15
+	VFX.camera_flash(self, Color(1.0, 0.9, 0.6), 0.06)
 	_flare_cup(hole)
-	await _wait(0.40, true)  # real-time wait (ignores time_scale)
+	await _wait(0.60, true)  # real-time wait (ignores time_scale)
 	Engine.time_scale = saved_scale
 	if _skip:
 		_finish_early(hole)
 		return
 
-	# t=0.45 — Release: cannons + fanfare + haptics + banner + light show.
+	# t=0.65 — Release: cannons + fanfare + haptics + banner + light show.
 	_duck_audio(false)
-	_fire_confetti(cup, zone, 90, Color(1.0, 0.84, 0.25))
-	_fire_confetti(cup + Vector3(0.35, 0.1, 0), zone, 90, Color(0.3, 0.9, 1.0))
-	_ring_shockwave(cup)
+	VFX.camera_flash(self, Color(1.0, 0.9, 0.55), 0.28)
+	VFX.shockwave(self, cup, Color(1.0, 0.84, 0.25), 2.8, 0.7)
+	VFX.confetti_cannons(self, cup,
+		[Color(1.0, 0.84, 0.25), Color(0.3, 0.9, 1.0), Color(1, 1, 1)], 70)
 	_sfx("fanfare")
 	_sfx("crowd_swell")
-	_haptics().play_sequence("hole_in_one", "both")
+	Haptics.play_sequence("hole_in_one", "both")
 	_drop_banner(cup, "HOLE IN ONE!", hole.hole_name)
 	_light_show(hole, zone)
 	if _skip:
@@ -133,28 +138,6 @@ func _fire_confetti(at: Vector3, zone: String, count: int, tint: Color) -> void:
 	add_child(p)
 	p.emitting = true
 	get_tree().create_timer(3.2).timeout.connect(p.queue_free)
-
-
-func _ring_shockwave(at: Vector3) -> void:
-	var ring := MeshInstance3D.new()
-	var tm := TorusMesh.new()
-	tm.inner_radius = 0.28
-	tm.outer_radius = 0.32
-	ring.mesh = tm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1, 1, 1, 0.85)
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.9, 0.5)
-	mat.emission_energy_multiplier = 2.0
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	ring.material_override = mat
-	ring.global_position = at + Vector3(0, 0.03, 0)
-	add_child(ring)
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(ring, "scale", Vector3(6, 1, 6), 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(mat, "albedo_color:a", 0.0, 0.7)
-	tw.chain().tween_callback(ring.queue_free)
 
 
 func _drop_banner(at: Vector3, big: String, small: String) -> void:
@@ -313,36 +296,90 @@ func _finish_early(hole: MinigolfHole) -> void:
 	queue_free()
 
 
-## v2.0 beat 7 — The Replay: 3s slow-mo vignette of the ace from a dramatic
-## low tracking camera behind the cup, floating at the green's edge.
+## v2.0 beat 7 — The Replay (v0.11.0 VFX rework): the old version was a
+## literal dark box with a REPLAY label — a placeholder, not a replay.
+## Now: a gold highlight frame at the green's edge, inside which a GHOST
+## BALL arcs into the cup three times (staggered, with a light trail),
+## each landing with a spark pop. Reads as an instant replay, zero video.
 func _replay_vignette(_ball: MinigolfBall, hole: MinigolfHole) -> void:
 	var cup := hole.cup_position()
-	var frame := MeshInstance3D.new()
-	frame.name = "ReplayVignette"
-	var fbox := BoxMesh.new()
-	fbox.size = Vector3(0.5, 0.3, 0.02)
-	frame.mesh = fbox
-	var fmat := StandardMaterial3D.new()
-	fmat.albedo_color = Color(0.05, 0.05, 0.08)
-	fmat.emission_enabled = true
-	fmat.emission = Color(0.2, 0.3, 0.5)
-	fmat.emission_energy_multiplier = 0.3
-	frame.material_override = fmat
+	var rig := Node3D.new()
+	rig.name = "ReplayVignette"
+	hole.add_child(rig)
+	rig.global_position = cup + Vector3(0.9, 0.45, 0.9)
 	var cam := get_viewport().get_camera_3d()
-	var edge := cup + Vector3(0.8, 0.5, 0.8)
-	frame.position = hole.to_local(edge)
-	hole.add_child(frame)
 	if cam != null:
-		frame.look_at(hole.to_local(cam.global_position), Vector3.UP)
+		var dir: Vector3 = cam.global_position - rig.global_position
+		dir.y = 0
+		if dir.length() > 0.01:
+			rig.rotation.y = atan2(-dir.x, -dir.z)
+	# Gold frame: torus ring + REPLAY plaque.
+	var frame := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.30
+	tm.outer_radius = 0.36
+	tm.rings = 40
+	tm.ring_segments = 8
+	frame.mesh = tm
+	frame.material_override = GraphicsPolish.glow(Color(1.0, 0.8, 0.3), 1.8)
+	rig.add_child(frame)
 	var label := Label3D.new()
 	label.text = "REPLAY"
-	label.font_size = 48
-	label.position = Vector3(0, 0.2, 0.02)
-	frame.add_child(label)
-	var tw := create_tween()
-	tw.tween_interval(3.0)
-	tw.tween_property(frame, "scale", Vector3.ZERO, 0.4)
-	tw.tween_callback(frame.queue_free)
+	label.font_size = 44
+	label.modulate = Color(1.0, 0.88, 0.5)
+	label.outline_size = 8
+	label.position = Vector3(0, 0.42, 0)
+	rig.add_child(label)
+	# Three ghost putts, staggered 0.55 s. Parented to the hole (not the
+	# celebration node) because the celebration frees itself first.
+	for i in 3:
+		var d := 0.4 + float(i) * 0.55
+		get_tree().create_timer(d).timeout.connect(
+			_ghost_putt.bind(hole, rig, cup))
+	# Frame out after the show.
+	get_tree().create_timer(3.2).timeout.connect(func() -> void:
+		if is_instance_valid(rig):
+			var tw := rig.create_tween()
+			tw.tween_property(rig, "scale", Vector3.ZERO, 0.35)
+			tw.tween_callback(rig.queue_free)
+	)
+
+
+## One ghost-ball arc: gold emissive ball with a light trail arcs from
+## the frame's edge into the cup and pops into sparks on arrival.
+func _ghost_putt(hole: MinigolfHole, rig: Node3D, cup: Vector3) -> void:
+	if not is_instance_valid(rig) or not is_instance_valid(hole):
+		return
+	var ghost := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.045
+	sm.height = 0.09
+	sm.radial_segments = 12
+	sm.rings = 8
+	ghost.mesh = sm
+	var gmat := GraphicsPolish.glow(Color(1.0, 0.85, 0.4), 2.2)
+	gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gmat.albedo_color.a = 0.85
+	ghost.material_override = gmat
+	hole.add_child(ghost)
+	var start := cup + Vector3(-0.85, 0.35, 0.35)
+	ghost.global_position = start
+	var trail := GraphicsPolish.make_trail(Color(1.0, 0.85, 0.4), 0.05)
+	ghost.add_child(trail)
+	var t := 0.0
+	var dur := 0.8
+	while t < dur and is_instance_valid(ghost):
+		t += get_process_delta_time()
+		var k := clampf(t / dur, 0.0, 1.0)
+		var p: Vector3 = start.lerp(cup + Vector3(0, 0.05, 0), k)
+		p.y += sin(k * PI) * 0.35
+		ghost.global_position = p
+		await get_tree().process_frame
+	if is_instance_valid(ghost):
+		# spawn_sparks takes parent-LOCAL pos; cup is global.
+		GraphicsPolish.spawn_sparks(hole, hole.to_local(cup + Vector3(0, 0.06, 0)),
+			Color(1.0, 0.85, 0.4), 14)
+		ghost.queue_free()
 
 
 ## v2.0 beat 8 — The Trophy: a physical 3D trophy flies to the trophy wall
@@ -406,7 +443,10 @@ func _avatar_celebration(hole: MinigolfHole) -> void:
 	tw.tween_property(ghost, "position:y", base_y + 0.25, 0.3).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(ghost, "position:y", base_y, 0.3).set_trans(Tween.TRANS_SINE)
 	tw.chain().tween_callback(ghost.queue_free)
-	_haptics().play_sequence("ui_select", "both")
+	# v0.11.0 VFX: was _haptics() (null — Haptics is a static class_name,
+	# not an autoload) + "ui_select" (not a real sequence). Fixed to the
+	# real static call and a real sequence.
+	Haptics.play_sequence("fanfare", "both")
 
 
 func _settle(_hole: MinigolfHole) -> void:
@@ -444,10 +484,6 @@ func _sfx3d(sfx_name: String, pos: Vector3) -> void:
 		ak.play_sfx_3d(sfx_name, pos)
 	else:
 		_sfx(sfx_name)
-
-
-func _haptics() -> Object:
-	return get_node_or_null("/root/Haptics")
 
 
 func _duck_audio(duck: bool) -> void:

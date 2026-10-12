@@ -49,6 +49,8 @@ var _room_ready := false
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.wave_ready(self, "sky-defender")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_ground()

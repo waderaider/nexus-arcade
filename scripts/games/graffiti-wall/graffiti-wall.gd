@@ -54,6 +54,8 @@ var _wall_scale := 1.0
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "graffiti-wall")
 	ARUpgradeKit.apply_anchor(self, "graffiti-wall_main")
 	_ensure_camera()
 	_ensure_env()

@@ -61,6 +61,8 @@ var _barricades: Array = [] # tombstones, repositioned as barricades at furnitur
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.combat_ready(self, "hw_zombie_defense")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	_build_arena()

@@ -170,6 +170,16 @@ func _room_wreckage(pos: Vector3) -> void:
 
 func _ready() -> void:
 	ARUpgradeKit.apply_anchor(self, "sky_pirates_main")
+	# v0.11.0 Audio Director T2: per-game SFX map.
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("sky_pirates", {
+		"cannon": d + "pirate_cannon.wav",
+		"sail": d + "pirate_sail.wav",
+		"board": d + "pirate_board.wav",
+		"splash": "splash"
+	})
+	AudioKit.set_active_scene("sky_pirates")
+	AudioKit.set_intensity(2)
 	xr_mode = ARUpgradeKit.is_xr_active()
 	_ensure_camera()
 	_ensure_environment()
@@ -789,6 +799,8 @@ func _fire_cannon() -> void:
 	if state != "combat" or fire_cd > 0.0 or boarding:
 		return
 	fire_cd = 0.45
+	AudioKit.play_game_sfx("cannon")  # v0.11.0 T2
+	Haptics.sub_bass(0.7, "both")
 	muzzle_side = -muzzle_side
 	# Aim: nearest enemy in the forward hemisphere, with a little lead.
 	var best := -1

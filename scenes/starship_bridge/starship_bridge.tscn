@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/games/starship_bridge/starship_bridge.gd" id="1_star"]
+
+[node name="StarshipBridgeGame" type="Node3D"]
+script = ExtResource("1_star")

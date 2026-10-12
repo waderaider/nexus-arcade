@@ -45,6 +45,8 @@ var pumpkin_stage: Node3D = null
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_pumpkin_carve")
 	GraphicsPolish.make_light_rig(self)
 	_ensure_fallback_camera()
 	mouse_pos = get_viewport().get_visible_rect().size * 0.5

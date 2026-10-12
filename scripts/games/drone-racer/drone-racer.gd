@@ -89,6 +89,8 @@ func _bounce_walls(pos: Vector3, vel: Vector3, radius: float) -> Vector3:
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.racer_ready(self, "drone-racer")
 	ARUpgradeKit.apply_anchor(self, "drone-racer_main")
 	_ensure_fallback_camera()
 	_ensure_light()

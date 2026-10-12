@@ -17,7 +17,7 @@ const HISTORY_MAX := 40
 
 var current_state: State = State.ORBIT
 var is_attacking: bool:
-	get: return current_state == State.ATTACK
+	get: return training_swing or current_state == State.ATTACK
 var is_vulnerable: bool:
 	get: return current_state in [State.ORBIT, State.TELEGRAPH, State.RECOVER]
 
@@ -34,6 +34,15 @@ var blade_tip: Vector3:
 	get: return _blade.tip_position if _blade else global_position
 
 var difficulty := 0.5
+
+# v0.11.0 onboarding: practice-dummy modes (set by DuelManager).
+var passive := false         # never attacks, never blocks — step 1 target
+var training_swing := false  # slow scripted swing at the player — step 2
+var _train_swing_t := 0.0
+var _train_pause_t := 0.0
+# v0.11.0 (Animator) idle-life state.
+var _idle_t := 0.0
+var _sword_tap_t := 0.0
 
 var _state_timer := 0.0
 var _player_head: Node3D
@@ -136,6 +145,8 @@ func average_player_cadence() -> float:
 ## Called by the manager before applying a player hit. Returns true when the
 ## opponent intercepts the blade (hit negated -> clash).
 func try_block(tip_pos: Vector3, tip_vel: Vector3, dir_bucket: int, height_bucket: int) -> bool:
+	if passive:
+		return false
 	if current_state in [State.DEFEATED, State.HIT_STUN, State.BLOCK]:
 		return false
 	var now := Time.get_ticks_msec() / 1000.0
@@ -328,7 +339,15 @@ func _process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, target_yaw, minf(delta * 6.0, 1.0))
 
 	_bob_phase += delta * 2.2
-	var hover_y := 1.35 + sin(_bob_phase) * 0.06
+	# v0.11.0 Comfort: seated mode drops the opponent 0.4m to match
+	# the seated eye height (1.15m vs 1.55m standing).
+	var seated_drop := 0.4 if GameSettings.seated else 0.0
+	var hover_y := 1.35 - seated_drop + sin(_bob_phase) * 0.06
+
+	# v0.11.0 onboarding step 2: slow scripted swing, driven kinematically.
+	if training_swing:
+		_update_training_swing(delta, hover_y)
+		return
 
 	match current_state:
 		State.ORBIT: _update_orbit(delta, hover_y)
@@ -361,8 +380,20 @@ func _update_orbit(delta: float, hover_y: float) -> void:
 	_blade.set_hum(80.0, 0.4)
 
 	_attack_timer -= delta
-	if _attack_timer <= 0.0:
+	# v0.11.0 (Animator): idle sword-tap — the blade dips twice, then the
+	# lunge comes. Head leads the strafe turns (head 8/s, body 4/s).
+	_sword_tap_t += delta
+	if _sword_tap_t > 2.6:
+		_sword_tap_t = 0.0
+		var tap := create_tween()
+		tap.tween_property(_blade, "position:y", _blade.position.y - 0.12, 0.12)
+		tap.tween_property(_blade, "position:y", _blade.position.y, 0.18)
+	AnimFluidity.breathe(self, _idle_t, 0.0, 0.012)
+	if _attack_timer <= 0.0 and not passive:
+		# v0.11.0 (Animator): 150ms anticipation crouch before the lunge —
+		# the attack is telegraphed, then it lands.
 		_enter_state(State.TELEGRAPH, lerpf(0.55, 0.32, difficulty))
+		AnimFluidity.anticipate_then(self, Callable(), 0.15)
 		_visor_flash = 1.0
 		_blade.set_hum(170.0, 0.7)
 
@@ -437,6 +468,38 @@ func _update_defeated(delta: float) -> void:
 	_state_timer -= delta
 	if _state_timer <= 0.0:
 		visible = false
+
+
+## v0.11.0 onboarding step 2: the dummy closes to 1.15m and sweeps its
+## blade SLOWLY (3s per pass) across the player's chest at buckler height.
+## The manager's normal parry check (buckler disc) teaches the block: the
+## player must RAISE the off-hand forearm into the blade's path. Loops until
+## the manager clears training_swing (on a successful parry).
+func _update_training_swing(delta: float, hover_y: float) -> void:
+	if _player_head == null:
+		return
+	# Close to striking distance and hold.
+	var to_player: Vector3 = _player_head.global_position - global_position
+	to_player.y = 0
+	var dist := to_player.length()
+	if dist > 0.01:
+		var want := 1.15
+		var step := clampf(dist - want, -1.0, 1.0) * 1.6 * delta
+		global_position += to_player.normalized() * step
+	global_position.y = lerpf(global_position.y, hover_y - 0.15, minf(delta * 3.0, 1.0))
+	# Sweep the blade mount side-to-side; pause between passes.
+	if _train_pause_t > 0.0:
+		_train_pause_t -= delta
+	else:
+		_train_swing_t += delta / 3.0
+		if _train_swing_t >= 1.0:
+			_train_swing_t = 0.0
+			_train_pause_t = 0.8
+	var sweep := lerpf(-55.0, 55.0, _train_swing_t)
+	_mount_pos_target = Vector3(0.0, 0.02, 0.38)
+	_mount_rot_target = Vector3(88, 0, sweep)
+	_visor_flash = maxf(_visor_flash, 0.7)
+	_blade.set_hum(150.0, 0.6)
 
 
 func _enter_state(s: State, timer: float) -> void:

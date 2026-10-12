@@ -52,6 +52,8 @@ const MAZE_SPAN := 4.4 # full maze footprint in meters (GRID * CELL + margin)
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "hw_mirror_maze")
 	_add_light_rig()
 	_ensure_fallback_camera()
 	maze_root = Node3D.new()

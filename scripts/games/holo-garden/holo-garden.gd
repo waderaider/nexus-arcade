@@ -62,6 +62,8 @@ var flower_colors := [
 
 
 func _ready() -> void:
+	# v0.11.0 T4: genre SFX recipe.
+	JuiceRecipes.casual_ready(self, "holo-garden")
 	# Restore the persisted garden placement (no-op when no anchor was saved).
 	ARUpgradeKit.apply_anchor(self, "holo-garden_main")
 	_ensure_fallback_camera()

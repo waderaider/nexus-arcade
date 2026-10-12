@@ -11,7 +11,9 @@
 ## every frame; both funnel into the single deduped inject_click(). The gaze
 ## reticle/dwell fallback keys on "no beam actually drawn" (never on tracker
 ## registration). Panel auto-frames: recenter on every menu open + 0.5s tick
-## guard (push out when <0.8m, recenter when >30deg off-axis).
+## guard (push out when <0.8m, recenter when >30deg off-axis). The STATIC
+## panel rule (wade 2026-10-12) covers PAUSE menus only — the launcher keeps
+## its approved auto-frame (UI spec §1.5).
 ##
 ## Boot is staged: stage 0 = panel + quad + LOADING (first frame <2s);
 ## stage 1 = list UI + pointers; stage 2 (idle) = music, updater, telemetry
@@ -53,14 +55,25 @@ const CAT_GAMES := [
 	{"name": "Sky Pirates", "scene": "res://scenes/sky_pirates/sky_pirates.tscn", "desc": "Board airships and duel sky pirates.", "color": Color(0.3, 0.85, 0.8)},
 	{"name": "Monster Lab", "scene": "res://scenes/monster_lab/monster_lab.tscn", "desc": "Mix monster DNA and unleash your creation.", "color": Color(0.6, 1.0, 0.3)},
 	{"name": "Myth Zoo", "scene": "res://scenes/myth_zoo/myth_zoo.tscn", "desc": "Mythical beasts roaming your space.", "color": Color(1.0, 0.4, 0.8)},
-	{"name": "QR Treasure Hunt", "scene": "res://scenes/qr_hunt/qr_hunt.tscn", "desc": "Follow QR clues to buried AR treasure.", "color": Color(1.0, 0.85, 0.2)},
+	## v0.11.0 new games (pitches 1-5).
+	{"name": "War Table", "scene": "res://scenes/war_table/war_table.tscn", "desc": "Command tiny armies on your real coffee table - pinch-drag RTS.", "color": Color(0.2, 0.6, 1.0)},
+	{"name": "Kaiju Siege", "scene": "res://scenes/kaiju_siege/kaiju_siege.tscn", "desc": "You ARE the kaiju - stomp a city that rises from your floor.", "color": Color(1.0, 0.35, 0.1)},
+	{"name": "Starship Bridge", "scene": "res://scenes/starship_bridge/starship_bridge.tscn", "desc": "Your room is a starship bridge: helm, tactical, engineering.", "color": Color(0.3, 0.7, 1.0)},
+	{"name": "Phantom Thief", "scene": "res://scenes/phantom_thief/phantom_thief.tscn", "desc": "Stealth heist in your own house - steal 3 artifacts unseen.", "color": Color(0.6, 0.3, 0.9)},
+	{"name": "Runewright", "scene": "res://scenes/runewright/runewright.tscn", "desc": "Draw runes mid-air to forge spells; defend your couch-fort.", "color": Color(0.4, 0.9, 0.7)},
+	## v0.11.0 new games (pitches 6-10).
+	{"name": "Null-G League", "scene": "res://scenes/nullg_league/nullg_league.tscn", "desc": "Zero-G disc sport in your room: wall push-offs, mid-air catches, 3v3.", "color": Color(0.2, 0.9, 1.0)},
+	{"name": "Chrono Heist", "scene": "res://scenes/chrono_heist/chrono_heist.tscn", "desc": "60-second time-loop bank job — your crew is recordings of you.", "color": Color(0.95, 0.6, 0.15)},
+	{"name": "Siege Engineer", "scene": "res://scenes/siege_engineer/siege_engineer.tscn", "desc": "Build trebuchets on your table, smash castles on your floor.", "color": Color(0.85, 0.45, 0.15)},
+	{"name": "Spectral Files", "scene": "res://scenes/spectral_files/spectral_files.tscn", "desc": "Ghost hunt in your own home: EMF, thermal, spirit box, camera.", "color": Color(0.55, 0.25, 0.95)},
+	{"name": "Terraform", "scene": "res://scenes/terraform/terraform.tscn", "desc": "God-game on your coffee table: sculpt, seed, survive epochs.", "color": Color(0.25, 0.8, 0.45)},
+	## v0.11.0 CULL: QR Treasure Hunt removed (setup friction — see CUT_LIST.md).
 ]
 
 const CAT_UTILITIES := [
-	{"name": "Star Map", "scene": "res://scenes/star-map/star-map.tscn", "desc": "Name the constellations on your ceiling.", "color": Color(0.1, 0.1, 0.8)},
+	## v0.11.0 CULLS: Star Map + Plant Doctor removed (see CUT_LIST.md).
 	{"name": "Sky Traffic", "scene": "res://scenes/sky_traffic/sky_traffic.tscn", "desc": "Watch live airplanes cross your sky in AR.", "color": Color(0.4, 0.8, 1.0)},
 	{"name": "Eye Spy AR", "scene": "res://scenes/eye_spy/eye_spy.tscn", "desc": "I spy, played with your whole house.", "color": Color(0.2, 0.9, 1.0)},
-	{"name": "Plant Doctor", "scene": "res://scenes/plant_doctor/plant_doctor.tscn", "desc": "Scan your houseplants for a health checkup.", "color": Color(0.3, 1.0, 0.5)},
 	{"name": "Holo Pets", "scene": "res://scenes/holo-pets/holo-pets.tscn", "desc": "Adopt a pet that lives on your furniture.", "color": Color(1.0, 0.6, 0.8)},
 	{"name": "AR DJ", "scene": "res://scenes/ar-dj/ar-dj.tscn", "desc": "Spin tracks on floating decks.", "color": Color(0.8, 0.0, 0.8)},
 	{"name": "Couch Morph", "scene": "res://scenes/couch_morph/couch_morph.tscn", "desc": "Reskin your couch: spaceship, lava isle, pirate deck.", "color": Color(0.9, 0.4, 1.0)},
@@ -69,7 +82,7 @@ const CAT_UTILITIES := [
 
 const CAT_CREATE := [
 	{"name": "Light Painter", "scene": "res://scenes/light-painter/light-painter.tscn", "desc": "Draw with light and leave glowing trails.", "color": Color(1.0, 0.3, 0.9)},
-	{"name": "Holo Piano", "scene": "res://scenes/holo-piano/holo-piano.tscn", "desc": "A grand piano projected onto your floor.", "color": Color(1.0, 1.0, 1.0)},
+	## v0.11.0 CULL: Holo Piano removed (no game loop — see CUT_LIST.md).
 	{"name": "Holo Theremin", "scene": "res://scenes/holo-theremin/holo-theremin.tscn", "desc": "Make music just by waving your hands.", "color": Color(0.55, 0.3, 1.0)},
 	{"name": "AR Graffiti", "scene": "res://scenes/graffiti-wall/graffiti-wall.tscn", "desc": "Tag your walls with zero cleanup.", "color": Color(0.5, 1.0, 0.2)},
 	{"name": "AR Karaoke", "scene": "res://scenes/ar-karaoke/ar-karaoke.tscn", "desc": "Karaoke night with lyrics on your wall.", "color": Color(1.0, 0.4, 0.7)},
@@ -90,7 +103,7 @@ const CAT_THEMES := [
 	{"name": "Skeleton Dance", "scene": "res://scenes/hw_skeleton_dance/hw_skeleton_dance.tscn", "desc": "Match the skeleton's dance moves.", "color": Color(0.9, 0.9, 0.85)},
 	{"name": "Broom Flight", "scene": "res://scenes/hw_broom_flight/hw_broom_flight.tscn", "desc": "Race broomsticks through the night sky.", "color": Color(0.6, 0.3, 1.0)},
 	{"name": "Monster Mash", "scene": "res://scenes/hw_monster_mash/hw_monster_mash.tscn", "desc": "Dance-battle classic movie monsters.", "color": Color(0.7, 0.2, 0.9)},
-	{"name": "Candy Stack", "scene": "res://scenes/hw_candy_stack/hw_candy_stack.tscn", "desc": "Stack candy as high as physics allows.", "color": Color(1.0, 0.7, 0.1)},
+	## v0.11.0 CULL: Candy Stack removed (one-note loop — see CUT_LIST.md).
 	{"name": "Mummy Wrap", "scene": "res://scenes/hw_mummy_wrap/hw_mummy_wrap.tscn", "desc": "Wrap the mummy before it wakes up.", "color": Color(0.85, 0.8, 0.65)},
 	{"name": "Bat Dodge", "scene": "res://scenes/hw_bat_dodge/hw_bat_dodge.tscn", "desc": "Dodge swooping bats in your hallway.", "color": Color(0.35, 0.1, 0.5)},
 	{"name": "Pumpkin Carve", "scene": "res://scenes/hw_pumpkin_carve/hw_pumpkin_carve.tscn", "desc": "Carve jack-o'-lanterns with light.", "color": Color(1.0, 0.55, 0.0)},
@@ -212,6 +225,9 @@ var _ping_in_flight := false
 # ------------------------------------------------------------ staged boot ---
 
 func _ready() -> void:
+	# v0.11.0: player settings FIRST — graphics quality applies BEFORE the
+	# first frame (wade's order: persisted ConfigFile, boot-applied).
+	GameSettings.boot(get_viewport())
 	# STAGE 0 (synchronous): panel + quad + LOADING label only. First frame
 	# must land <2s after process start — no textures, no shaders, no audio,
 	# no list building here.
@@ -419,7 +435,7 @@ func _build_ui() -> void:
 	_version_badge.add_theme_color_override("font_color", COL_DIM)
 	header.add_child(_version_badge)
 
-	# The list: ScrollContainer + 75 flat rows + explicit hold-to-repeat
+	# The list: ScrollContainer + 70 flat rows + explicit hold-to-repeat
 	# scroll buttons (robust with injected input; synthetic clicks are
 	# press+release same-frame so they can't drag-scroll).
 	var list_frame := PanelContainer.new()
@@ -545,10 +561,12 @@ func _make_button(text: String, node_name: String, font_size: int, bg: Color = C
 	return b
 
 
-## The 75-game flat list in MASTER order (CAT_GAMES + CAT_UTILITIES +
+## The 70-game flat list in MASTER order (CAT_GAMES + CAT_UTILITIES +
 ## CAT_CREATE + CAT_THEMES — the same order the pause menu's Next/Prev
-## walks). Each row: "Name — built by Muse" + one-line desc, 64px flat.
-## Selection = instant row bg→accent + dark text swap, no tween.
+## walks). Each row: clean game name + one-line desc, 64px flat.
+## (v0.9.3 comment said rows were "Name — built by Muse"; per the permanent
+## branding rule they show clean names — branding lives only on the launcher
+## header.) Selection = instant row bg→accent + dark text swap, no tween.
 func _build_list_rows() -> void:
 	_game_buttons.clear()
 	var games := _master_game_list()
@@ -712,7 +730,8 @@ func _master_index_of(scene_path: String) -> int:
 ## Switch to the adjacent game from the pause menu (delta -1 = prev,
 ## +1 = next). Wraps around at the ends. Routes through _load_game so
 ## autowiring, music, sessions and telemetry run identically to a launcher
-## launch.
+## launch. (Hardware-verified working — the pause grid's Prev/Next header
+## keeps this exact pattern per the UI spec.)
 func _switch_game(delta: int) -> void:
 	var games := _master_game_list()
 	if games.is_empty() or _current_game_index < 0:
@@ -721,6 +740,18 @@ func _switch_game(delta: int) -> void:
 	var next_idx := (_current_game_index + delta + n) % n
 	var g: Dictionary = games[next_idx]
 	_load_game(str(g["scene"]), str(g["name"]), "next" if delta > 0 else "prev")
+
+
+## Jump to any game by absolute index from the pause-menu game grid
+## (v0.11.0). Routes through _load_game so autowiring, music, BugReporter
+## session, PauseExit re-attach and telemetry run identically to a launcher
+## launch.
+func _goto_game(index: int) -> void:
+	var games := _master_game_list()
+	if index < 0 or index >= games.size():
+		return
+	var g: Dictionary = games[index]
+	_load_game(str(g["scene"]), str(g["name"]), "pause_grid")
 
 
 ## Category accent color (title-card tint).
@@ -895,6 +926,18 @@ func _on_menu_open() -> void:
 		_input_hint.visible = false
 	_recenter_panel()
 	BugReporter.add_breadcrumb("menu_open")
+	# v0.11.0: every launcher boot is visible in telemetry — menu_open with
+	# version + input inventory (Headset Specialist: menu-only sessions
+	# previously logged nothing, so launches were invisible).
+	if get_node_or_null("/root/GameplayTelemetry") != null:
+		var gt := get_node("/root/GameplayTelemetry")
+		gt.event("menu_open", {
+			"version": str(ProjectSettings.get_setting("application/config/version", "?")),
+			"xr": get_viewport().use_xr,
+			"input_method": GameSettings.input_method,
+			"graphics": GameSettings.QUALITY_NAMES[clampi(GameSettings.quality, 0, 3)],
+			"headset": (get_node("/root/GameplayTelemetry") as Node).call("headset_model"),
+		})
 
 
 ## Fresh camera, validated every call; falls back to the cached XR camera.
@@ -939,6 +982,9 @@ func _recenter_panel() -> void:
 ## 0.5s guard while the launcher is visible (runs inside _process_status):
 ## if the user walked INTO the panel (<0.8m) push it back out to 1.5m; if
 ## the panel drifted >30deg off-axis, recenter. Never pulls closer.
+## (UI spec §1.5, 2026-10-12: the LAUNCHER keeps this guard — wade approved
+## the v0.9.3 launcher as-is and filed zero complaints. The static-panel
+## kill order covers PAUSE menus only.)
 func _auto_frame_panel() -> void:
 	if not _panel_visible():
 		return
@@ -1201,6 +1247,13 @@ func _diag_text() -> String:
 	if _first_frame_msec > 0:
 		boot_txt = "first frame %.1fs" % ((_first_frame_msec - _boot_msec) / 1000.0)
 	var line2 := "Ptrs: %d · Panel: %s · Boot: %s" % [ptrs, dist_txt, boot_txt]
+	# v0.11.0: headset model on-screen (XR_META_headset_id; "OpenXR"/"none"
+	# fallback) + active graphics tier — wade reads this back from the device.
+	var hs := "?"
+	if get_node_or_null("/root/GameplayTelemetry") != null:
+		hs = (get_node("/root/GameplayTelemetry") as Node).call("headset_model")
+	var line3 := "Headset: %s · Graphics: %s" % [hs,
+		GameSettings.QUALITY_NAMES[clampi(GameSettings.quality, 0, 3)]]
 	# Self-test: no beam drawn for >3s on-device = the photo state.
 	var warn := ""
 	if xr and _panel_visible():
@@ -1212,7 +1265,7 @@ func _diag_text() -> String:
 				warn = "\n⚠ NO INPUT SOURCE LIVE — look at a button and hold 1.2s"
 		else:
 			_no_beam_since_msec = 0
-	return line1 + "\n" + line2 + warn
+	return line1 + "\n" + line2 + "\n" + line3 + warn
 
 
 # ------------------------------------------------- connection self-test ---
@@ -1341,19 +1394,24 @@ func _autowire_game(scene_path: String, game_name: String) -> void:
 			_current_game, _return_to_hub,
 			_load_game.bind(scene_path, game_name, "restart"),
 			game_name)
-		# v0.9.2: Next/Previous navigation in the pause menu — ordered game
-		# names + current index + the hub's wrap-around switch callable.
+		# v0.11.0: pause-menu game-picker grid — ordered names + accent
+		# colors + current index + the hub's direct-index goto callable.
 		var nav_names := PackedStringArray()
+		var nav_colors: Array = []
 		for g in _master_game_list():
 			nav_names.append(str((g as Dictionary).get("name", "?")))
-		PauseExit.set_game_nav(nav_names, _current_game_index, _switch_game)
+			nav_colors.append((g as Dictionary).get("color", Color(0.3, 0.6, 0.9)))
+		PauseExit.set_game_nav(nav_names, nav_colors, _current_game_index,
+			_switch_game, _goto_game)
 		if not opted_out:
 			# controller_skins.gd by path: immune to stale class caches.
 			var skins_scr: GDScript = load("res://scripts/shared/controller_skins.gd")
 			var skin_cfg: Dictionary = skins_scr.config_for(_current_game, stem)
 			if bool(skin_cfg.get("uses_controllers", true)):
 				skins_scr.apply(_current_game, skin_cfg)
-				PauseExit.show_controls_intro(skin_cfg, game_name)
+				# v0.11.0: TOOL TIPS setting — off = clean view, no intro legend.
+				if GameSettings.tooltips:
+					PauseExit.show_controls_intro(skin_cfg, game_name)
 
 
 ## Per-game opt-out: `static var no_auto_wire := true` in the game script.

@@ -38,7 +38,8 @@ func setup(game: MinigolfGame, ball: MinigolfBall) -> void:
 
 
 func _ready() -> void:
-	_controller = _find_right_controller()
+	# v0.11.0 Comfort: putter follows the dominant-hand setting.
+	_controller = _find_dominant_controller()
 	_build_aim_line()
 	# The putter visual comes from controller_skins ("putter" skin);
 	# find its head marker for strike distance checks.
@@ -46,14 +47,17 @@ func _ready() -> void:
 		_head_marker = _controller.find_child("ClubHead", true, false)
 
 
-func _find_right_controller() -> XRController3D:
+func _find_dominant_controller() -> XRController3D:
 	var tree := get_tree()
 	if tree == null or tree.root == null:
 		return null
 	var origins := tree.root.find_children("*", "XROrigin3D", true, false)
 	if origins.is_empty():
 		return null
-	return (origins[0] as Node3D).get_node_or_null("RightController") as XRController3D
+	# v0.11.0 Comfort: dominant-hand putter (GameSettings.dominant_hand).
+	var node_name := "RightController" \
+		if GameSettings.dominant_hand == "right" else "LeftController"
+	return (origins[0] as Node3D).get_node_or_null(node_name) as XRController3D
 
 
 func _build_aim_line() -> void:

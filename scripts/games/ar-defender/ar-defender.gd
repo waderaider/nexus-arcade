@@ -69,6 +69,15 @@ func _ready() -> void:
 	_build_path()
 	_build_base()
 	_build_labels()
+	# v0.11.0 Audio Director T1: per-game SFX map (def_* family).
+	var d := "res://assets/audio/sfx/"
+	AudioKit.register_game_sfx("ar-defender", {
+		"place": d + "def_place.wav", "die": d + "def_die.wav",
+		"horn": d + "def_horn.wav", "base_hit": d + "def_base_hit.wav",
+		"shoot": "shoot", "coin": "coin",
+	})
+	AudioKit.set_active_scene("ar-defender")
+	AudioKit.set_intensity(1)  # build phase
 	_say("Wave 1 incoming - build towers!")
 	# AR: restore the saved room anchor in XR; ambient dust motes over the board.
 	if ARUpgradeKit.is_xr_active():
@@ -419,6 +428,8 @@ func _place_tower(p: Vector3) -> void:
 			"timer": 0.0, "level": 1, "cooldown": 0.55,
 			"model": mage, "focus": focus})
 	_play_tone(330.0, 0.12)
+	AudioKit.play_game_sfx("place")  # v0.11.0 T1
+	Haptics.confirm()
 	_say("Tower built! Click it again to upgrade (75).")
 	GraphicsPolish.spawn_sparks(self, root.position + Vector3(0, 0.5, 0), Color(0.2, 0.9, 1.0), 20)
 
@@ -504,6 +515,7 @@ func _update_waves(delta: float) -> void:
 		elif _enemies.is_empty():
 			var bonus := 25 * _wave
 			_score += bonus
+			AudioKit.set_intensity(1)  # v0.11.0 T1: build phase
 			_say("Wave %d cleared! +%d bonus" % [_wave, bonus])
 			_wave += 1
 			_phase = "build"
@@ -517,6 +529,9 @@ func _start_wave() -> void:
 	_wave_speed = minf(0.6 + _wave * 0.12, 1.7)
 	_spawn_left = _wave_count
 	_spawn_timer = 0.5
+	AudioKit.play_game_sfx("horn")  # v0.11.0 T1
+	Haptics.pulse(0.6, 0.3, "both")
+	AudioKit.set_intensity(2)  # wave phase
 	_say("Wave %d - %d enemies incoming!" % [_wave, _wave_count])
 
 
@@ -558,6 +573,8 @@ func _reached_base(e: Dictionary) -> void:
 	e["dead"] = true
 	(e["node"] as Node).queue_free()
 	_lives -= 1
+	AudioKit.play_game_sfx("base_hit")  # v0.11.0 T1
+	Haptics.sub_bass(0.6, "both")
 	_play_tone(140.0, 0.25)
 	if _lives <= 0:
 		_lives = 0
@@ -573,6 +590,7 @@ func _hit_enemy(e: Dictionary, damage: int) -> void:
 		var boom_pos := (e["node"] as Node3D).position
 		(e["node"] as Node).queue_free()
 		GraphicsPolish.spawn_sparks(self, boom_pos, Color(1.0, 0.4, 0.2), 24)
+		AudioKit.play_game_sfx("die")  # v0.11.0 T1
 		var gain := 10 + _wave * 2
 		_score += gain
 		_energy = minf(_energy + 10.0, ENERGY_MAX)

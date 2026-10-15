@@ -255,7 +255,22 @@
     <p class="note">You'll get an email the moment the project package is ready to download.</p>
   </div>
 
-  <div class="task">
+  
+<div class="task">
+  <h3>🔊 Openverse audio pipeline <span class="pill soon">YOUR PC NEEDED</span></h3>
+  <p class="note">Openverse has no user accounts (it's search-only), and its API blocks my cloud machine — so this part runs from your PC. Two quick steps, both free:</p>
+  <ul>
+    <li><b>Step 1 — get a free API key</b> (2 min, one command in PowerShell/Terminal):<br>
+    <code style="font-size:12px;word-break:break-all;">curl -X POST https://api.openverse.org/v1/auth_tokens/register/ -H "Content-Type: application/json" -d '{"name":"brio-game-audio","description":"SFX and music for my indie VR games","email":"brio@agentsmail.net"}'</code><br>
+    Save the <b>client_id</b> and <b>client_secret</b> it returns (shown once).</li>
+    <li><b>Step 2 — pull audio</b>: download <a href="https://github.com/waderaider/marigold">the tool</a> (ov_audio.py, plain Python, no installs), then:<br>
+    <code style="font-size:12px;">python ov_audio.py pull "mariachi" --kind music --out ./marigold_audio</code><br>
+    <code style="font-size:12px;">python ov_audio.py pull "church bell" --kind sfx --out ./marigold_audio</code></li>
+  </ul>
+  <p class="note">Send me the client_id/secret and I'll wire it into the pipeline for higher limits. The tool works for every game — NEXUS and MARIGOLD.</p>
+</div>
+
+<div class="task">
     <h3>✅ Already on the site</h3>
     <ul>
       <li><a href="#ue5">Your install checklist</a> — every step for your PC, in order.</li>
